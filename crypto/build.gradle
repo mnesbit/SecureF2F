@@ -1,0 +1,11 @@
+group 'com.nesbit'
+version '1.0-SNAPSHOT'
+
+dependencies {
+    // RxJava: observable streams of events.
+    compile "io.reactivex:rxjava:$rx_version"
+
+    // Bouncy castle
+    compile "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
+    compile "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
+}
