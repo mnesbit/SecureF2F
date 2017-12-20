@@ -8,4 +8,6 @@ dependencies {
     // Bouncy castle
     compile "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
     compile "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
+
+    compile "org.zeromq:curve25519-java:0.1.0"
 }
