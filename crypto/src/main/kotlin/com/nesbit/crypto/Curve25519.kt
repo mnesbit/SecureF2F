@@ -11,6 +11,8 @@ class Curve25519PublicKey(val keyBytes: ByteArray) {
         }
     }
 
+    override fun toString(): String = "PUB25519:${keyBytes.printHex()}"
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -34,6 +36,8 @@ class Curve25519PrivateKey(val keyBytes: ByteArray) {
         }
         Curve25519.clamp(keyBytes) // ensure it is a valid private key
     }
+
+    override fun toString(): String = "PRV25519:${keyBytes.printHex()}"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -62,6 +66,8 @@ class Curve25519KeyPair(val publicKey: Curve25519PublicKey, val privateKey: Curv
         }
     }
 
+    override fun toString(): String = "$publicKey\n$privateKey"
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -79,4 +85,10 @@ class Curve25519KeyPair(val publicKey: Curve25519PublicKey, val privateKey: Curv
         result = 31 * result + privateKey.hashCode()
         return result
     }
+}
+
+fun generateSharedECDHSecret(publicInfo: Curve25519PublicKey, privateInfo: Curve25519PrivateKey): Curve25519PublicKey {
+    val secret = ByteArray(Curve25519.KEY_SIZE)
+    Curve25519.curve(secret, privateInfo.keyBytes, publicInfo.keyBytes)
+    return Curve25519PublicKey(secret)
 }

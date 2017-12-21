@@ -1,5 +1,6 @@
 package com.nesbit.crypto
 
+import java.security.MessageDigest
 import java.security.SecureRandom
 import kotlin.experimental.xor
 
@@ -12,7 +13,7 @@ fun newSecureRandom(): SecureRandom {
 }
 
 fun concatByteArrays(vararg concat: ByteArray): ByteArray {
-    if (concat.size == 0) {
+    if (concat.isEmpty()) {
         return ByteArray(0)
     }
     val length = concat.sumBy { it.size }
@@ -36,3 +37,4 @@ fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
 }
 
 fun ByteArray.printHex() = javax.xml.bind.DatatypeConverter.printHexBinary(this)
+fun ByteArray.secureHash(algorithm: String = "SHA-256") = MessageDigest.getInstance(algorithm).digest(this)
