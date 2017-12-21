@@ -184,7 +184,7 @@ class Sphinx(
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: Curve25519KeyPair): Pair<UnpackedSphinxMessage?, ByteArray?> {
         val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
-        val comparableAlpha = ComparableByteArray(alpha.keyBytes)
+        val comparableAlpha = ComparableByteArray(alpha.keyBytes.secureHash()) // Use hash of bytes to prevent timing attacks
         if (comparableAlpha in alphaCache) {
             return Pair(null, null) // Never allow reuse of Diffie-Hellman points
         }
