@@ -4,17 +4,10 @@ import com.nesbit.crypto.sphinx.Sphinx
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlin.experimental.xor
+import kotlin.test.assertNull
 
 class SphinxTest {
-    @Test
-    fun `Test Rho stream`() {
-        val rand = newSecureRandom()
-        val key1 = ByteArray(256 / 8)
-        rand.nextBytes(key1)
-        val rho = Sphinx.rho(key1)
-        println(rho.printHex())
-    }
-
     @Test
     fun `Test ECDH chaining from basics`() {
         val rand = newSecureRandom()
@@ -68,16 +61,17 @@ class SphinxTest {
 
     @Test
     fun `ECDH chaining from general function`() {
-        val N = 5
+        val n = 5
         val rand = newSecureRandom()
+        val sphinx = Sphinx(rand)
         val nodeKeys = mutableListOf<Curve25519KeyPair>()
-        for (i in 0 until N) {
+        for (i in 0 until n) {
             nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
         }
         val route = nodeKeys.map { it.publicKey }
-        val dhSequence = Sphinx.createRoute(route)
+        val dhSequence = sphinx.createRoute(route)
 
-        for (i in 0 until N) {
+        for (i in 0 until n) {
             val node = nodeKeys[i]
             val entry = dhSequence[i]
             val sharedSecret = generateSharedECDHSecret(entry.alpha, node.privateKey)
@@ -91,30 +85,32 @@ class SphinxTest {
     @Test
     fun `Single step message`() {
         val rand = newSecureRandom()
+        val sphinx = Sphinx(rand)
         val nodeKeys = Curve25519KeyPair.generateKeyPair(rand)
         println(nodeKeys)
         val payload = "1234567890".toByteArray()
-        val msg = Sphinx.makeMessage(listOf(nodeKeys.publicKey), payload, rand)
+        val msg = sphinx.makeMessage(listOf(nodeKeys.publicKey), payload, rand)
         println(msg)
-        val (msg1, payload1) = Sphinx.processMessage(msg, nodeKeys)
+        val (msg1, payload1) = sphinx.processMessage(msg, nodeKeys)
         assertEquals(null, msg1)
         assertArrayEquals(payload, payload1)
     }
 
     @Test
     fun `Multi step message`() {
-        val N = 2
+        val n = 2
         val rand = newSecureRandom()
+        val sphinx = Sphinx(rand)
         val nodeKeys = mutableListOf<Curve25519KeyPair>()
-        for (i in 0 until N) {
+        for (i in 0 until n) {
             nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
         }
         val payload = "1234567890".toByteArray()
         val route = nodeKeys.map { it.publicKey }
-        val initialMsg = Sphinx.makeMessage(route, payload, rand)
-        val (msg1, payload1) = Sphinx.processMessage(initialMsg, nodeKeys[0])
+        val initialMsg = sphinx.makeMessage(route, payload, rand)
+        val (msg1, payload1) = sphinx.processMessage(initialMsg, nodeKeys[0])
         assertEquals(null, payload1)
-        val (msg2, payload2) = Sphinx.processMessage(msg1!!, nodeKeys[1])
+        val (msg2, payload2) = sphinx.processMessage(msg1!!, nodeKeys[1])
         assertEquals(null, msg2)
         assertArrayEquals(payload, payload2)
     }
@@ -122,17 +118,39 @@ class SphinxTest {
     @Test
     fun `Multi step message 3`() {
         val rand = newSecureRandom()
+        val sphinx = Sphinx(rand)
         val payload = "1234567890".toByteArray()
-        for (N in 1 until Sphinx.MAX_ROUTE_LENGTH) {
+        for (N in 1 until sphinx.maxRouteLength) {
             val nodeKeys = mutableListOf<Curve25519KeyPair>()
             for (i in 0 until N) {
                 nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
             }
             val route = nodeKeys.map { it.publicKey }
-            val initialMsg = Sphinx.makeMessage(route, payload, rand)
+            val initialMsg = sphinx.makeMessage(route, payload, rand)
             var msg: Sphinx.UnpackedSphinxMessage? = initialMsg
             for (i in 0 until N) {
-                val output = Sphinx.processMessage(msg!!, nodeKeys[i])
+                for (j in 0 until N) {
+                    if (i != j) {
+                        val (bad1, bad2) = sphinx.processMessage(msg!!, nodeKeys[j])
+                        assertNull(bad1)
+                        assertNull(bad2)
+                        sphinx.resetAlphaCache()
+                    }
+                }
+                val badMessage = msg!!.messageBytes
+                for (j in 0 until badMessage.size) {
+                    for (k in 0 until 8) {
+                        val corruptBit = (1 shl k).toByte()
+                        badMessage[j] = badMessage[j] xor corruptBit
+                        val corruptMessage = Sphinx.UnpackedSphinxMessage(sphinx.betaLength, badMessage)
+                        badMessage[j] = badMessage[j] xor corruptBit
+                        val (bad1, bad2) = sphinx.processMessage(corruptMessage, nodeKeys[i])
+                        assertNull(bad1)
+                        assertNull(bad2)
+                        sphinx.resetAlphaCache()
+                    }
+                }
+                val output = sphinx.processMessage(msg, nodeKeys[i])
                 msg = output.first
                 val payloadOut = output.second
                 if (i == N - 1) {

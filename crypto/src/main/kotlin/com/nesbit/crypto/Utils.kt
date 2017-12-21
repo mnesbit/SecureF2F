@@ -38,3 +38,4 @@ fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
 
 fun ByteArray.printHex() = javax.xml.bind.DatatypeConverter.printHexBinary(this)
 fun ByteArray.secureHash(algorithm: String = "SHA-256") = MessageDigest.getInstance(algorithm).digest(this)
+
