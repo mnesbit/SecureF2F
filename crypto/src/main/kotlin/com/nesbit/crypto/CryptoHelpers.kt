@@ -75,7 +75,6 @@ fun KeyPair.sign(bits: ByteArray): DigitalSignature {
         }
         "EdDSA" -> {
             val signer = EdDSAEngine()
-            require(this.private.algorithm == "EdDSA") { "Key not an EdDSA key" }
             signer.initSign(this.private)
             signer.update(bits)
             val sig = signer.sign()
