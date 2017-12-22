@@ -125,11 +125,9 @@ class SphinxTest {
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
         val payload = "1234567890".toByteArray()
+        val nodeKeys = mutableListOf<SphinxIdentityKeyPair>()
         for (N in 1..sphinx.maxRouteLength) {
-            val nodeKeys = mutableListOf<SphinxIdentityKeyPair>()
-            for (i in 0 until N) {
-                nodeKeys += SphinxIdentityKeyPair.generateKeyPair(rand)
-            }
+            nodeKeys += SphinxIdentityKeyPair.generateKeyPair(rand)
             val route = nodeKeys.map { it.public }
             val initialMsg = sphinx.makeMessage(route, payload, rand)
             var msg: Sphinx.UnpackedSphinxMessage? = initialMsg
@@ -197,4 +195,19 @@ class SphinxTest {
         }
     }
 
+    @Test
+    fun `version chain test`() {
+        val rand = newSecureRandom()
+        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand)
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand)
+        val chainValue1 = id1.getChainValue(0)
+        assertEquals(id1.hashChain.first, chainValue1)
+        val chainValue2a = id1.getChainValue(100)
+        val chainValue2b = id1.getChainValue(100)
+        assertEquals(chainValue2a, chainValue2b)
+        assertTrue(id1.public.verifyChainValue(chainValue2a.bytes, 100))
+        assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 99))
+        assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 101))
+        assertFalse(id2.public.verifyChainValue(chainValue2a.bytes, 100))
+    }
 }

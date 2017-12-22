@@ -238,7 +238,7 @@ class Sphinx(
         val beta = msg.header.copyOfRange(Curve25519.KEY_SIZE, msg.header.size)
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
-        val nextNode = SecureHash(SphinxPublicIdentity.ID_HASH_ALGORITH, decryptedBeta.copyOf(ID_HASH_SIZE))
+        val nextNode = SecureHash(SphinxPublicIdentity.ID_HASH_ALGORITHM, decryptedBeta.copyOf(ID_HASH_SIZE))
         if (nextNode == nodeKeys.id) {
             return MessageProcessingResult(true, null, nextNode, unpadFinalPayload(dec.newPayload))
         }
