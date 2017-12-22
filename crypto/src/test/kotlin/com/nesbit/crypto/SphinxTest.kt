@@ -61,17 +61,16 @@ class SphinxTest {
 
     @Test
     fun `ECDH chaining from general function`() {
-        val n = 5
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
         val nodeKeys = mutableListOf<SphinxIdentityKeyPair>()
-        for (i in 0 until n) {
+        for (i in 0 until sphinx.maxRouteLength) {
             nodeKeys += SphinxIdentityKeyPair.generateKeyPair(rand)
         }
         val route = nodeKeys.map { it.public }
         val dhSequence = sphinx.createRoute(route)
 
-        for (i in 0 until n) {
+        for (i in 0 until sphinx.maxRouteLength) {
             val node = nodeKeys[i]
             val entry = dhSequence[i]
             val sharedSecret = Curve25519PublicKey(getSharedDHSecret(node.diffieHellmanKeys, entry.alpha))
@@ -126,7 +125,7 @@ class SphinxTest {
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
         val payload = "1234567890".toByteArray()
-        for (N in 1 until sphinx.maxRouteLength) {
+        for (N in 1..sphinx.maxRouteLength) {
             val nodeKeys = mutableListOf<SphinxIdentityKeyPair>()
             for (i in 0 until N) {
                 nodeKeys += SphinxIdentityKeyPair.generateKeyPair(rand)

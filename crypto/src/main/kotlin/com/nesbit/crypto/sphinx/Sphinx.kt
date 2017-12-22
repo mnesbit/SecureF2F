@@ -37,7 +37,7 @@ class Sphinx(
     }
 
     private val rhoLength = (maxRouteLength + 1) * ENTRY_SIZE
-    val betaLength = maxRouteLength * ENTRY_SIZE
+    internal val betaLength = maxRouteLength * ENTRY_SIZE
     private val alphaCache = mutableSetOf<SecureHash>()
 
     init {
@@ -50,21 +50,19 @@ class Sphinx(
 
     fun resetAlphaCache() = alphaCache.clear()
 
-    private fun rho(rhoKey: ByteArray): ByteArray {
+    private fun rho(rhoKey: SecretKeySpec): ByteArray {
         val streamOutput = ByteArray(rhoLength)
-        val secretKey = SecretKeySpec(rhoKey, "AES")
         val aesCipher = Cipher.getInstance("AES/CTR/NoPadding", "SunJCE")
-        aesCipher.init(Cipher.ENCRYPT_MODE, secretKey, IvParameterSpec(ZERO_16))
+        aesCipher.init(Cipher.ENCRYPT_MODE, rhoKey, IvParameterSpec(ZERO_16))
         return aesCipher.doFinal(streamOutput)
     }
 
     private class EncryptionResult(val newPayload: ByteArray, val tag: ByteArray)
 
-    private fun encryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, payload: ByteArray): EncryptionResult {
+    private fun encryptPayload(key: SecretKeySpec, nonce: ByteArray, header: ByteArray, payload: ByteArray): EncryptionResult {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
         val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        val secretKey = SecretKeySpec(key, "AES")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, spec)
+        cipher.init(Cipher.ENCRYPT_MODE, key, spec)
         cipher.updateAAD(header)
         val cipherText = cipher.doFinal(payload)
         val tag = cipherText.copyOfRange(payload.size, payload.size + GCM_TAG_LENGTH)
@@ -74,11 +72,10 @@ class Sphinx(
 
     private class DecryptionResult(val valid: Boolean, val newPayload: ByteArray)
 
-    private fun decryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, tag: ByteArray, payload: ByteArray): DecryptionResult {
+    private fun decryptPayload(key: SecretKeySpec, nonce: ByteArray, header: ByteArray, tag: ByteArray, payload: ByteArray): DecryptionResult {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
         val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        val secretKey = SecretKeySpec(key, "AES")
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+        cipher.init(Cipher.DECRYPT_MODE, key, spec)
         cipher.updateAAD(header)
         val cipherText = concatByteArrays(payload, tag)
         val decrypted = try {
@@ -115,14 +112,14 @@ class Sphinx(
         return output
     }
 
-    class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
+    internal class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
         companion object {
             val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
         }
 
-        val rhoKey: ByteArray
+        val rhoKey: SecretKeySpec
         val gcmNonce: ByteArray
-        val gcmKey: ByteArray
+        val gcmKey: SecretKeySpec
         val blind: PrivateKey
 
         init {
@@ -132,30 +129,30 @@ class Sphinx(
             hkdf.generateBytes(hkdfKey, 0, TOTAL_KEY_BYTES)
             var start = 0
             var end = (RHO_KEY_SIZE / 8)
-            rhoKey = hkdfKey.copyOfRange(start, end)
+            rhoKey = SecretKeySpec(hkdfKey.copyOfRange(start, end), "AES")
             start = end
             end += GCM_NONCE_LENGTH
             gcmNonce = hkdfKey.copyOfRange(start, end)
             start = end
             end += (GCM_KEY_SIZE / 8)
-            gcmKey = hkdfKey.copyOfRange(start, end)
+            gcmKey = SecretKeySpec(hkdfKey.copyOfRange(start, end), "AES")
             start = end
             end += BLIND_LENGTH
             blind = Curve25519PrivateKey(hkdfKey.copyOfRange(start, end))
         }
     }
 
-    class HeaderEntry(val nextNodeId: SecureHash,
-                      val alpha: PublicKey,
-                      val sharedSecret: PublicKey,
-                      val hashes: DerivedHashes) {
+    internal class HeaderEntry(val nextNodeId: SecureHash,
+                               val alpha: PublicKey,
+                               val sharedSecret: PublicKey,
+                               val hashes: DerivedHashes) {
         init {
             require(nextNodeId.bytes.size == ID_HASH_SIZE)
         }
     }
 
-    fun createRoute(route: List<SphinxPublicIdentity>, random: SecureRandom = this.random): List<HeaderEntry> {
-        require(route.isNotEmpty()) { "Routing list cannot be empty" }
+    internal fun createRoute(route: List<SphinxPublicIdentity>, random: SecureRandom = this.random): List<HeaderEntry> {
+        require(route.size in 1..maxRouteLength) { "Invalid route length" }
         val startingPoint = generateCurve25519DHKeyPair(random)
         val output = mutableListOf<HeaderEntry>()
         val firstNode = route.first()
@@ -180,12 +177,12 @@ class Sphinx(
                                 val tag: ByteArray) {
         constructor(betaLength: Int, messageBytes: ByteArray) : this(
                 betaLength,
-                messageBytes.copyOfRange(0, Curve25519.KEY_SIZE + betaLength),
-                messageBytes.copyOfRange(Curve25519.KEY_SIZE + betaLength, messageBytes.size - GCM_TAG_LENGTH),
+                messageBytes.copyOfRange(0, ID_HASH_SIZE + betaLength),
+                messageBytes.copyOfRange(ID_HASH_SIZE + betaLength, messageBytes.size - GCM_TAG_LENGTH),
                 messageBytes.copyOfRange(messageBytes.size - GCM_TAG_LENGTH, messageBytes.size))
 
         init {
-            require(header.size == Curve25519.KEY_SIZE + betaLength)
+            require(header.size == ID_HASH_SIZE + betaLength)
             require(tag.size == GCM_TAG_LENGTH)
         }
 
@@ -195,7 +192,7 @@ class Sphinx(
     }
 
     fun makeMessage(route: List<SphinxPublicIdentity>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
-        require(route.size in 1..(maxRouteLength - 1)) { "Invalid route length" }
+        require(route.size in 1..maxRouteLength) { "Invalid route length" }
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }
         var filler = ByteArray(0)
