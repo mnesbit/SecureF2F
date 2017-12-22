@@ -6,13 +6,16 @@ import java.security.PublicKey
 import java.security.SecureRandom
 
 class SphinxPublicIdentity(val signingPublicKey: PublicKey, val diffieHellmanPublicKey: PublicKey) {
+    companion object {
+        val ID_HASH_ALGORITH = "SHA-256"
+    }
     init {
         require(diffieHellmanPublicKey.algorithm == "Curve25519")
     }
 
     val id: SecureHash by lazy {
         val bytes = concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded)
-        bytes.secureHash()
+        bytes.secureHash(ID_HASH_ALGORITH)
     }
 
     override fun equals(other: Any?): Boolean {

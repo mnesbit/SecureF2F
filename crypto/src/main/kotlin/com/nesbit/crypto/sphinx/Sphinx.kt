@@ -26,13 +26,14 @@ class Sphinx(
         private val HKDF_SALT = "SphinxHashes".toByteArray(Charsets.UTF_8)
 
         private val SECURITY_PARAMETER = 16 // To work with Curve25519 key (32 bytes each) and 16 bytes AES keys
-        private val ENTRY_SIZE = 3 * SECURITY_PARAMETER
-        private val ZERO_PAD = ByteArray(ENTRY_SIZE)
+        private val ID_HASH_SIZE = 2 * SECURITY_PARAMETER // Use SHA-256 of signing key and Curve25519 key
         private val RHO_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
         private val GCM_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
         private val GCM_NONCE_LENGTH = 12 // in bytes
         private val GCM_TAG_LENGTH = SECURITY_PARAMETER // in bytes
         private val BLIND_LENGTH = Curve25519.KEY_SIZE // in bytes
+        private val ENTRY_SIZE = ID_HASH_SIZE + GCM_TAG_LENGTH
+        private val ZERO_PAD = ByteArray(ENTRY_SIZE)
     }
 
     private val rhoLength = (maxRouteLength + 1) * ENTRY_SIZE
@@ -41,6 +42,7 @@ class Sphinx(
 
     init {
         require(Curve25519.KEY_SIZE == 2 * SECURITY_PARAMETER) // Ensure sizes align properly
+        require(SphinxIdentityKeyPair.generateKeyPair(random).id.bytes.size == ID_HASH_SIZE) // Ensure sizes align properly
         if (Security.getProvider("BC") == null) {
             Security.addProvider(BouncyCastleProvider())
         }
@@ -148,7 +150,7 @@ class Sphinx(
                       val sharedSecret: PublicKey,
                       val hashes: DerivedHashes) {
         init {
-            require(nextNodeId.bytes.size == 2 * SECURITY_PARAMETER)
+            require(nextNodeId.bytes.size == ID_HASH_SIZE)
         }
     }
 
@@ -239,7 +241,7 @@ class Sphinx(
         val beta = msg.header.copyOfRange(Curve25519.KEY_SIZE, msg.header.size)
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
-        val nextNode = SecureHash("SHA-256", decryptedBeta.copyOf(2 * SECURITY_PARAMETER))
+        val nextNode = SecureHash(SphinxPublicIdentity.ID_HASH_ALGORITH, decryptedBeta.copyOf(ID_HASH_SIZE))
         if (nextNode == nodeKeys.id) {
             return MessageProcessingResult(true, null, nextNode, unpadFinalPayload(dec.newPayload))
         }
