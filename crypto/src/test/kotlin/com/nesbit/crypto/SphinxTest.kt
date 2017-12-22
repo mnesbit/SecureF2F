@@ -5,6 +5,7 @@ import com.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import org.junit.Assert.*
 import org.junit.Test
 import kotlin.experimental.xor
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class SphinxTest {
@@ -201,7 +202,7 @@ class SphinxTest {
         val id1 = SphinxIdentityKeyPair.generateKeyPair(rand)
         val id2 = SphinxIdentityKeyPair.generateKeyPair(rand)
         val chainValue1 = id1.getChainValue(0)
-        assertEquals(id1.hashChain.first, chainValue1)
+        assertEquals(id1.hashChain.targetHash, chainValue1)
         val chainValue2a = id1.getChainValue(100)
         val chainValue2b = id1.getChainValue(100)
         assertEquals(chainValue2a, chainValue2b)
@@ -209,5 +210,12 @@ class SphinxTest {
         assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 99))
         assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 101))
         assertFalse(id2.public.verifyChainValue(chainValue2a.bytes, 100))
+        assertFailsWith<IllegalArgumentException> {
+            // Check version ratchet
+            id1.getChainValue(99)
+        }
+        val chainValue3 = id1.getChainValue(101)
+        assertTrue(id1.public.verifyChainValue(chainValue3, 101))
+        assertFalse(id2.public.verifyChainValue(chainValue3, 101))
     }
 }

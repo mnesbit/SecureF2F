@@ -10,6 +10,7 @@ import java.util.*
 class DigitalSignature(val signatureAlgorithm: String,
                        val signature: ByteArray,
                        val publicKey: PublicKey) {
+    // Note the user MUST check that the PublicKey of this signature is appropriate to the context and typically signed over in the payload
     fun verify(bits: ByteArray) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA", "SHA256withRSA" -> {
@@ -31,6 +32,7 @@ class DigitalSignature(val signatureAlgorithm: String,
         }
     }
 
+    // Note the user MUST check that the PublicKey of this signature is appropriate to the context and typically signed over in the payload
     fun verify(hash: SecureHash) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA" -> {
