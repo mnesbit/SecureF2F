@@ -6,8 +6,10 @@ import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.jce.provider.BouncyCastleProvider
-import java.security.*
-import java.util.*
+import java.security.PrivateKey
+import java.security.PublicKey
+import java.security.SecureRandom
+import java.security.Security
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -23,7 +25,7 @@ class Sphinx(
         private val HKDF_SALT = "SphinxHashes".toByteArray(Charsets.UTF_8)
 
         private val SECURITY_PARAMETER = 16 // To work with Curve25519 key (32 bytes each) and 16 bytes AES keys
-        private val ENTRY_SIZE = Curve25519.KEY_SIZE + SECURITY_PARAMETER
+        private val ENTRY_SIZE = 3 * SECURITY_PARAMETER
         private val ZERO_PAD = ByteArray(ENTRY_SIZE)
         private val RHO_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
         private val GCM_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
@@ -84,7 +86,7 @@ class Sphinx(
         return DecryptionResult(true, decrypted)
     }
 
-    class DerivedHashes(publicKey: PublicKey, sharedSecret: PublicKey) {
+    class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
         companion object {
             val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
         }
@@ -96,7 +98,7 @@ class Sphinx(
 
         init {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
-            hkdf.init(HKDFParameters(sharedSecret.encoded, HKDF_SALT, publicKey.encoded))
+            hkdf.init(HKDFParameters(sharedSecret.encoded, HKDF_SALT, context.bytes))
             val hkdfKey = ByteArray(TOTAL_KEY_BYTES)
             hkdf.generateBytes(hkdfKey, 0, TOTAL_KEY_BYTES)
             var start = 0
@@ -114,27 +116,31 @@ class Sphinx(
         }
     }
 
-    data class HeaderEntry(val nextNode: PublicKey,
-                           val alpha: PublicKey,
-                           val sharedSecret: PublicKey,
-                           val hashes: DerivedHashes)
+    class HeaderEntry(val nextNodeId: SecureHash,
+                      val alpha: PublicKey,
+                      val sharedSecret: PublicKey,
+                      val hashes: DerivedHashes) {
+        init {
+            require(nextNodeId.bytes.size == 2 * SECURITY_PARAMETER)
+        }
+    }
 
-    fun createRoute(route: List<PublicKey>, random: SecureRandom = this.random): List<HeaderEntry> {
+    fun createRoute(route: List<SphinxPublicIdentity>, random: SecureRandom = this.random): List<HeaderEntry> {
         require(route.isNotEmpty()) { "Routing list cannot be empty" }
         val startingPoint = generateCurve25519DHKeyPair(random)
         val output = mutableListOf<HeaderEntry>()
         val firstNode = route.first()
-        val firstSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint, firstNode))
+        val firstSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint, firstNode.diffieHellmanPublicKey))
         val nextNode = if (route.size == 1) route[0] else route[1]
-        output += HeaderEntry(nextNode, startingPoint.public, firstSecret, DerivedHashes(firstNode, firstSecret))
+        output += HeaderEntry(nextNode.id, startingPoint.public, firstSecret, DerivedHashes(firstNode.id, firstSecret))
         for (i in 1 until route.size) {
             val alpha = Curve25519PublicKey(getSharedDHSecret(output[i - 1].hashes.blind, output[i - 1].alpha))
-            var sharedSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint.private, route[i]))
+            var sharedSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint.private, route[i].diffieHellmanPublicKey))
             for (j in 0 until i) {
                 sharedSecret = Curve25519PublicKey(getSharedDHSecret(output[j].hashes.blind, sharedSecret))
             }
             val nextHopNode = if (i < route.size - 1) route[i + 1] else route[i]
-            output += HeaderEntry(nextHopNode, alpha, sharedSecret, DerivedHashes(route[i], sharedSecret))
+            output += HeaderEntry(nextHopNode.id, alpha, sharedSecret, DerivedHashes(route[i].id, sharedSecret))
         }
         return output
     }
@@ -159,7 +165,7 @@ class Sphinx(
         val messageBytes: ByteArray get() = concatByteArrays(header, payload, tag)
     }
 
-    fun makeMessage(route: List<PublicKey>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
+    fun makeMessage(route: List<SphinxPublicIdentity>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
         require(route.size in 1..(maxRouteLength - 1)) { "Invalid route length" }
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }
@@ -175,7 +181,7 @@ class Sphinx(
         var header = ByteArray(0)
         for (i in route.size - 1 downTo 0) {
             val info = headerInfo[i]
-            val decryptedBeta = concatByteArrays(info.nextNode.encoded, lastTag, lastBeta)
+            val decryptedBeta = concatByteArrays(info.nextNodeId.bytes, lastTag, lastBeta)
             lastBeta = xorByteArrays(decryptedBeta, rhoList[i]).copyOf(betaLength)
             header = concatByteArrays(info.alpha.encoded, lastBeta)
             val enc = encryptPayload(info.hashes.gcmKey, info.hashes.gcmNonce, header, workingPayload)
@@ -187,18 +193,18 @@ class Sphinx(
 
     class MessageProcessingResult(val valid: Boolean,
                                   val forwardMessage: UnpackedSphinxMessage?,
-                                  val nextNode: PublicKey?,
+                                  val nextNode: SecureHash?,
                                   val finalPayload: ByteArray?)
 
-    fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: KeyPair): MessageProcessingResult {
+    fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: SphinxIdentityKeyPair): MessageProcessingResult {
         val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
         val comparableAlpha = alpha.keyBytes.secureHash()
         if (comparableAlpha in alphaCache) {
             return MessageProcessingResult(false, null, null, null) // Never allow reuse of Diffie-Hellman points
         }
         alphaCache += comparableAlpha
-        val sharedSecret = Curve25519PublicKey(getSharedDHSecret(nodeKeys, alpha))
-        val hashes = DerivedHashes(nodeKeys.public, sharedSecret)
+        val sharedSecret = Curve25519PublicKey(getSharedDHSecret(nodeKeys.diffieHellmanKeys, alpha))
+        val hashes = DerivedHashes(nodeKeys.id, sharedSecret)
         val dec = decryptPayload(hashes.gcmKey, hashes.gcmNonce, msg.header, msg.tag, msg.payload)
         if (!dec.valid) {
             return MessageProcessingResult(false, null, null, null) // Discard bad packets
@@ -206,14 +212,14 @@ class Sphinx(
         val beta = msg.header.copyOfRange(Curve25519.KEY_SIZE, msg.header.size)
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
-        val nextNode = decryptedBeta.copyOf(Curve25519.KEY_SIZE)
-        if (Arrays.equals(nextNode, nodeKeys.public.encoded)) {
-            return MessageProcessingResult(true, null, Curve25519PublicKey(nextNode), dec.newPayload)
+        val nextNode = SecureHash("SHA-256", decryptedBeta.copyOf(2 * SECURITY_PARAMETER))
+        if (nextNode == nodeKeys.id) {
+            return MessageProcessingResult(true, null, nextNode, dec.newPayload)
         }
         val nextAlpha = Curve25519PublicKey(getSharedDHSecret(hashes.blind, alpha))
         val nextBeta = decryptedBeta.copyOfRange(ENTRY_SIZE, decryptedBeta.size)
         val nextTag = decryptedBeta.copyOfRange(Curve25519.KEY_SIZE, Curve25519.KEY_SIZE + GCM_TAG_LENGTH)
         val forwardMessage = UnpackedSphinxMessage(betaLength, concatByteArrays(nextAlpha.keyBytes, nextBeta), dec.newPayload, nextTag)
-        return MessageProcessingResult(true, forwardMessage, Curve25519PublicKey(nextNode), null)
+        return MessageProcessingResult(true, forwardMessage, nextNode, null)
     }
 }

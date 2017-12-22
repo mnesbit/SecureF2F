@@ -6,9 +6,13 @@ import java.security.PublicKey
 import java.security.SecureRandom
 
 class SphinxPublicIdentity(val signingPublicKey: PublicKey, val diffieHellmanPublicKey: PublicKey) {
-    val id: ComparableByteArray by lazy {
+    init {
+        require(diffieHellmanPublicKey.algorithm == "Curve25519")
+    }
+
+    val id: SecureHash by lazy {
         val bytes = concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded)
-        ComparableByteArray(bytes.secureHash().bytes)
+        bytes.secureHash()
     }
 
     override fun equals(other: Any?): Boolean {
@@ -35,5 +39,11 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
         }
     }
 
-    val publicKeys: SphinxPublicIdentity get() = SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public)
+    init {
+        require(diffieHellmanKeys.private.algorithm == "Curve25519")
+    }
+
+    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public) }
+
+    val id: SecureHash get() = public.id
 }
