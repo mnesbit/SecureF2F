@@ -176,4 +176,26 @@ class SphinxTest {
             }
         }
     }
+
+    @Test
+    fun `Padding Checks`() {
+        val n = 2
+        val rand = newSecureRandom()
+        val sphinx = Sphinx(rand)
+        val nodeKeys = mutableListOf<SphinxIdentityKeyPair>()
+        for (i in 0 until n) {
+            nodeKeys += SphinxIdentityKeyPair.generateKeyPair(rand)
+        }
+        for (i in 0 until 3000) {
+            val payload = ByteArray(i) { index -> index.toByte() }
+            val route = nodeKeys.map { it.public }
+            val initialMsg = sphinx.makeMessage(route, payload, rand)
+            assertTrue(initialMsg.payload.size > payload.size)
+            assertEquals(0, initialMsg.payload.size.rem(sphinx.payloadRoundingSize))
+            val step1 = sphinx.processMessage(initialMsg, nodeKeys[0])
+            val result = sphinx.processMessage(step1.forwardMessage!!, nodeKeys[1])
+            assertArrayEquals(payload, result.finalPayload)
+        }
+    }
+
 }

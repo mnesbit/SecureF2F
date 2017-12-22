@@ -19,7 +19,8 @@ import javax.crypto.spec.SecretKeySpec
 
 class Sphinx(
         private val random: SecureRandom = newSecureRandom(),
-        val maxRouteLength: Int = 5) {
+        val maxRouteLength: Int = 5,
+        val payloadRoundingSize: Int = 1024) {
     companion object {
         private val ZERO_16 = ByteArray(16)
         private val HKDF_SALT = "SphinxHashes".toByteArray(Charsets.UTF_8)
@@ -84,6 +85,32 @@ class Sphinx(
             return DecryptionResult(false, ByteArray(0))
         }
         return DecryptionResult(true, decrypted)
+    }
+
+    private fun padSourcePayload(input: ByteArray, secureRandom: SecureRandom): ByteArray {
+        val length = input.size
+        val paddingSize = payloadRoundingSize - (length + 4).rem(payloadRoundingSize)
+        val paddedSize = length + 4 + paddingSize
+        val paddedPayload = ByteArray(paddedSize)
+        secureRandom.nextBytes(paddedPayload)
+        paddedPayload[0] = length.toByte()
+        paddedPayload[1] = (length ushr 8).toByte()
+        paddedPayload[2] = (length ushr 16).toByte()
+        paddedPayload[3] = (length ushr 24).toByte()
+        System.arraycopy(input, 0, paddedPayload, 4, length)
+        return paddedPayload
+    }
+
+    private fun unpadFinalPayload(input: ByteArray): ByteArray {
+        var length = (input[3].toInt() and 0xFF)
+        length = (input[2].toInt() and 0xFF) + (length shl 8)
+        length = (input[1].toInt() and 0xFF) + (length shl 8)
+        length = (input[0].toInt() and 0xFF) + (length shl 8)
+        require(length >= 0)
+        require(length + 4 <= input.size)
+        val output = ByteArray(length)
+        System.arraycopy(input, 4, output, 0, length)
+        return output
     }
 
     class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
@@ -177,7 +204,7 @@ class Sphinx(
         var lastBeta = filler
         var lastTag = ByteArray(GCM_TAG_LENGTH + ((maxRouteLength - route.size) * ENTRY_SIZE))
         random.nextBytes(lastTag)
-        var workingPayload = payload.copyOf()
+        var workingPayload = padSourcePayload(payload, random)
         var header = ByteArray(0)
         for (i in route.size - 1 downTo 0) {
             val info = headerInfo[i]
@@ -214,7 +241,7 @@ class Sphinx(
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
         val nextNode = SecureHash("SHA-256", decryptedBeta.copyOf(2 * SECURITY_PARAMETER))
         if (nextNode == nodeKeys.id) {
-            return MessageProcessingResult(true, null, nextNode, dec.newPayload)
+            return MessageProcessingResult(true, null, nextNode, unpadFinalPayload(dec.newPayload))
         }
         val nextAlpha = Curve25519PublicKey(getSharedDHSecret(hashes.blind, alpha))
         val nextBeta = decryptedBeta.copyOfRange(ENTRY_SIZE, decryptedBeta.size)
