@@ -1,8 +1,7 @@
 package com.nesbit.crypto
 
 import com.nesbit.crypto.sphinx.Sphinx
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
+import org.junit.Assert.*
 import org.junit.Test
 import kotlin.experimental.xor
 import kotlin.test.assertNull
@@ -91,9 +90,11 @@ class SphinxTest {
         val payload = "1234567890".toByteArray()
         val msg = sphinx.makeMessage(listOf(nodeKeys.publicKey), payload, rand)
         println(msg)
-        val (msg1, payload1) = sphinx.processMessage(msg, nodeKeys)
-        assertEquals(null, msg1)
-        assertArrayEquals(payload, payload1)
+        val result = sphinx.processMessage(msg, nodeKeys)
+        assertTrue(result.valid)
+        assertNull(result.forwardMessage)
+        assertEquals(nodeKeys.publicKey, result.nextNode)
+        assertArrayEquals(payload, result.finalPayload)
     }
 
     @Test
@@ -108,11 +109,17 @@ class SphinxTest {
         val payload = "1234567890".toByteArray()
         val route = nodeKeys.map { it.publicKey }
         val initialMsg = sphinx.makeMessage(route, payload, rand)
-        val (msg1, payload1) = sphinx.processMessage(initialMsg, nodeKeys[0])
-        assertEquals(null, payload1)
-        val (msg2, payload2) = sphinx.processMessage(msg1!!, nodeKeys[1])
-        assertEquals(null, msg2)
-        assertArrayEquals(payload, payload2)
+        val step1 = sphinx.processMessage(initialMsg, nodeKeys[0])
+        assertTrue(step1.valid)
+        assertNotNull(step1.forwardMessage)
+        assertEquals(nodeKeys[1].publicKey, step1.nextNode)
+        assertNull(step1.finalPayload)
+        val result = sphinx.processMessage(step1.forwardMessage!!, nodeKeys[1])
+        assertTrue(result.valid)
+        assertNull(result.forwardMessage)
+        assertEquals(nodeKeys[1].publicKey, result.nextNode)
+        assertArrayEquals(payload, result.finalPayload)
+
     }
 
     @Test
@@ -131,9 +138,11 @@ class SphinxTest {
             for (i in 0 until N) {
                 for (j in 0 until N) {
                     if (i != j) {
-                        val (bad1, bad2) = sphinx.processMessage(msg!!, nodeKeys[j])
-                        assertNull(bad1)
-                        assertNull(bad2)
+                        val bad = sphinx.processMessage(msg!!, nodeKeys[j])
+                        assertFalse(bad.valid)
+                        assertNull(bad.forwardMessage)
+                        assertNull(bad.finalPayload)
+                        assertNull(bad.nextNode)
                         sphinx.resetAlphaCache()
                     }
                 }
@@ -144,20 +153,26 @@ class SphinxTest {
                         badMessage[j] = badMessage[j] xor corruptBit
                         val corruptMessage = Sphinx.UnpackedSphinxMessage(sphinx.betaLength, badMessage)
                         badMessage[j] = badMessage[j] xor corruptBit
-                        val (bad1, bad2) = sphinx.processMessage(corruptMessage, nodeKeys[i])
-                        assertNull(bad1)
-                        assertNull(bad2)
+                        val bad = sphinx.processMessage(corruptMessage, nodeKeys[i])
+                        assertFalse(bad.valid)
+                        assertNull(bad.forwardMessage)
+                        assertNull(bad.finalPayload)
+                        assertNull(bad.nextNode)
                         sphinx.resetAlphaCache()
                     }
                 }
                 val output = sphinx.processMessage(msg, nodeKeys[i])
-                msg = output.first
-                val payloadOut = output.second
+                msg = output.forwardMessage
                 if (i == N - 1) {
-                    assertEquals(null, msg)
-                    assertArrayEquals(payload, payloadOut)
+                    assertTrue(output.valid)
+                    assertNull(output.forwardMessage)
+                    assertArrayEquals(payload, output.finalPayload)
+                    assertEquals(nodeKeys[i].publicKey, output.nextNode)
                 } else {
-                    assertEquals(null, payloadOut)
+                    assertTrue(output.valid)
+                    assertNotNull(output.forwardMessage)
+                    assertNull(output.finalPayload)
+                    assertEquals(nodeKeys[i + 1].publicKey, output.nextNode)
                 }
             }
         }

@@ -54,7 +54,9 @@ class Sphinx(
         return aesCipher.doFinal(streamOutput)
     }
 
-    private fun encryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, payload: ByteArray): Pair<ByteArray, ByteArray> {
+    private data class EncryptionResult(val newPayload: ByteArray, val tag: ByteArray)
+
+    private fun encryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, payload: ByteArray): EncryptionResult {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
         val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
         val secretKey = SecretKeySpec(key, "AES")
@@ -63,10 +65,12 @@ class Sphinx(
         val cipherText = cipher.doFinal(payload)
         val tag = cipherText.copyOfRange(payload.size, payload.size + GCM_TAG_LENGTH)
         val newPayload = cipherText.copyOf(payload.size)
-        return Pair(newPayload, tag)
+        return EncryptionResult(newPayload, tag)
     }
 
-    private fun decryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, tag: ByteArray, payload: ByteArray): Pair<Boolean, ByteArray> {
+    private data class DecryptionResult(val valid: Boolean, val newPayload: ByteArray)
+
+    private fun decryptPayload(key: ByteArray, nonce: ByteArray, header: ByteArray, tag: ByteArray, payload: ByteArray): DecryptionResult {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
         val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
         val secretKey = SecretKeySpec(key, "AES")
@@ -76,9 +80,9 @@ class Sphinx(
         val decrypted = try {
             cipher.doFinal(cipherText)
         } catch (ex: AEADBadTagException) {
-            return Pair(false, ByteArray(0))
+            return DecryptionResult(false, ByteArray(0))
         }
-        return Pair(true, decrypted)
+        return DecryptionResult(true, decrypted)
     }
 
     class DerivedHashes(publicKey: Curve25519PublicKey, sharedSecret: Curve25519PublicKey) {
@@ -176,35 +180,41 @@ class Sphinx(
             lastBeta = xorByteArrays(decryptedBeta, rhoList[i]).copyOf(betaLength)
             header = concatByteArrays(info.alpha.keyBytes, lastBeta)
             val enc = encryptPayload(info.hashes.gcmKey, info.hashes.gcmNonce, header, workingPayload)
-            workingPayload = enc.first
-            lastTag = enc.second
+            workingPayload = enc.newPayload
+            lastTag = enc.tag
         }
         return UnpackedSphinxMessage(betaLength, header, workingPayload, lastTag)
     }
 
-    fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: Curve25519KeyPair): Pair<UnpackedSphinxMessage?, ByteArray?> {
+    data class MessageProcessingResult(val valid: Boolean,
+                                       val forwardMessage: UnpackedSphinxMessage?,
+                                       val nextNode: Curve25519PublicKey?,
+                                       val finalPayload: ByteArray?)
+
+    fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: Curve25519KeyPair): MessageProcessingResult {
         val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
         val comparableAlpha = ComparableByteArray(alpha.keyBytes.secureHash()) // Use hash of bytes to prevent timing attacks
         if (comparableAlpha in alphaCache) {
-            return Pair(null, null) // Never allow reuse of Diffie-Hellman points
+            return MessageProcessingResult(false, null, null, null) // Never allow reuse of Diffie-Hellman points
         }
         alphaCache += comparableAlpha
         val sharedSecret = generateSharedECDHSecret(alpha, nodeKeys.privateKey)
         val hashes = DerivedHashes(nodeKeys.publicKey, sharedSecret)
-        val (ok, decryptedPayload) = decryptPayload(hashes.gcmKey, hashes.gcmNonce, msg.header, msg.tag, msg.payload)
-        if (!ok) {
-            return Pair(null, null) // Discard bad packets
+        val dec = decryptPayload(hashes.gcmKey, hashes.gcmNonce, msg.header, msg.tag, msg.payload)
+        if (!dec.valid) {
+            return MessageProcessingResult(false, null, null, null) // Discard bad packets
         }
         val beta = msg.header.copyOfRange(Curve25519.KEY_SIZE, msg.header.size)
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
         val nextNode = decryptedBeta.copyOf(Curve25519.KEY_SIZE)
         if (Arrays.equals(nextNode, nodeKeys.publicKey.keyBytes)) {
-            return Pair(null, decryptedPayload)
+            return MessageProcessingResult(true, null, Curve25519PublicKey(nextNode), dec.newPayload)
         }
         val nextAlpha = generateSharedECDHSecret(alpha, hashes.blind)
         val nextBeta = decryptedBeta.copyOfRange(ENTRY_SIZE, decryptedBeta.size)
         val nextTag = decryptedBeta.copyOfRange(Curve25519.KEY_SIZE, Curve25519.KEY_SIZE + GCM_TAG_LENGTH)
-        return Pair(UnpackedSphinxMessage(betaLength, concatByteArrays(nextAlpha.keyBytes, nextBeta), decryptedPayload, nextTag), null)
+        val forwardMessage = UnpackedSphinxMessage(betaLength, concatByteArrays(nextAlpha.keyBytes, nextBeta), dec.newPayload, nextTag)
+        return MessageProcessingResult(true, forwardMessage, Curve25519PublicKey(nextNode), null)
     }
 }
