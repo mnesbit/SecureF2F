@@ -7,7 +7,7 @@ import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-class HashChainPublic(val chainKey: SecretKeySpec, val targetHash: SecureHash) {
+class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) {
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
 
     companion object {
@@ -35,7 +35,7 @@ class HashChainPublic(val chainKey: SecretKeySpec, val targetHash: SecureHash) {
     }
 }
 
-class HashChainPrivate(val chainKey: SecretKeySpec, val targetHash: SecureHash, val seedHash: SecureHash, var version: Int) {
+class HashChainPrivate private constructor(private val chainKey: SecretKeySpec, val targetHash: SecureHash, private val seedHash: SecureHash, var version: Int) {
     companion object {
         fun generateChain(keyMaterial: ByteArray, secureRandom: SecureRandom = newSecureRandom()): HashChainPrivate {
             val seed = ByteArray(32)
