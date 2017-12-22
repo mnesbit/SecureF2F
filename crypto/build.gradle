@@ -9,5 +9,8 @@ dependencies {
     compile "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
     compile "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
 
+    // Java ed25519 implementation. See https://github.com/str4d/ed25519-java/
+    compile "net.i2p.crypto:eddsa:${eddsa_version}"
+
     compile "org.zeromq:curve25519-java:0.1.0"
 }

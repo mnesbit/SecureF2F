@@ -1,10 +1,11 @@
 package com.nesbit.crypto
 
 import djb.Curve25519
-import java.security.SecureRandom
+import java.security.PrivateKey
+import java.security.PublicKey
 import java.util.*
 
-class Curve25519PublicKey(val keyBytes: ByteArray) {
+class Curve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
     init {
         require(keyBytes.size == Curve25519.KEY_SIZE) {
             "Curve25519 keys must be 32 bytes long"
@@ -27,9 +28,15 @@ class Curve25519PublicKey(val keyBytes: ByteArray) {
     override fun hashCode(): Int {
         return Arrays.hashCode(keyBytes)
     }
+
+    override fun getAlgorithm(): String = "Curve25519"
+
+    override fun getEncoded(): ByteArray = keyBytes
+
+    override fun getFormat(): String = "RAW"
 }
 
-class Curve25519PrivateKey(val keyBytes: ByteArray) {
+class Curve25519PrivateKey(val keyBytes: ByteArray) : PrivateKey {
     init {
         require(keyBytes.size == Curve25519.KEY_SIZE) {
             "Curve25519 keys must be 32 bytes long"
@@ -53,42 +60,10 @@ class Curve25519PrivateKey(val keyBytes: ByteArray) {
     override fun hashCode(): Int {
         return Arrays.hashCode(keyBytes)
     }
-}
 
-class Curve25519KeyPair(val publicKey: Curve25519PublicKey, val privateKey: Curve25519PrivateKey) {
-    companion object {
-        fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom()): Curve25519KeyPair {
-            val privateKeyBytes = ByteArray(Curve25519.KEY_SIZE)
-            val publicKeyBytes = ByteArray(Curve25519.KEY_SIZE)
-            secureRandom.nextBytes(privateKeyBytes)
-            Curve25519.keygen(publicKeyBytes, null, privateKeyBytes)
-            return Curve25519KeyPair(Curve25519PublicKey(publicKeyBytes), Curve25519PrivateKey(privateKeyBytes))
-        }
-    }
+    override fun getAlgorithm(): String = "Curve25519"
 
-    override fun toString(): String = "$publicKey\n$privateKey"
+    override fun getEncoded(): ByteArray = keyBytes
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as Curve25519KeyPair
-
-        if (publicKey != other.publicKey) return false
-        if (privateKey != other.privateKey) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = publicKey.hashCode()
-        result = 31 * result + privateKey.hashCode()
-        return result
-    }
-}
-
-fun generateSharedECDHSecret(publicInfo: Curve25519PublicKey, privateInfo: Curve25519PrivateKey): Curve25519PublicKey {
-    val secret = ByteArray(Curve25519.KEY_SIZE)
-    Curve25519.curve(secret, privateInfo.keyBytes, publicInfo.keyBytes)
-    return Curve25519PublicKey(secret)
+    override fun getFormat(): String = "RAW"
 }

@@ -3,6 +3,7 @@ package com.nesbit.crypto
 import com.nesbit.crypto.sphinx.Sphinx
 import org.junit.Assert.*
 import org.junit.Test
+import java.security.KeyPair
 import kotlin.experimental.xor
 import kotlin.test.assertNull
 
@@ -10,50 +11,50 @@ class SphinxTest {
     @Test
     fun `Test ECDH chaining from basics`() {
         val rand = newSecureRandom()
-        val node0Keys = Curve25519KeyPair.generateKeyPair(rand)
-        val node1Keys = Curve25519KeyPair.generateKeyPair(rand)
-        val node2Keys = Curve25519KeyPair.generateKeyPair(rand)
+        val node0Keys = generateCurve25519DHKeyPair(rand)
+        val node1Keys = generateCurve25519DHKeyPair(rand)
+        val node2Keys = generateCurve25519DHKeyPair(rand)
 
         // At initiator
-        val xKeyPair = Curve25519KeyPair.generateKeyPair(rand)
-        val alpha0 = xKeyPair.publicKey
-        val secret0 = generateSharedECDHSecret(node0Keys.publicKey, xKeyPair.privateKey)
-        val hashes0 = Sphinx.DerivedHashes(node0Keys.publicKey, secret0)
+        val xKeyPair = generateCurve25519DHKeyPair(rand)
+        val alpha0 = xKeyPair.public
+        val secret0 = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node0Keys.public))
+        val hashes0 = Sphinx.DerivedHashes(node0Keys.public, secret0)
         val blind0 = hashes0.blind
 
-        val alpha1 = generateSharedECDHSecret(alpha0, blind0)
-        val secret1a = generateSharedECDHSecret(node1Keys.publicKey, xKeyPair.privateKey)
-        val secret1 = generateSharedECDHSecret(secret1a, blind0)
-        val hashes1 = Sphinx.DerivedHashes(node1Keys.publicKey, secret1)
+        val alpha1 = Curve25519PublicKey(getSharedDHSecret(blind0, alpha0))
+        val secret1a = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node1Keys.public))
+        val secret1 = Curve25519PublicKey(getSharedDHSecret(blind0, secret1a))
+        val hashes1 = Sphinx.DerivedHashes(node1Keys.public, secret1)
         val blind1 = hashes1.blind
 
-        val alpha2 = generateSharedECDHSecret(alpha1, blind1)
-        val secret2a = generateSharedECDHSecret(node2Keys.publicKey, xKeyPair.privateKey)
-        val secret2b = generateSharedECDHSecret(secret2a, blind0)
-        val secret2 = generateSharedECDHSecret(secret2b, blind1)
-        val hashes2 = Sphinx.DerivedHashes(node2Keys.publicKey, secret2)
+        val alpha2 = Curve25519PublicKey(getSharedDHSecret(blind1, alpha1))
+        val secret2a = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node2Keys.public))
+        val secret2b = Curve25519PublicKey(getSharedDHSecret(blind0, secret2a))
+        val secret2 = Curve25519PublicKey(getSharedDHSecret(blind1, secret2b))
+        val hashes2 = Sphinx.DerivedHashes(node2Keys.public, secret2)
         val blind2 = hashes2.blind
 
         // At recipients
-        val sharedSecret0 = generateSharedECDHSecret(alpha0, node0Keys.privateKey)
+        val sharedSecret0 = Curve25519PublicKey(getSharedDHSecret(node0Keys, alpha0))
         assertEquals(secret0, sharedSecret0)
-        val clientHashes0 = Sphinx.DerivedHashes(node0Keys.publicKey, sharedSecret0)
+        val clientHashes0 = Sphinx.DerivedHashes(node0Keys.public, sharedSecret0)
         val clientBlinded0 = clientHashes0.blind
         assertEquals(blind0, clientBlinded0)
-        val clientAlpha1 = generateSharedECDHSecret(alpha0, clientBlinded0)
+        val clientAlpha1 = Curve25519PublicKey(getSharedDHSecret(clientBlinded0, alpha0))
         assertEquals(alpha1, clientAlpha1)
 
-        val sharedSecret1 = generateSharedECDHSecret(clientAlpha1, node1Keys.privateKey)
+        val sharedSecret1 = Curve25519PublicKey(getSharedDHSecret(node1Keys, clientAlpha1))
         assertEquals(secret1, sharedSecret1)
-        val clientHashes1 = Sphinx.DerivedHashes(node1Keys.publicKey, sharedSecret1)
+        val clientHashes1 = Sphinx.DerivedHashes(node1Keys.public, sharedSecret1)
         val clientBlinded1 = clientHashes1.blind
         assertEquals(blind1, clientBlinded1)
-        val clientAlpha2 = generateSharedECDHSecret(clientAlpha1, clientBlinded1)
+        val clientAlpha2 = Curve25519PublicKey(getSharedDHSecret(clientBlinded1, clientAlpha1))
         assertArrayEquals(alpha2.keyBytes, clientAlpha2.keyBytes)
 
-        val sharedSecret2 = generateSharedECDHSecret(clientAlpha2, node2Keys.privateKey)
+        val sharedSecret2 = Curve25519PublicKey(getSharedDHSecret(node2Keys, clientAlpha2))
         assertEquals(secret2, sharedSecret2)
-        val clientHashes2 = Sphinx.DerivedHashes(node2Keys.publicKey, sharedSecret2)
+        val clientHashes2 = Sphinx.DerivedHashes(node2Keys.public, sharedSecret2)
         val clientBlinded2 = clientHashes2.blind
         assertEquals(blind2, clientBlinded2)
     }
@@ -63,19 +64,19 @@ class SphinxTest {
         val n = 5
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
-        val nodeKeys = mutableListOf<Curve25519KeyPair>()
+        val nodeKeys = mutableListOf<KeyPair>()
         for (i in 0 until n) {
-            nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
+            nodeKeys += generateCurve25519DHKeyPair(rand)
         }
-        val route = nodeKeys.map { it.publicKey }
+        val route = nodeKeys.map { it.public }
         val dhSequence = sphinx.createRoute(route)
 
         for (i in 0 until n) {
             val node = nodeKeys[i]
             val entry = dhSequence[i]
-            val sharedSecret = generateSharedECDHSecret(entry.alpha, node.privateKey)
+            val sharedSecret = Curve25519PublicKey(getSharedDHSecret(node, entry.alpha))
             assertEquals(entry.sharedSecret, sharedSecret)
-            val clientHashes = Sphinx.DerivedHashes(node.publicKey, sharedSecret)
+            val clientHashes = Sphinx.DerivedHashes(node.public, sharedSecret)
             val clientBlinded = clientHashes.blind
             assertEquals(entry.hashes.blind, clientBlinded)
         }
@@ -85,15 +86,15 @@ class SphinxTest {
     fun `Single step message`() {
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
-        val nodeKeys = Curve25519KeyPair.generateKeyPair(rand)
+        val nodeKeys = generateCurve25519DHKeyPair(rand)
         println(nodeKeys)
         val payload = "1234567890".toByteArray()
-        val msg = sphinx.makeMessage(listOf(nodeKeys.publicKey), payload, rand)
+        val msg = sphinx.makeMessage(listOf(nodeKeys.public), payload, rand)
         println(msg)
         val result = sphinx.processMessage(msg, nodeKeys)
         assertTrue(result.valid)
         assertNull(result.forwardMessage)
-        assertEquals(nodeKeys.publicKey, result.nextNode)
+        assertEquals(nodeKeys.public, result.nextNode)
         assertArrayEquals(payload, result.finalPayload)
     }
 
@@ -102,37 +103,37 @@ class SphinxTest {
         val n = 2
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
-        val nodeKeys = mutableListOf<Curve25519KeyPair>()
+        val nodeKeys = mutableListOf<KeyPair>()
         for (i in 0 until n) {
-            nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
+            nodeKeys += generateCurve25519DHKeyPair(rand)
         }
         val payload = "1234567890".toByteArray()
-        val route = nodeKeys.map { it.publicKey }
+        val route = nodeKeys.map { it.public }
         val initialMsg = sphinx.makeMessage(route, payload, rand)
         val step1 = sphinx.processMessage(initialMsg, nodeKeys[0])
         assertTrue(step1.valid)
         assertNotNull(step1.forwardMessage)
-        assertEquals(nodeKeys[1].publicKey, step1.nextNode)
+        assertEquals(nodeKeys[1].public, step1.nextNode)
         assertNull(step1.finalPayload)
         val result = sphinx.processMessage(step1.forwardMessage!!, nodeKeys[1])
         assertTrue(result.valid)
         assertNull(result.forwardMessage)
-        assertEquals(nodeKeys[1].publicKey, result.nextNode)
+        assertEquals(nodeKeys[1].public, result.nextNode)
         assertArrayEquals(payload, result.finalPayload)
 
     }
 
     @Test
-    fun `Multi step message 3`() {
+    fun `All multi-step messages`() {
         val rand = newSecureRandom()
         val sphinx = Sphinx(rand)
         val payload = "1234567890".toByteArray()
         for (N in 1 until sphinx.maxRouteLength) {
-            val nodeKeys = mutableListOf<Curve25519KeyPair>()
+            val nodeKeys = mutableListOf<KeyPair>()
             for (i in 0 until N) {
-                nodeKeys += Curve25519KeyPair.generateKeyPair(rand)
+                nodeKeys += generateCurve25519DHKeyPair(rand)
             }
-            val route = nodeKeys.map { it.publicKey }
+            val route = nodeKeys.map { it.public }
             val initialMsg = sphinx.makeMessage(route, payload, rand)
             var msg: Sphinx.UnpackedSphinxMessage? = initialMsg
             for (i in 0 until N) {
@@ -167,12 +168,12 @@ class SphinxTest {
                     assertTrue(output.valid)
                     assertNull(output.forwardMessage)
                     assertArrayEquals(payload, output.finalPayload)
-                    assertEquals(nodeKeys[i].publicKey, output.nextNode)
+                    assertEquals(nodeKeys[i].public, output.nextNode)
                 } else {
                     assertTrue(output.valid)
                     assertNotNull(output.forwardMessage)
                     assertNull(output.finalPayload)
-                    assertEquals(nodeKeys[i + 1].publicKey, output.nextNode)
+                    assertEquals(nodeKeys[i + 1].public, output.nextNode)
                 }
             }
         }
