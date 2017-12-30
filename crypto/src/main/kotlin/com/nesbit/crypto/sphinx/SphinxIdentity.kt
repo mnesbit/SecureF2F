@@ -1,20 +1,33 @@
 package com.nesbit.crypto.sphinx
 
 import com.nesbit.crypto.*
+import java.nio.ByteBuffer
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
 
-class SphinxPublicIdentity(val signingPublicKey: PublicKey, val diffieHellmanPublicKey: PublicKey, val hashChain: HashChainPublic) {
+class SphinxPublicIdentity(val signingPublicKey: PublicKey, val diffieHellmanPublicKey: PublicKey, val hashChain: HashChainPublic, val publicAddress: String?) {
     companion object {
         val ID_HASH_ALGORITHM = "SHA-256"
     }
+
     init {
         require(diffieHellmanPublicKey.algorithm == "Curve25519")
     }
 
+    fun serialize(): ByteArray {
+        val addressLength = publicAddress?.length ?: 0
+        val addressBytes = ByteArray(addressLength + 4)
+        val buf = ByteBuffer.wrap(addressBytes)
+        buf.putInt(addressLength)
+        if (publicAddress != null) {
+            buf.put(publicAddress.toByteArray(Charsets.UTF_8))
+        }
+        return concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded, hashChain.targetHash.bytes, addressBytes)
+    }
+
     val id: SecureHash by lazy {
-        val bytes = concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded, hashChain.targetHash.bytes)
+        val bytes = serialize()
         bytes.secureHash(ID_HASH_ALGORITHM)
     }
 
@@ -38,13 +51,13 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey, val diffieHellmanPub
     }
 }
 
-class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: KeyPair, val hashChain: HashChainPrivate) {
+class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: KeyPair, val hashChain: HashChainPrivate, val publicAddress: String? = null) {
     companion object {
-        fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom()): SphinxIdentityKeyPair {
+        fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom(), publicAddress: String? = null): SphinxIdentityKeyPair {
             val signingKeys = generateEdDSAKeyPair(secureRandom)
             val dhKeys = generateCurve25519DHKeyPair(secureRandom)
             val hashChain = HashChainPrivate.generateChain(concatByteArrays(signingKeys.public.encoded, dhKeys.public.encoded), secureRandom)
-            return SphinxIdentityKeyPair(signingKeys, dhKeys, hashChain)
+            return SphinxIdentityKeyPair(signingKeys, dhKeys, hashChain, publicAddress)
         }
     }
 
@@ -54,7 +67,7 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
 
     fun getChainValue(stepsFromEnd: Int): SecureHash = hashChain.getChainValue(stepsFromEnd)
 
-    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.public) }
+    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.public, publicAddress) }
 
     val id: SecureHash get() = public.id
 }

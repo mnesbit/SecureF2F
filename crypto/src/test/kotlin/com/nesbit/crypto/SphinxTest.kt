@@ -199,8 +199,8 @@ class SphinxTest {
     @Test
     fun `version chain test`() {
         val rand = newSecureRandom()
-        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand)
-        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand)
+        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice")
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob")
         val chainValue1 = id1.getChainValue(0)
         assertEquals(id1.hashChain.targetHash, chainValue1)
         val chainValue2a = id1.getChainValue(100)

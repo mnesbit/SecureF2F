@@ -1,5 +1,7 @@
 package com.nesbit.crypto
 
+import com.nesbit.avro.serialize
+import org.junit.Assert
 import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import java.security.SignatureException
@@ -10,6 +12,164 @@ import kotlin.test.assertNotEquals
 
 
 class CryptoHelpersTest {
+    @Test
+    fun `test EdDSA serialisation round trip`() {
+        val keyPair = generateEdDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureBytes = signature.serialize()
+        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        deserializedSignature.verify(bytes)
+    }
+
+    @Test
+    fun `test EdDSA GenericRecord round trip`() {
+        val keyPair = generateEdDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureRecord = signature.toGenericRecord()
+        val signature2 = DigitalSignature(signatureRecord)
+        Assert.assertFalse(signature === signature2)
+        assertEquals(signature, signature2)
+    }
+
+    @Test
+    fun `test EdDSA PublicKey round trip`() {
+        val keyPair = generateEdDSAKeyPair()
+        val publicKeyRecord = keyPair.public.toGenericRecord()
+        assertEquals(keyPair.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord))
+        val serializedPublicKey = keyPair.public.serialize()
+        val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
+        assertEquals(keyPair.public, deserializedPublicKey)
+    }
+
+    @Test
+    fun `test ECDSA serialisation round trip`() {
+        val keyPair = generateECDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureBytes = signature.serialize()
+        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        deserializedSignature.verify(bytes)
+    }
+
+    @Test
+    fun `test ECDSA GenericRecord round trip`() {
+        val keyPair = generateECDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureRecord = signature.toGenericRecord()
+        val signature2 = DigitalSignature(signatureRecord)
+        Assert.assertFalse(signature === signature2)
+        assertEquals(signature, signature2)
+    }
+
+    @Test
+    fun `test ECDSA PublicKey round trip`() {
+        val keyPair = generateECDSAKeyPair()
+        val publicKeyRecord = keyPair.public.toGenericRecord()
+        assertEquals(keyPair.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord))
+        val serializedPublicKey = keyPair.public.serialize()
+        val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
+        assertEquals(keyPair.public, deserializedPublicKey)
+    }
+
+    @Test
+    fun `test RSA serialisation round trip`() {
+        val keyPair = generateRSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureBytes = signature.serialize()
+        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        deserializedSignature.verify(bytes)
+    }
+
+    @Test
+    fun `test RSA GenericRecord round trip`() {
+        val keyPair = generateRSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureRecord = signature.toGenericRecord()
+        val signature2 = DigitalSignature(signatureRecord)
+        Assert.assertFalse(signature === signature2)
+        assertEquals(signature, signature2)
+    }
+
+    @Test
+    fun `test RSA PublicKey round trip`() {
+        val keyPair = generateRSAKeyPair()
+        val publicKeyRecord = keyPair.public.toGenericRecord()
+        assertEquals(keyPair.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord))
+        val serializedPublicKey = keyPair.public.serialize()
+        val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
+        assertEquals(keyPair.public, deserializedPublicKey)
+    }
+
+    @Test
+    fun `test ECDH PublicKey round trip`() {
+        val keyPair1 = generateECDHKeyPair()
+        val keyPair2 = generateECDHKeyPair()
+        val publicKeyRecord1 = keyPair1.public.toGenericRecord()
+        val publicKeyRecord2 = keyPair2.public.toGenericRecord()
+        assertEquals(keyPair1.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord1))
+        assertEquals(keyPair2.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord2))
+        val serializedPublicKey1 = keyPair1.public.serialize()
+        val serializedPublicKey2 = keyPair2.public.serialize()
+        val deserializedPublicKey1 = PublicKeyHelper.deserialize(serializedPublicKey1)
+        val deserializedPublicKey2 = PublicKeyHelper.deserialize(serializedPublicKey2)
+        assertEquals(keyPair1.public, deserializedPublicKey1)
+        assertEquals(keyPair2.public, deserializedPublicKey2)
+        val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
+        val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
+        assertArrayEquals(sec1, sec2)
+    }
+
+    @Test
+    fun `test DH PublicKey round trip`() {
+        val keyPair1 = generateDHKeyPair()
+        val keyPair2 = generateDHKeyPair()
+        val publicKeyRecord1 = keyPair1.public.toGenericRecord()
+        val publicKeyRecord2 = keyPair2.public.toGenericRecord()
+        assertEquals(keyPair1.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord1))
+        assertEquals(keyPair2.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord2))
+        val serializedPublicKey1 = keyPair1.public.serialize()
+        val serializedPublicKey2 = keyPair2.public.serialize()
+        val deserializedPublicKey1 = PublicKeyHelper.deserialize(serializedPublicKey1)
+        val deserializedPublicKey2 = PublicKeyHelper.deserialize(serializedPublicKey2)
+        assertEquals(keyPair1.public, deserializedPublicKey1)
+        assertEquals(keyPair2.public, deserializedPublicKey2)
+        val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
+        val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
+        assertArrayEquals(sec1, sec2)
+    }
+
+    @Test
+    fun `test Curve25519 PublicKey round trip`() {
+        val keyPair1 = generateCurve25519DHKeyPair()
+        val keyPair2 = generateCurve25519DHKeyPair()
+        val publicKeyRecord1 = keyPair1.public.toGenericRecord()
+        val publicKeyRecord2 = keyPair2.public.toGenericRecord()
+        assertEquals(keyPair1.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord1))
+        assertEquals(keyPair2.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord2))
+        val serializedPublicKey1 = keyPair1.public.serialize()
+        val serializedPublicKey2 = keyPair2.public.serialize()
+        val deserializedPublicKey1 = PublicKeyHelper.deserialize(serializedPublicKey1)
+        val deserializedPublicKey2 = PublicKeyHelper.deserialize(serializedPublicKey2)
+        assertEquals(keyPair1.public, deserializedPublicKey1)
+        assertEquals(keyPair2.public, deserializedPublicKey2)
+        val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
+        val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
+        assertArrayEquals(sec1, sec2)
+    }
+
+    @Test
+    fun `test SecureHash serialisation round trip`() {
+        val hash = SecureHash.secureHash("adasdad")
+        val serialisedHash = hash.serialize()
+        val deserializedHash = SecureHash.deserialize(serialisedHash)
+        assertEquals(hash, deserializedHash)
+    }
+
     @Test
     fun `test EdDSA verify`() {
         val keyPair = generateEdDSAKeyPair()

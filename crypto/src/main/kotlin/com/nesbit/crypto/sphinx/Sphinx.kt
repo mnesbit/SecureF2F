@@ -6,6 +6,7 @@ import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import java.nio.ByteBuffer
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -92,23 +93,17 @@ class Sphinx(
         val paddedSize = length + 4 + paddingSize
         val paddedPayload = ByteArray(paddedSize)
         secureRandom.nextBytes(paddedPayload)
-        paddedPayload[0] = length.toByte()
-        paddedPayload[1] = (length ushr 8).toByte()
-        paddedPayload[2] = (length ushr 16).toByte()
-        paddedPayload[3] = (length ushr 24).toByte()
-        System.arraycopy(input, 0, paddedPayload, 4, length)
+        val buf = ByteBuffer.wrap(paddedPayload)
+        buf.putInt(length)
+        buf.put(input)
         return paddedPayload
     }
 
     private fun unpadFinalPayload(input: ByteArray): ByteArray {
-        var length = (input[3].toInt() and 0xFF)
-        length = (input[2].toInt() and 0xFF) + (length shl 8)
-        length = (input[1].toInt() and 0xFF) + (length shl 8)
-        length = (input[0].toInt() and 0xFF) + (length shl 8)
-        require(length >= 0)
-        require(length + 4 <= input.size)
+        val buf = ByteBuffer.wrap(input)
+        val length = buf.getInt()
         val output = ByteArray(length)
-        System.arraycopy(input, 4, output, 0, length)
+        buf.get(output, 0, length)
         return output
     }
 

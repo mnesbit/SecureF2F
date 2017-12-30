@@ -13,4 +13,6 @@ dependencies {
     compile "net.i2p.crypto:eddsa:${eddsa_version}"
 
     compile "org.zeromq:curve25519-java:0.1.0"
+
+    compile project(':avro')
 }

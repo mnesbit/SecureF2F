@@ -1,0 +1,6 @@
+group 'com.nesbit'
+version '1.0-SNAPSHOT'
+
+dependencies {
+    compile "org.apache.avro:avro:$avro_version"
+}

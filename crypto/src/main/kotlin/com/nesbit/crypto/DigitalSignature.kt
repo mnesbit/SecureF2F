@@ -1,6 +1,13 @@
 package com.nesbit.crypto
 
+import com.nesbit.avro.AvroConvertible
+import com.nesbit.avro.deserialize
+import com.nesbit.avro.getTyped
+import com.nesbit.avro.putTyped
 import net.i2p.crypto.eddsa.EdDSAEngine
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import java.io.ByteArrayOutputStream
 import java.security.PublicKey
 import java.security.Signature
@@ -9,7 +16,32 @@ import java.util.*
 
 class DigitalSignature(val signatureAlgorithm: String,
                        val signature: ByteArray,
-                       val publicKey: PublicKey) {
+                       val publicKey: PublicKey) : AvroConvertible {
+    constructor(signatureRecord: GenericRecord) :
+            this(signatureRecord.getTyped("signatureAlgorithm"),
+                    signatureRecord.getTyped("signature"),
+                    signatureRecord.getTyped("publicKey")) {
+    }
+
+    companion object {
+        val digitalsignatureSchema = Schema.Parser().
+                addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).
+                parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/digitalsignature.avsc"))
+
+        fun deserialize(bits: ByteArray): DigitalSignature {
+            val signatureRecord = digitalsignatureSchema.deserialize(bits)
+            return DigitalSignature(signatureRecord)
+        }
+    }
+
+    override fun toGenericRecord(): GenericRecord {
+        val signatureRecord = GenericData.Record(digitalsignatureSchema)
+        signatureRecord.putTyped("signatureAlgorithm", signatureAlgorithm)
+        signatureRecord.putTyped("signature", signature)
+        signatureRecord.putTyped("publicKey", publicKey.toGenericRecord())
+        return signatureRecord
+    }
+
     // Note the user MUST check that the PublicKey of this signature is appropriate to the context and typically signed over in the payload
     fun verify(bits: ByteArray) {
         when (this.signatureAlgorithm) {

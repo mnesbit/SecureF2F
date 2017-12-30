@@ -1,3 +1,4 @@
 rootProject.name = 'securep2p'
 include 'crypto'
+include 'avro'
 

@@ -1,0 +1,202 @@
+{
+  "namespace": "com.nesbit.utils",
+  "name": "complexRecord",
+  "type": "record",
+  "fields": [
+    {
+      "name": "stringField",
+      "type": "string"
+    },
+    {
+      "name": "intField",
+      "type": "int"
+    },
+    {
+      "name": "longField",
+      "type": "long"
+    },
+    {
+      "name": "binaryField",
+      "type": "bytes"
+    },
+    {
+      "name": "floatField",
+      "type": "float"
+    },
+    {
+      "name": "doubleField",
+      "type": "double"
+    },
+    {
+      "name": "booleanField",
+      "type": "boolean"
+    },
+    {
+      "name": "fixedField",
+      "type": {
+        "name": "fixed16",
+        "type": "fixed",
+        "size": 16
+      }
+    },
+    {
+      "name": "enumField",
+      "type": {
+        "name": "suit",
+        "type": "enum",
+        "symbols" : ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"]
+      }
+    },
+    {
+      "name": "decimalField",
+      "type": {
+        "type": "bytes",
+        "logicalType" : "decimal",
+        "precision": 10,
+        "scale": 2
+      }
+    },
+    {
+      "name": "uuidField",
+      "type": {
+        "type": "string",
+        "logicalType" : "uuid"
+      }
+    },
+    {
+      "name": "dateField",
+      "type": {
+        "type": "int",
+        "logicalType" : "date"
+      }
+    },
+    {
+      "name": "timeMilliField",
+      "type": {
+        "type": "int",
+        "logicalType" : "time-millis"
+      }
+    },
+    {
+      "name": "timeMicroField",
+      "type": {
+        "type": "long",
+        "logicalType" : "time-micros"
+      }
+    },
+    {
+      "name": "timestampMilliField",
+      "type": {
+        "type": "long",
+        "logicalType" : "timestamp-millis"
+      }
+    },
+    {
+      "name": "timestampMicroField",
+      "type": {
+        "type": "long",
+        "logicalType" : "timestamp-micros"
+      }
+    },
+    {
+      "name": "unionField",
+      "type": [
+        {
+          "name": "uniona",
+          "type": "record",
+          "fields": [
+            {
+              "name": "a",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "unionb",
+          "type": "record",
+          "fields": [
+            {
+              "name": "b",
+              "type": "int"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nulledUnionField",
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    {
+      "name": "arrayField",
+      "type": {
+        "name": "arrayType",
+        "type": "array",
+        "items": "int"
+      }
+    },
+    {
+      "name": "mapField",
+      "type": {
+        "name": "mapType",
+        "type": "map",
+        "values": "int"
+      }
+    },
+    {
+      "name": "nestedRecord",
+      "type": {
+        "name": "nested1",
+        "type": "record",
+        "fields": [
+          {
+            "name": "intSubField",
+            "type": "int"
+          },
+          {
+            "name": "unionSubField",
+            "type": [
+              "uniona",
+              "unionb"
+            ]
+          },
+          {
+            "name": "arraySubField",
+            "type": {
+              "name": "arrayType",
+              "type": "array",
+              "items": "int"
+            }
+          },
+          {
+            "name": "mapSubField",
+            "type": {
+              "name": "mapType",
+              "type": "map",
+              "values": "int"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "nestedArray",
+      "type": {
+        "name": "nested2",
+        "type": "array",
+        "items": "nested1"
+      }
+    },
+    {
+      "name": "nestedMap",
+      "type": {
+        "name": "nested3",
+        "type": "map",
+        "values": "nested1"
+      }
+    }
+  ]
+}
