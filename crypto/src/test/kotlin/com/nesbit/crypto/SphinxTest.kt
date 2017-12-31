@@ -1,11 +1,12 @@
 package com.nesbit.crypto
 
+import com.nesbit.avro.serialize
 import com.nesbit.crypto.sphinx.Sphinx
 import com.nesbit.crypto.sphinx.SphinxIdentityKeyPair
+import com.nesbit.crypto.sphinx.SphinxPublicIdentity
 import org.junit.Assert.*
 import org.junit.Test
 import kotlin.experimental.xor
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class SphinxTest {
@@ -197,25 +198,22 @@ class SphinxTest {
     }
 
     @Test
-    fun `version chain test`() {
-        val rand = newSecureRandom()
-        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice")
-        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob")
-        val chainValue1 = id1.getChainValue(0)
-        assertEquals(id1.hashChain.targetHash, chainValue1)
-        val chainValue2a = id1.getChainValue(100)
-        val chainValue2b = id1.getChainValue(100)
-        assertEquals(chainValue2a, chainValue2b)
-        assertTrue(id1.public.verifyChainValue(chainValue2a.bytes, 100))
-        assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 99))
-        assertFalse(id1.public.verifyChainValue(chainValue2a.bytes, 101))
-        assertFalse(id2.public.verifyChainValue(chainValue2a.bytes, 100))
-        assertFailsWith<IllegalArgumentException> {
-            // Check version ratchet
-            id1.getChainValue(99)
-        }
-        val chainValue3 = id1.getChainValue(101)
-        assertTrue(id1.public.verifyChainValue(chainValue3, 101))
-        assertFalse(id2.public.verifyChainValue(chainValue3, 101))
+    fun `Sphinx ID serialization`() {
+        val id = SphinxIdentityKeyPair.generateKeyPair()
+        val publicId = id.public
+        val serialized = publicId.serialize()
+        val deserialized = SphinxPublicIdentity.deserialize(serialized)
+        assertEquals(publicId, deserialized)
+        val idRecord = publicId.toGenericRecord()
+        val deserialized2 = SphinxPublicIdentity(idRecord)
+        assertEquals(publicId, deserialized2)
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(publicAddress = "server1.somewhere.com:443")
+        val publicId2 = id2.public
+        val serialized2 = publicId2.serialize()
+        val deserialized3 = SphinxPublicIdentity.deserialize(serialized2)
+        assertEquals(publicId2, deserialized3)
+        val idRecord2 = publicId2.toGenericRecord()
+        val deserialized4 = SphinxPublicIdentity(idRecord2)
+        assertEquals(publicId2, deserialized4)
     }
 }

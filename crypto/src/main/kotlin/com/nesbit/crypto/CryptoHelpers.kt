@@ -57,26 +57,26 @@ fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()):
     return KeyPair(Curve25519PublicKey(publicKeyBytes), Curve25519PrivateKey(privateKeyBytes))
 }
 
-fun KeyPair.sign(bits: ByteArray): DigitalSignature {
+fun KeyPair.sign(bytes: ByteArray): DigitalSignature {
     when (this.private.algorithm) {
         "EC" -> {
             val signer = Signature.getInstance("SHA256withECDSA")
             signer.initSign(this.private)
-            signer.update(bits)
+            signer.update(bytes)
             val sig = signer.sign()
             return DigitalSignature(signer.algorithm, sig, this.public)
         }
         "RSA" -> {
             val signer = Signature.getInstance("SHA256withRSA")
             signer.initSign(this.private)
-            signer.update(bits)
+            signer.update(bytes)
             val sig = signer.sign()
             return DigitalSignature(signer.algorithm, sig, this.public)
         }
         "EdDSA" -> {
             val signer = EdDSAEngine()
             signer.initSign(this.private)
-            signer.update(bits)
+            signer.update(bytes)
             val sig = signer.sign()
             return DigitalSignature(signer.algorithm, sig, this.public)
         }
@@ -98,10 +98,10 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignature {
             val signer = Signature.getInstance("NONEwithRSA", "SunJCE")
             signer.initSign(this.private)
             // Java wraps hash in DER encoded Digest structure before signing
-            val bits = ByteArrayOutputStream()
-            bits.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
-            bits.write(hash.bytes)
-            val digest = bits.toByteArray()
+            val bytes = ByteArrayOutputStream()
+            bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
+            bytes.write(hash.bytes)
+            val digest = bytes.toByteArray()
             signer.update(digest)
             val sig = signer.sign()
             return DigitalSignature("SHA256withRSA", sig, this.public)

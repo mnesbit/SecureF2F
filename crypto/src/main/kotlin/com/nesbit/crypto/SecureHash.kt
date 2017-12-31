@@ -20,11 +20,11 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
     companion object {
         val secureHashSchema = Schema.Parser().parse(SecureHash::class.java.getResourceAsStream("securehash.avsc"))
 
-        fun secureHash(bits: ByteArray, algorithm: String = "SHA-256"): SecureHash = SecureHash(algorithm, MessageDigest.getInstance(algorithm).digest(bits))
+        fun secureHash(bytes: ByteArray, algorithm: String = "SHA-256"): SecureHash = SecureHash(algorithm, MessageDigest.getInstance(algorithm).digest(bytes))
         fun secureHash(str: String, algorithm: String = "SHA-256") = secureHash(str.toByteArray(Charsets.UTF_8), algorithm)
 
-        fun deserialize(bits: ByteArray): SecureHash {
-            val hashRecord = secureHashSchema.deserialize(bits)
+        fun deserialize(bytes: ByteArray): SecureHash {
+            val hashRecord = secureHashSchema.deserialize(bytes)
             return SecureHash(hashRecord)
         }
     }

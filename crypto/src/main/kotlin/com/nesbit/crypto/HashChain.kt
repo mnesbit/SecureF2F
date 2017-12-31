@@ -1,18 +1,43 @@
 package com.nesbit.crypto
 
+import com.nesbit.avro.AvroConvertible
+import com.nesbit.avro.deserialize
+import com.nesbit.avro.getTyped
+import com.nesbit.avro.putTyped
 import com.nesbit.crypto.HashChainPublic.Companion.CHAIN_HASH_ID
 import com.nesbit.crypto.HashChainPublic.Companion.MAX_CHAIN_LENGTH
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import java.security.SecureRandom
 import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) {
+class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) : AvroConvertible {
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
-
+    constructor(signatureRecord: GenericRecord) :
+            this(signatureRecord.getTyped<ByteArray>("chainKey"),
+                    signatureRecord.getTyped("targetHash", ::SecureHash)) {
+    }
     companion object {
         val CHAIN_HASH_ID = "HmacSHA256"
         val MAX_CHAIN_LENGTH = 65536
+        val hashChainSchema = Schema.Parser().
+                addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).
+                parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/hashchain.avsc"))
+
+        fun deserialize(bytes: ByteArray): HashChainPublic {
+            val hashChainRecord = hashChainSchema.deserialize(bytes)
+            return HashChainPublic(hashChainRecord)
+        }
+    }
+
+    override fun toGenericRecord(): GenericRecord {
+        val hashChainRecord = GenericData.Record(hashChainSchema)
+        hashChainRecord.putTyped("chainKey", chainKey.encoded)
+        hashChainRecord.putTyped("targetHash", targetHash)
+        return hashChainRecord
     }
 
     fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean {
@@ -32,6 +57,24 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
             hmac.doFinal(endHash, 0)
         }
         return Arrays.equals(targetHash.bytes, endHash)
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as HashChainPublic
+
+        if (chainKey != other.chainKey) return false
+        if (targetHash != other.targetHash) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = chainKey.hashCode()
+        result = 31 * result + targetHash.hashCode()
+        return result
     }
 }
 

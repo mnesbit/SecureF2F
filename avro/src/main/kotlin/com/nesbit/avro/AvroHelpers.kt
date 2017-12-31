@@ -68,22 +68,22 @@ fun GenericRecord.serialize(): ByteArray {
 }
 
 object AvroTypeHelpers {
-    val helpers = mutableMapOf<Class<*>, Pair<(Any) -> GenericRecord, (GenericRecord) -> Any>>()
+    val helpers = mutableMapOf<Class<*>, Pair<(Any?) -> GenericRecord, (GenericRecord) -> Any?>>()
 
-    fun <T : Any> registerHelper(clazz: Class<T>, encoder: (Any) -> GenericRecord, decoder: (GenericRecord) -> Any) {
+    fun <T : Any> registerHelper(clazz: Class<T>, encoder: (Any?) -> GenericRecord, decoder: (GenericRecord) -> Any?) {
         helpers[clazz] = Pair(encoder, decoder)
     }
 }
 
-fun Schema.deserialize(bits: ByteArray): GenericRecord {
+fun Schema.deserialize(bytes: ByteArray): GenericRecord {
     val datumReader = GenericDatumReader<GenericRecord>(this)
-    val decoder = DecoderFactory.get().binaryDecoder(bits, null)
+    val decoder = DecoderFactory.get().binaryDecoder(bytes, null)
     return datumReader.read(null, decoder)
 }
 
 @Suppress("UNCHECKED_CAST")
-inline fun <reified T : Any> GenericRecord.getTyped(fieldName: String): T {
-    val value = this.get(fieldName)
+inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
+    val value = this.get(fieldName) ?: return null as T
     val pluginHandlers = AvroTypeHelpers.helpers[T::class.java]
     if (pluginHandlers != null) {
         return pluginHandlers.second(value as GenericRecord) as T
@@ -214,10 +214,14 @@ inline fun <reified T : Any> GenericRecord.getObjectArray(fieldName: String, con
 }
 
 @Suppress("UNCHECKED_CAST")
-inline fun <reified T : Any> GenericRecord.putTyped(fieldName: String, value: T) {
+inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
     when (value) {
         is AvroConvertible -> {
             put(fieldName, value.toGenericRecord())
+            return
+        }
+        null -> {
+            put(fieldName, null)
             return
         }
     }

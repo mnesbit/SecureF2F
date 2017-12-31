@@ -1,0 +1,26 @@
+{
+  "namespace": "com.nesbit.crypto.sphinx",
+  "name": "SphinxPublicIdentity",
+  "type": "record",
+  "fields": [
+    {
+      "name": "signingPublicKey",
+      "type": "com.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "diffieHellmanPublicKey",
+      "type": "com.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "hashChain",
+      "type": "com.nesbit.crypto.HashChainPublic"
+    },
+    {
+      "name": "publicAddress",
+      "type": [
+        "null",
+        "string"
+      ]
+    }
+  ]
+}
