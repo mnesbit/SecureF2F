@@ -27,7 +27,7 @@ object PublicKeyHelper {
         val keyAlgorithm = genericRecord.getTyped<String>("keyAlgorithm")
         val keyFormat = genericRecord.getTyped<String>("keyFormat")
         val keySpec = X509EncodedKeySpec(publicKeyBytes)
-        val publicKey: PublicKey = when (keyAlgorithm) {
+        return when (keyAlgorithm) {
             "EdDSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 EdDSAPublicKey(keySpec)
@@ -43,7 +43,6 @@ object PublicKeyHelper {
             }
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }
-        return publicKey
     }
 }
 

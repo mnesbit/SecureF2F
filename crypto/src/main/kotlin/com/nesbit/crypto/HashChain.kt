@@ -18,8 +18,8 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
     constructor(signatureRecord: GenericRecord) :
             this(signatureRecord.getTyped<ByteArray>("chainKey"),
-                    signatureRecord.getTyped("targetHash", ::SecureHash)) {
-    }
+                    signatureRecord.getTyped("targetHash", ::SecureHash))
+
     companion object {
         val CHAIN_HASH_ID = "HmacSHA256"
         val MAX_CHAIN_LENGTH = 65536

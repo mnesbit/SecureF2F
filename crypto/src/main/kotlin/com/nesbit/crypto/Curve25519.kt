@@ -36,7 +36,7 @@ class Curve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
     override fun getFormat(): String = "RAW"
 }
 
-class Curve25519PrivateKey(val keyBytes: ByteArray) : PrivateKey {
+class Curve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
     init {
         require(keyBytes.size == Curve25519.KEY_SIZE) {
             "Curve25519 keys must be 32 bytes long"

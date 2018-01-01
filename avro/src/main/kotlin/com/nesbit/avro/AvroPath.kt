@@ -57,8 +57,8 @@ fun GenericRecord.visit(body: (obj: Any?, schema: Schema, path: List<PathCompone
                 val array = current.obj as GenericArray<*>
                 val schema = array.schema.elementType
                 val type = schema.type
-                for (index in (0..array.size - 1).reversed()) {
-                    val value = array.get(index)
+                for (index in (0 until array.size).reversed()) {
+                    val value = array[index]
                     val path = current.path + PathComponent(index.toString(), ComponentType.INDEX)
                     if (type in setOf(Schema.Type.RECORD, Schema.Type.ARRAY, Schema.Type.MAP, Schema.Type.UNION)) {
                         stack.push(Tracker(value, schema, path))
@@ -104,12 +104,10 @@ fun GenericRecord.visit(body: (obj: Any?, schema: Schema, path: List<PathCompone
     }
     while (!callStack.isEmpty()) {
         val next = callStack.pop()
-        if (next.schema.type == Schema.Type.BYTES) {
-            body((next.obj as ByteBuffer).array(), next.schema, next.path, this)
-        } else if (next.schema.type == Schema.Type.FIXED) {
-            body((next.obj as GenericFixed).bytes(), next.schema, next.path, this)
-        } else {
-            body(next.obj, next.schema, next.path, this)
+        when {
+            next.schema.type == Schema.Type.BYTES -> body((next.obj as ByteBuffer).array(), next.schema, next.path, this)
+            next.schema.type == Schema.Type.FIXED -> body((next.obj as GenericFixed).bytes(), next.schema, next.path, this)
+            else -> body(next.obj, next.schema, next.path, this)
         }
     }
 }
@@ -326,12 +324,12 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
             ComponentType.INDEX -> {
                 val index = component.part.toInt()
                 val array = current as GenericArray<*>
-                current = array.get(index)
+                current = array[index]
                 schema = schema.elementType
             }
             ComponentType.KEY -> {
                 val map = current as Map<CharSequence, *>
-                current = map.get(component.part) ?: map.get(Utf8(component.part))
+                current = map[component.part] ?: map[Utf8(component.part)]
                 schema = schema.valueType
             }
         }
@@ -340,12 +338,10 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
             schema = schema.types[schemaIndexUsed]
         }
     }
-    if (schema.type == Schema.Type.MAP) {
-        current = (current as Map<CharSequence, *>).mapKeys { it.toString() }
-    } else if (schema.type == Schema.Type.FIXED) {
-        current = (current as GenericFixed).bytes()
-    } else if (schema.type == Schema.Type.BYTES) {
-        current = (current as ByteBuffer).array()
+    when {
+        schema.type == Schema.Type.MAP -> current = (current as Map<CharSequence, *>).mapKeys { it.toString() }
+        schema.type == Schema.Type.FIXED -> current = (current as GenericFixed).bytes()
+        schema.type == Schema.Type.BYTES -> current = (current as ByteBuffer).array()
     }
     return Pair(current, schema)
 }

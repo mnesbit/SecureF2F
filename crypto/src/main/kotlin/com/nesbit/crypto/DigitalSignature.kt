@@ -20,8 +20,7 @@ class DigitalSignature(val signatureAlgorithm: String,
     constructor(signatureRecord: GenericRecord) :
             this(signatureRecord.getTyped("signatureAlgorithm"),
                     signatureRecord.getTyped("signature"),
-                    signatureRecord.getTyped("publicKey")) {
-    }
+                    signatureRecord.getTyped("publicKey"))
 
     companion object {
         val digitalsignatureSchema = Schema.Parser().
@@ -49,7 +48,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                 val verifier = Signature.getInstance(this.signatureAlgorithm)
                 verifier.initVerify(this.publicKey)
                 verifier.update(bytes)
-                if (verifier.verify(this.signature) == false)
+                if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
             }
             "NONEwithEdDSA" -> {
@@ -57,7 +56,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                 require(this.signatureAlgorithm == verifier.algorithm) { "Signature algorithm not EdDSA" }
                 verifier.initVerify(this.publicKey)
                 verifier.update(bytes)
-                if (verifier.verify(this.signature) == false)
+                if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")
@@ -71,7 +70,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                 val verifier = Signature.getInstance("NONEwithECDSA")
                 verifier.initVerify(this.publicKey)
                 verifier.update(hash.bytes)
-                if (verifier.verify(this.signature) == false)
+                if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
             }
             "SHA256withRSA" -> {
@@ -83,7 +82,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                 bytes.write(hash.bytes)
                 val digest = bytes.toByteArray()
                 verifier.update(digest)
-                if (verifier.verify(this.signature) == false)
+                if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")

@@ -13,9 +13,7 @@ import java.util.*
 data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvertible, Comparable<SecureHash> {
     constructor(hashRecord: GenericRecord) :
             this(hashRecord.getTyped("algorithm"),
-                    hashRecord.getTyped("bytes")) {
-
-    }
+                    hashRecord.getTyped("bytes"))
 
     companion object {
         val secureHashSchema = Schema.Parser().parse(SecureHash::class.java.getResourceAsStream("securehash.avsc"))
