@@ -15,7 +15,7 @@ object PublicKeyHelper {
         AvroTypeHelpers.registerHelper(PublicKey::class.java, { x -> (x as PublicKey).toGenericRecord() }, { y -> PublicKeyHelper.fromGenericRecord(y) })
     }
 
-    val publicKeySchema = Schema.Parser().parse(PublicKeyHelper::class.java.getResourceAsStream("/com/nesbit/crypto/publickey.avsc"))
+    val publicKeySchema: Schema = Schema.Parser().parse(PublicKeyHelper::class.java.getResourceAsStream("/com/nesbit/crypto/publickey.avsc"))
 
     fun deserialize(bytes: ByteArray): PublicKey {
         val keyRecord = publicKeySchema.deserialize(bytes)

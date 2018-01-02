@@ -21,10 +21,10 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     companion object {
         val ID_HASH_ALGORITHM = "SHA-256"
-        val sphinxIdentitySchema = Schema.Parser().
+        val sphinxIdentitySchema: Schema = Schema.Parser().
                 addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
                         HashChainPublic.hashChainSchema.fullName to HashChainPublic.hashChainSchema)).
-                parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/sphinx/sphinxidentity.avsc"))
+                parse(SphinxPublicIdentity::class.java.getResourceAsStream("/com/nesbit/crypto/sphinx/sphinxidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxPublicIdentity {
             val idRecord = sphinxIdentitySchema.deserialize(bytes)

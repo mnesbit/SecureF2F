@@ -27,5 +27,5 @@ fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
     return output
 }
 
-fun ByteArray.printHex() = javax.xml.bind.DatatypeConverter.printHexBinary(this)
+fun ByteArray.printHex(): String = javax.xml.bind.DatatypeConverter.printHexBinary(this)
 

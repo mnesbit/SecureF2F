@@ -1,0 +1,11 @@
+{
+  "namespace": "com.nesbit.crypto.sphinx",
+  "name": "Hello",
+  "type": "record",
+  "fields": [
+    {
+      "name": "initiatorIdentity",
+      "type": "SphinxPublicIdentity"
+    }
+  ]
+}

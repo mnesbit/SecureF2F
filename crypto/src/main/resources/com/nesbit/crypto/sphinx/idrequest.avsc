@@ -1,0 +1,15 @@
+{
+  "namespace": "com.nesbit.crypto.sphinx",
+  "name": "IdRequest",
+  "type": "record",
+  "fields": [
+    {
+      "name": "initiatorIdentity",
+      "type": "SphinxPublicIdentity"
+    },
+    {
+      "name": "initiatorNonce",
+      "type": "bytes"
+    }
+  ]
+}

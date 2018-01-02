@@ -1,0 +1,15 @@
+{
+  "namespace": "com.nesbit.crypto.sphinx",
+  "name": "HelloAck",
+  "type": "record",
+  "fields": [
+    {
+      "name": "initiatorIdentity",
+      "type": "SphinxPublicIdentity"
+    },
+    {
+      "name": "remoteNonce",
+      "type": "bytes"
+    }
+  ]
+}

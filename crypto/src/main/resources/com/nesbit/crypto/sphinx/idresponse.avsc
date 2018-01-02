@@ -1,0 +1,27 @@
+{
+  "namespace": "com.nesbit.crypto.sphinx",
+  "name": "IdResponse",
+  "type": "record",
+  "fields": [
+    {
+      "name": "initiatorIdentity",
+      "type": "SphinxPublicIdentity"
+    },
+    {
+      "name": "initiatorNonce",
+      "type": "bytes"
+    },
+    {
+      "name": "remoteNonce",
+      "type": "bytes"
+    },
+    {
+      "name": "replyIdentity",
+      "type": "SphinxPublicIdentity"
+    },
+    {
+      "name": "signature",
+      "type": "bytes"
+    }
+  ]
+}

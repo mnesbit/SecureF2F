@@ -16,16 +16,16 @@ import javax.crypto.spec.SecretKeySpec
 
 class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) : AvroConvertible {
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
-    constructor(signatureRecord: GenericRecord) :
-            this(signatureRecord.getTyped<ByteArray>("chainKey"),
-                    signatureRecord.getTyped("targetHash", ::SecureHash))
+    constructor(chainRecord: GenericRecord) :
+            this(chainRecord.getTyped<ByteArray>("chainKey"),
+                    chainRecord.getTyped("targetHash", ::SecureHash))
 
     companion object {
         val CHAIN_HASH_ID = "HmacSHA256"
         val MAX_CHAIN_LENGTH = 65536
-        val hashChainSchema = Schema.Parser().
+        val hashChainSchema: Schema = Schema.Parser().
                 addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).
-                parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/hashchain.avsc"))
+                parse(HashChainPublic::class.java.getResourceAsStream("/com/nesbit/crypto/hashchain.avsc"))
 
         fun deserialize(bytes: ByteArray): HashChainPublic {
             val hashChainRecord = hashChainSchema.deserialize(bytes)

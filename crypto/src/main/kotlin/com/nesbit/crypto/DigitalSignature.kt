@@ -23,7 +23,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                     signatureRecord.getTyped("publicKey"))
 
     companion object {
-        val digitalsignatureSchema = Schema.Parser().
+        val digitalsignatureSchema: Schema = Schema.Parser().
                 addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).
                 parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/digitalsignature.avsc"))
 
