@@ -53,8 +53,8 @@ class HelloAck(val initiatorIdentity: SphinxPublicIdentity, val remoteNonce: Byt
             this(helloAckRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity),
                     helloAckRecord.getTyped<ByteArray>("remoteNonce"))
 
-    constructor(initiatorIdentity: SphinxPublicIdentity, secureRandom: SecureRandom = newSecureRandom()) :
-            this(initiatorIdentity, { val nonce = ByteArray(NONCE_SIZE); secureRandom.nextBytes(nonce); nonce }())
+    constructor(hello: Hello, secureRandom: SecureRandom = newSecureRandom()) :
+            this(hello.initiatorIdentity, { val nonce = ByteArray(NONCE_SIZE); secureRandom.nextBytes(nonce); nonce }())
 
     init {
         require(remoteNonce.size == NONCE_SIZE) { "Nonce should be $NONCE_SIZE secure random bytes" }
@@ -150,12 +150,14 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
                  val initiatorNonce: ByteArray,
                  val remoteNonce: ByteArray,
                  val replyIdentity: SphinxPublicIdentity,
+                 val signatureAlgorithm: String,
                  val signature: ByteArray) : AvroConvertible {
     constructor(idResponseRecord: GenericRecord) :
             this(idResponseRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity),
                     idResponseRecord.getTyped("initiatorNonce"),
                     idResponseRecord.getTyped("remoteNonce"),
                     idResponseRecord.getTyped("replyIdentity", ::SphinxPublicIdentity),
+                    idResponseRecord.getTyped("signatureAlgorithm"),
                     idResponseRecord.getTyped("signature"))
 
     companion object {
@@ -174,10 +176,12 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         fun createSignedResponse(originalAck: HelloAck, request: IdRequest, localKeys: SphinxIdentityKeyPair): IdResponse {
             require(originalAck.remoteNonce.size == NONCE_SIZE && request.initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
             require(originalAck.initiatorIdentity == request.initiatorIdentity) { "Identities must match" }
+            val testSig = localKeys.signingKeys.sign(ByteArray(0))
             val dummyResponse = IdResponse(request.initiatorIdentity,
                     request.initiatorNonce,
                     originalAck.remoteNonce,
                     localKeys.public,
+                    testSig.signatureAlgorithm,
                     SIGNATURE_PLACEHOLDER)
             val signedData = dummyResponse.serialize()
             val signed = localKeys.signingKeys.sign(signedData)
@@ -185,6 +189,7 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
                     request.initiatorNonce,
                     originalAck.remoteNonce,
                     localKeys.public,
+                    signed.signatureAlgorithm,
                     signed.signature)
         }
     }
@@ -193,11 +198,12 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         require(remoteNonce.size == NONCE_SIZE && initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
         require(originalAck.initiatorIdentity == request.initiatorIdentity && request.initiatorIdentity == initiatorIdentity) { "Identities must match" }
         require(Arrays.equals(originalAck.remoteNonce, remoteNonce) && Arrays.equals(request.initiatorNonce, initiatorNonce)) { "Nonce mismatch" }
-        val signed = DigitalSignature("NONEwithEdDSA", signature, replyIdentity.signingPublicKey)
+        val signed = DigitalSignature(signatureAlgorithm, signature, replyIdentity.signingPublicKey)
         val dummyResponse = IdResponse(initiatorIdentity,
                 initiatorNonce,
                 remoteNonce,
                 replyIdentity,
+                signatureAlgorithm,
                 SIGNATURE_PLACEHOLDER)
         signed.verify(dummyResponse.serialize())
     }
@@ -208,6 +214,7 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         signatureRecord.putTyped("initiatorNonce", initiatorNonce)
         signatureRecord.putTyped("remoteNonce", remoteNonce)
         signatureRecord.putTyped("replyIdentity", replyIdentity.toGenericRecord())
+        signatureRecord.putTyped("signatureAlgorithm", signatureAlgorithm)
         signatureRecord.putTyped("signature", signature)
         return signatureRecord
     }
@@ -222,6 +229,7 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
         if (!Arrays.equals(remoteNonce, other.remoteNonce)) return false
         if (replyIdentity != other.replyIdentity) return false
+        if (signatureAlgorithm != other.signatureAlgorithm) return false
         if (!Arrays.equals(signature, other.signature)) return false
 
         return true
@@ -232,6 +240,7 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         result = 31 * result + Arrays.hashCode(initiatorNonce)
         result = 31 * result + Arrays.hashCode(remoteNonce)
         result = 31 * result + replyIdentity.hashCode()
+        result = 31 * result + signatureAlgorithm.hashCode()
         result = 31 * result + Arrays.hashCode(signature)
         return result
     }

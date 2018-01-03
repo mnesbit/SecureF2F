@@ -25,7 +25,7 @@ class LinkTestTests {
     fun `HelloAck Serialization Roundtrip`() {
         val secureRandom = newSecureRandom()
         val id = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
-        val helloAckPacket = HelloAck(id.public, secureRandom)
+        val helloAckPacket = HelloAck(Hello(id.public), secureRandom)
         val serialized = helloAckPacket.serialize()
         val helloAckPacket2 = HelloAck.deserialize(serialized)
         assertEquals(helloAckPacket, helloAckPacket2)
@@ -56,7 +56,7 @@ class LinkTestTests {
         secureRandom.nextBytes(nonce1)
         val nonce2 = ByteArray(16)
         secureRandom.nextBytes(nonce2)
-        val idResponsePacket = IdResponse(id.public, nonce1, nonce2, id2.public, "Test".toByteArray())
+        val idResponsePacket = IdResponse(id.public, nonce1, nonce2, id2.public, "Dummy", "Test".toByteArray())
         val serialized = idResponsePacket.serialize()
         val idResponsePacket2 = IdResponse.deserialize(serialized)
         assertEquals(idResponsePacket, idResponsePacket2)
