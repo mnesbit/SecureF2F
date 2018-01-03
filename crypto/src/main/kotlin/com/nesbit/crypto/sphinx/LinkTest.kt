@@ -5,6 +5,7 @@ import com.nesbit.crypto.DigitalSignature
 import com.nesbit.crypto.newSecureRandom
 import com.nesbit.crypto.sign
 import com.nesbit.crypto.sphinx.IdResponse.Companion.NONCE_SIZE
+import com.nesbit.crypto.sphinx.IdResponse.Companion.createNonce
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
@@ -54,7 +55,7 @@ class HelloAck(val initiatorIdentity: SphinxPublicIdentity, val remoteNonce: Byt
                     helloAckRecord.getTyped<ByteArray>("remoteNonce"))
 
     constructor(hello: Hello, secureRandom: SecureRandom = newSecureRandom()) :
-            this(hello.initiatorIdentity, { val nonce = ByteArray(NONCE_SIZE); secureRandom.nextBytes(nonce); nonce }())
+            this(hello.initiatorIdentity, createNonce(secureRandom))
 
     init {
         require(remoteNonce.size == NONCE_SIZE) { "Nonce should be $NONCE_SIZE secure random bytes" }
@@ -103,7 +104,7 @@ class IdRequest(val initiatorIdentity: SphinxPublicIdentity, val initiatorNonce:
                     idRequestRecord.getTyped<ByteArray>("initiatorNonce"))
 
     constructor(initiatorIdentity: SphinxPublicIdentity, secureRandom: SecureRandom = newSecureRandom()) :
-            this(initiatorIdentity, { val nonce = ByteArray(NONCE_SIZE); secureRandom.nextBytes(nonce); nonce }())
+            this(initiatorIdentity, createNonce(secureRandom))
 
     init {
         require(initiatorNonce.size == NONCE_SIZE) { "Nonce should be $NONCE_SIZE secure random bytes" }
@@ -171,6 +172,12 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
         fun deserialize(bytes: ByteArray): IdResponse {
             val idResponseRecord = idResponseSchema.deserialize(bytes)
             return IdResponse(idResponseRecord)
+        }
+
+        fun createNonce(secureRandom: SecureRandom): ByteArray {
+            val nonce = ByteArray(NONCE_SIZE)
+            secureRandom.nextBytes(nonce)
+            return nonce
         }
 
         fun createSignedResponse(originalAck: HelloAck, request: IdRequest, localKeys: SphinxIdentityKeyPair): IdResponse {
