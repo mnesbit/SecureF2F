@@ -4,10 +4,6 @@
   "type": "record",
   "fields": [
     {
-      "name": "initiatorIdentity",
-      "type": "SphinxPublicIdentity"
-    },
-    {
       "name": "initiatorNonce",
       "type": "bytes"
     }

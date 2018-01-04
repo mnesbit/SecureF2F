@@ -4,15 +4,11 @@
   "type": "record",
   "fields": [
     {
-      "name": "initiatorIdentity",
-      "type": "SphinxPublicIdentity"
-    },
-    {
-      "name": "initiatorNonce",
+      "name": "responderNonce",
       "type": "bytes"
     },
     {
-      "name": "remoteNonce",
+      "name": "initiatorNonce",
       "type": "bytes"
     },
     {

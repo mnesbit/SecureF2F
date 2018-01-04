@@ -12,99 +12,12 @@ import org.apache.avro.generic.GenericRecord
 import java.security.SecureRandom
 import java.util.*
 
-class Hello(val initiatorIdentity: SphinxPublicIdentity) : AvroConvertible {
-    constructor(helloRecord: GenericRecord) :
-            this(helloRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity))
-
-    companion object {
-        val helloSchema: Schema = Schema.Parser().
-                addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema)).
-                parse(Hello::class.java.getResourceAsStream("/com/nesbit/crypto/sphinx/hello.avsc"))
-
-        fun deserialize(bytes: ByteArray): Hello {
-            val helloRecord = helloSchema.deserialize(bytes)
-            return Hello(helloRecord)
-        }
-    }
-
-    override fun toGenericRecord(): GenericRecord {
-        val signatureRecord = GenericData.Record(helloSchema)
-        signatureRecord.putTyped("initiatorIdentity", initiatorIdentity.toGenericRecord())
-        return signatureRecord
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as Hello
-
-        if (initiatorIdentity != other.initiatorIdentity) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        return initiatorIdentity.hashCode()
-    }
-}
-
-class HelloAck(val initiatorIdentity: SphinxPublicIdentity, val remoteNonce: ByteArray) : AvroConvertible {
-    constructor(helloAckRecord: GenericRecord) :
-            this(helloAckRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity),
-                    helloAckRecord.getTyped<ByteArray>("remoteNonce"))
-
-    constructor(hello: Hello, secureRandom: SecureRandom = newSecureRandom()) :
-            this(hello.initiatorIdentity, createNonce(secureRandom))
-
-    init {
-        require(remoteNonce.size == NONCE_SIZE) { "Nonce should be $NONCE_SIZE secure random bytes" }
-    }
-
-    companion object {
-        val helloAckSchema: Schema = Schema.Parser().
-                addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema)).
-                parse(HelloAck::class.java.getResourceAsStream("/com/nesbit/crypto/sphinx/helloack.avsc"))
-
-        fun deserialize(bytes: ByteArray): HelloAck {
-            val helloAckRecord = helloAckSchema.deserialize(bytes)
-            return HelloAck(helloAckRecord)
-        }
-    }
-
-    override fun toGenericRecord(): GenericRecord {
-        val signatureRecord = GenericData.Record(helloAckSchema)
-        signatureRecord.putTyped("initiatorIdentity", initiatorIdentity.toGenericRecord())
-        signatureRecord.putTyped("remoteNonce", remoteNonce)
-        return signatureRecord
-    }
-
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as HelloAck
-
-        if (initiatorIdentity != other.initiatorIdentity) return false
-        if (!Arrays.equals(remoteNonce, other.remoteNonce)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = initiatorIdentity.hashCode()
-        result = 31 * result + Arrays.hashCode(remoteNonce)
-        return result
-    }
-}
-
-class IdRequest(val initiatorIdentity: SphinxPublicIdentity, val initiatorNonce: ByteArray) : AvroConvertible {
+class IdRequest(val initiatorNonce: ByteArray) : AvroConvertible {
     constructor(idRequestRecord: GenericRecord) :
-            this(idRequestRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity),
-                    idRequestRecord.getTyped<ByteArray>("initiatorNonce"))
+            this(idRequestRecord.getTyped<ByteArray>("initiatorNonce"))
 
-    constructor(initiatorIdentity: SphinxPublicIdentity, secureRandom: SecureRandom = newSecureRandom()) :
-            this(initiatorIdentity, createNonce(secureRandom))
+    constructor(secureRandom: SecureRandom = newSecureRandom()) :
+            this(createNonce(secureRandom))
 
     init {
         require(initiatorNonce.size == NONCE_SIZE) { "Nonce should be $NONCE_SIZE secure random bytes" }
@@ -123,7 +36,6 @@ class IdRequest(val initiatorIdentity: SphinxPublicIdentity, val initiatorNonce:
 
     override fun toGenericRecord(): GenericRecord {
         val signatureRecord = GenericData.Record(idRequestSchema)
-        signatureRecord.putTyped("initiatorIdentity", initiatorIdentity.toGenericRecord())
         signatureRecord.putTyped("initiatorNonce", initiatorNonce)
         return signatureRecord
     }
@@ -134,29 +46,24 @@ class IdRequest(val initiatorIdentity: SphinxPublicIdentity, val initiatorNonce:
 
         other as IdRequest
 
-        if (initiatorIdentity != other.initiatorIdentity) return false
         if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = initiatorIdentity.hashCode()
-        result = 31 * result + Arrays.hashCode(initiatorNonce)
-        return result
+        return Arrays.hashCode(initiatorNonce)
     }
 }
 
-class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
+class IdResponse(val responderNonce: ByteArray,
                  val initiatorNonce: ByteArray,
-                 val remoteNonce: ByteArray,
                  val replyIdentity: SphinxPublicIdentity,
                  val signatureAlgorithm: String,
                  val signature: ByteArray) : AvroConvertible {
     constructor(idResponseRecord: GenericRecord) :
-            this(idResponseRecord.getTyped("initiatorIdentity", ::SphinxPublicIdentity),
+            this(idResponseRecord.getTyped("responderNonce"),
                     idResponseRecord.getTyped("initiatorNonce"),
-                    idResponseRecord.getTyped("remoteNonce"),
                     idResponseRecord.getTyped("replyIdentity", ::SphinxPublicIdentity),
                     idResponseRecord.getTyped("signatureAlgorithm"),
                     idResponseRecord.getTyped("signature"))
@@ -180,35 +87,31 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
             return nonce
         }
 
-        fun createSignedResponse(originalAck: HelloAck, request: IdRequest, localKeys: SphinxIdentityKeyPair): IdResponse {
-            require(originalAck.remoteNonce.size == NONCE_SIZE && request.initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
-            require(originalAck.initiatorIdentity == request.initiatorIdentity) { "Identities must match" }
+        fun createSignedResponse(request: IdRequest, localKeys: SphinxIdentityKeyPair, secureRandom: SecureRandom = newSecureRandom()): IdResponse {
+            require(request.initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
+            val responderNonce = createNonce(secureRandom)
             val testSig = localKeys.signingKeys.sign(ByteArray(0))
-            val dummyResponse = IdResponse(request.initiatorIdentity,
+            val dummyResponse = IdResponse(responderNonce,
                     request.initiatorNonce,
-                    originalAck.remoteNonce,
                     localKeys.public,
                     testSig.signatureAlgorithm,
                     SIGNATURE_PLACEHOLDER)
             val signedData = dummyResponse.serialize()
             val signed = localKeys.signingKeys.sign(signedData)
-            return IdResponse(request.initiatorIdentity,
+            return IdResponse(responderNonce,
                     request.initiatorNonce,
-                    originalAck.remoteNonce,
                     localKeys.public,
                     signed.signatureAlgorithm,
                     signed.signature)
         }
     }
 
-    fun verifyReponse(originalAck: HelloAck, request: IdRequest) {
-        require(remoteNonce.size == NONCE_SIZE && initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
-        require(originalAck.initiatorIdentity == request.initiatorIdentity && request.initiatorIdentity == initiatorIdentity) { "Identities must match" }
-        require(Arrays.equals(originalAck.remoteNonce, remoteNonce) && Arrays.equals(request.initiatorNonce, initiatorNonce)) { "Nonce mismatch" }
+    fun verifyReponse(request: IdRequest) {
+        require(responderNonce.size == NONCE_SIZE && initiatorNonce.size == NONCE_SIZE) { "Invalid Nonces" }
+        require(Arrays.equals(request.initiatorNonce, initiatorNonce)) { "Nonce mismatch" }
         val signed = DigitalSignature(signatureAlgorithm, signature, replyIdentity.signingPublicKey)
-        val dummyResponse = IdResponse(initiatorIdentity,
+        val dummyResponse = IdResponse(responderNonce,
                 initiatorNonce,
-                remoteNonce,
                 replyIdentity,
                 signatureAlgorithm,
                 SIGNATURE_PLACEHOLDER)
@@ -217,9 +120,8 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
 
     override fun toGenericRecord(): GenericRecord {
         val signatureRecord = GenericData.Record(idResponseSchema)
-        signatureRecord.putTyped("initiatorIdentity", initiatorIdentity.toGenericRecord())
+        signatureRecord.putTyped("responderNonce", responderNonce)
         signatureRecord.putTyped("initiatorNonce", initiatorNonce)
-        signatureRecord.putTyped("remoteNonce", remoteNonce)
         signatureRecord.putTyped("replyIdentity", replyIdentity.toGenericRecord())
         signatureRecord.putTyped("signatureAlgorithm", signatureAlgorithm)
         signatureRecord.putTyped("signature", signature)
@@ -232,9 +134,8 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
 
         other as IdResponse
 
-        if (initiatorIdentity != other.initiatorIdentity) return false
+        if (!Arrays.equals(responderNonce, other.responderNonce)) return false
         if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
-        if (!Arrays.equals(remoteNonce, other.remoteNonce)) return false
         if (replyIdentity != other.replyIdentity) return false
         if (signatureAlgorithm != other.signatureAlgorithm) return false
         if (!Arrays.equals(signature, other.signature)) return false
@@ -243,9 +144,8 @@ class IdResponse(val initiatorIdentity: SphinxPublicIdentity,
     }
 
     override fun hashCode(): Int {
-        var result = initiatorIdentity.hashCode()
+        var result = Arrays.hashCode(responderNonce)
         result = 31 * result + Arrays.hashCode(initiatorNonce)
-        result = 31 * result + Arrays.hashCode(remoteNonce)
         result = 31 * result + replyIdentity.hashCode()
         result = 31 * result + signatureAlgorithm.hashCode()
         result = 31 * result + Arrays.hashCode(signature)
