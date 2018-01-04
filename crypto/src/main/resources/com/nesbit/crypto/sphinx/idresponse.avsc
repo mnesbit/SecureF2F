@@ -4,12 +4,24 @@
   "type": "record",
   "fields": [
     {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
       "name": "responderNonce",
-      "type": "bytes"
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
     },
     {
       "name": "initiatorNonce",
-      "type": "bytes"
+      "type": "nonce"
     },
     {
       "name": "replyIdentity",
