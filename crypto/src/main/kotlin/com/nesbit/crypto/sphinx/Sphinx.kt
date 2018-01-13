@@ -43,7 +43,6 @@ class Sphinx(
 
     init {
         require(Curve25519.KEY_SIZE == 2 * SECURITY_PARAMETER) // Ensure sizes align properly
-        require(SphinxIdentityKeyPair.generateKeyPair(random).id.bytes.size == ID_HASH_SIZE) // Ensure sizes align properly
         if (Security.getProvider("BC") == null) {
             Security.addProvider(BouncyCastleProvider())
         }
@@ -188,6 +187,7 @@ class Sphinx(
 
     fun makeMessage(route: List<SphinxPublicIdentity>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
         require(route.size in 1..maxRouteLength) { "Invalid route length" }
+        require(route.all { it.id.bytes.size == ID_HASH_SIZE }) { "ID Hash wrong size length" }// Ensure sizes align properly
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }
         var filler = ByteArray(0)
@@ -218,6 +218,7 @@ class Sphinx(
                                   val finalPayload: ByteArray?)
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: SphinxIdentityKeyPair): MessageProcessingResult {
+        require(nodeKeys.id.bytes.size == ID_HASH_SIZE) { "ID Hash wrong size length" }// Ensure sizes align properly
         val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
         val comparableAlpha = alpha.keyBytes.secureHash()
         if (comparableAlpha in alphaCache) {
