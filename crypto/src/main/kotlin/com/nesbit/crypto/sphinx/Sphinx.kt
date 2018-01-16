@@ -218,15 +218,21 @@ class Sphinx(
                                   val finalPayload: ByteArray?)
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeKeys: SphinxIdentityKeyPair): MessageProcessingResult {
-        require(nodeKeys.id.bytes.size == ID_HASH_SIZE) { "ID Hash wrong size length" }// Ensure sizes align properly
+        val nodeId = nodeKeys.id
+        val dhFunction = { x: PublicKey -> getSharedDHSecret(nodeKeys.diffieHellmanKeys, x) }
+        return processMessage(msg, nodeId, dhFunction)
+    }
+
+    fun processMessage(msg: UnpackedSphinxMessage, nodeId: SecureHash, dhFunction: (remotePublicKey: PublicKey) -> ByteArray): MessageProcessingResult {
+        require(nodeId.bytes.size == ID_HASH_SIZE) { "ID Hash wrong size length" }// Ensure sizes align properly
         val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
         val comparableAlpha = alpha.keyBytes.secureHash()
         if (comparableAlpha in alphaCache) {
             return MessageProcessingResult(false, null, null, null) // Never allow reuse of Diffie-Hellman points
         }
         alphaCache += comparableAlpha
-        val sharedSecret = Curve25519PublicKey(getSharedDHSecret(nodeKeys.diffieHellmanKeys, alpha))
-        val hashes = DerivedHashes(nodeKeys.id, sharedSecret)
+        val sharedSecret = Curve25519PublicKey(dhFunction(alpha))
+        val hashes = DerivedHashes(nodeId, sharedSecret)
         val dec = decryptPayload(hashes.gcmKey, hashes.gcmNonce, msg.header, msg.tag, msg.payload)
         if (!dec.valid) {
             return MessageProcessingResult(false, null, null, null) // Discard bad packets
@@ -235,7 +241,7 @@ class Sphinx(
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
         val nextNode = SecureHash(SphinxPublicIdentity.ID_HASH_ALGORITHM, decryptedBeta.copyOf(ID_HASH_SIZE))
-        if (nextNode == nodeKeys.id) {
+        if (nextNode == nodeId) {
             return MessageProcessingResult(true, null, nextNode, unpadFinalPayload(dec.newPayload))
         }
         val nextAlpha = Curve25519PublicKey(getSharedDHSecret(hashes.blind, alpha))
@@ -244,4 +250,5 @@ class Sphinx(
         val forwardMessage = UnpackedSphinxMessage(betaLength, concatByteArrays(nextAlpha.keyBytes, nextBeta), dec.newPayload, nextTag)
         return MessageProcessingResult(true, forwardMessage, nextNode, null)
     }
+
 }

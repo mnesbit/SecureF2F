@@ -18,7 +18,7 @@ class SimNetwork {
             var linkIdCounter = 0
         }
 
-        override val links = mutableMapOf<LinkId, LinkInfo>()
+        override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
         private val addresses = mutableMapOf<Address, LinkId>()
 
         private val _onReceive = PublishSubject.create<Message>()
