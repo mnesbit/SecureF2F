@@ -57,34 +57,34 @@ fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()):
     return KeyPair(Curve25519PublicKey(publicKeyBytes), Curve25519PrivateKey(privateKeyBytes))
 }
 
-fun KeyPair.sign(bytes: ByteArray): DigitalSignature {
+fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
     when (this.private.algorithm) {
         "EC" -> {
             val signer = Signature.getInstance("SHA256withECDSA")
             signer.initSign(this.private)
             signer.update(bytes)
             val sig = signer.sign()
-            return DigitalSignature(signer.algorithm, sig, this.public)
+            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
         }
         "RSA" -> {
             val signer = Signature.getInstance("SHA256withRSA")
             signer.initSign(this.private)
             signer.update(bytes)
             val sig = signer.sign()
-            return DigitalSignature(signer.algorithm, sig, this.public)
+            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
         }
         "EdDSA" -> {
             val signer = EdDSAEngine()
             signer.initSign(this.private)
             signer.update(bytes)
             val sig = signer.sign()
-            return DigitalSignature(signer.algorithm, sig, this.public)
+            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }
 }
 
-fun KeyPair.sign(hash: SecureHash): DigitalSignature {
+fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
     require(hash.algorithm == "SHA-256") { "Signing other than SHA-256 not implemented" }
     when (this.private.algorithm) {
         "EC" -> {
@@ -92,7 +92,7 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignature {
             signer.initSign(this.private)
             signer.update(hash.bytes)
             val sig = signer.sign()
-            return DigitalSignature("SHA256withECDSA", sig, this.public)
+            return DigitalSignatureAndKey("SHA256withECDSA", sig, this.public)
         }
         "RSA" -> {
             val signer = Signature.getInstance("NONEwithRSA", "SunJCE")
@@ -104,7 +104,7 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignature {
             val digest = bytes.toByteArray()
             signer.update(digest)
             val sig = signer.sign()
-            return DigitalSignature("SHA256withRSA", sig, this.public)
+            return DigitalSignatureAndKey("SHA256withRSA", sig, this.public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }

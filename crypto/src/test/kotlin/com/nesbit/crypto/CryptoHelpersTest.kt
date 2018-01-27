@@ -18,8 +18,13 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureBytes = signature.serialize()
-        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        val deserializedSignature = DigitalSignatureAndKey.deserialize(signatureBytes)
         deserializedSignature.verify(bytes)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureBytes = shortSignature.serialize()
+        val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
+        deserializedShortSignature.verify(keyPair.public, bytes)
+        assertEquals(signature, shortSignature.toDigitalSignatureAndKey(keyPair.public))
     }
 
     @Test
@@ -28,9 +33,14 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
-        val signature2 = DigitalSignature(signatureRecord)
+        val signature2 = DigitalSignatureAndKey(signatureRecord)
         Assert.assertFalse(signature === signature2)
         assertEquals(signature, signature2)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureRecord = shortSignature.toGenericRecord()
+        val shortSignature2 = DigitalSignature(shortSignatureRecord)
+        Assert.assertFalse(shortSignature === shortSignature2)
+        assertEquals(shortSignature, shortSignature2)
     }
 
     @Test
@@ -49,8 +59,12 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureBytes = signature.serialize()
-        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        val deserializedSignature = DigitalSignatureAndKey.deserialize(signatureBytes)
         deserializedSignature.verify(bytes)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureBytes = shortSignature.serialize()
+        val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
+        deserializedShortSignature.verify(keyPair.public, bytes)
     }
 
     @Test
@@ -59,9 +73,14 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
-        val signature2 = DigitalSignature(signatureRecord)
+        val signature2 = DigitalSignatureAndKey(signatureRecord)
         Assert.assertFalse(signature === signature2)
         assertEquals(signature, signature2)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureRecord = shortSignature.toGenericRecord()
+        val shortSignature2 = DigitalSignature(shortSignatureRecord)
+        Assert.assertFalse(shortSignature === shortSignature2)
+        assertEquals(shortSignature, shortSignature2)
     }
 
     @Test
@@ -80,8 +99,12 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureBytes = signature.serialize()
-        val deserializedSignature = DigitalSignature.deserialize(signatureBytes)
+        val deserializedSignature = DigitalSignatureAndKey.deserialize(signatureBytes)
         deserializedSignature.verify(bytes)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureBytes = shortSignature.serialize()
+        val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
+        deserializedShortSignature.verify(keyPair.public, bytes)
     }
 
     @Test
@@ -90,9 +113,14 @@ class CryptoHelpersTest {
         val bytes = "jhsdjsjfajkf".toByteArray()
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
-        val signature2 = DigitalSignature(signatureRecord)
+        val signature2 = DigitalSignatureAndKey(signatureRecord)
         Assert.assertFalse(signature === signature2)
         assertEquals(signature, signature2)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureRecord = shortSignature.toGenericRecord()
+        val shortSignature2 = DigitalSignature(shortSignatureRecord)
+        Assert.assertFalse(shortSignature === shortSignature2)
+        assertEquals(shortSignature, shortSignature2)
     }
 
     @Test

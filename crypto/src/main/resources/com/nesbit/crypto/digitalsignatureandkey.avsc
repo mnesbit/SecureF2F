@@ -1,6 +1,6 @@
 {
   "namespace": "com.nesbit.crypto",
-  "name": "DigitalSignature",
+  "name": "DigitalSignatureAndKey",
   "type": "record",
   "fields": [
     {
@@ -10,6 +10,10 @@
     {
       "name": "signature",
       "type": "bytes"
+    },
+    {
+      "name": "publicKey",
+      "type": "PublicKey"
     }
   ]
 }

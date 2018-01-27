@@ -5,7 +5,6 @@ import com.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import com.nesbit.network.api.OverlayAddress
 import com.nesbit.network.api.SphinxAddress
 import com.nesbit.network.api.services.KeyService
-import com.nesbit.network.api.services.SecureVersion
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -30,7 +29,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
     private fun findById(id: SecureHash): SphinxIdentityKeyPair? = networkKeys.singleOrNull { it.id == id }
     private fun findById2(id: SecureHash): KeyPair? = overlayKeys.singleOrNull { SecureHash.secureHash(it.public.encoded) == id }
 
-    override fun sign(id: SecureHash, bytes: ByteArray): DigitalSignature {
+    override fun sign(id: SecureHash, bytes: ByteArray): DigitalSignatureAndKey {
         synchronized(lock) {
             val key = findById(id)
             if (key != null) {

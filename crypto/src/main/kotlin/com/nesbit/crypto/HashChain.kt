@@ -14,6 +14,8 @@ import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+data class SecureVersion(val version: Int, val chainHash: SecureHash)
+
 class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) : AvroConvertible {
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
     constructor(chainRecord: GenericRecord) :

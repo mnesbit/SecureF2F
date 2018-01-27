@@ -15,38 +15,34 @@ import java.security.SignatureException
 import java.util.*
 
 class DigitalSignature(val signatureAlgorithm: String,
-                       val signature: ByteArray,
-                       val publicKey: PublicKey) : AvroConvertible {
+                       val signature: ByteArray) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
             this(signatureRecord.getTyped("signatureAlgorithm"),
-                    signatureRecord.getTyped("signature"),
-                    signatureRecord.getTyped("publicKey"))
+                    signatureRecord.getTyped("signature"))
 
     companion object {
-        val digitalsignatureSchema: Schema = Schema.Parser().
-                addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).
-                parse(DigitalSignature::class.java.getResourceAsStream("/com/nesbit/crypto/digitalsignature.avsc"))
+        val digitalSignatureSchema: Schema = Schema.Parser().parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/com/nesbit/crypto/digitalsignature.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignature {
-            val signatureRecord = digitalsignatureSchema.deserialize(bytes)
+            val signatureRecord = digitalSignatureSchema.deserialize(bytes)
             return DigitalSignature(signatureRecord)
         }
     }
 
     override fun toGenericRecord(): GenericRecord {
-        val signatureRecord = GenericData.Record(digitalsignatureSchema)
+        val signatureRecord = GenericData.Record(digitalSignatureSchema)
         signatureRecord.putTyped("signatureAlgorithm", signatureAlgorithm)
         signatureRecord.putTyped("signature", signature)
-        signatureRecord.putTyped("publicKey", publicKey.toGenericRecord())
         return signatureRecord
     }
 
-    // Note the user MUST check that the PublicKey of this signature is appropriate to the context and typically signed over in the payload
-    fun verify(bytes: ByteArray) {
+    fun toDigitalSignatureAndKey(publicKey: PublicKey): DigitalSignatureAndKey = DigitalSignatureAndKey(signatureAlgorithm, signature, publicKey)
+
+    fun verify(publicKey: PublicKey, bytes: ByteArray) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA", "SHA256withRSA" -> {
                 val verifier = Signature.getInstance(this.signatureAlgorithm)
-                verifier.initVerify(this.publicKey)
+                verifier.initVerify(publicKey)
                 verifier.update(bytes)
                 if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
@@ -54,7 +50,7 @@ class DigitalSignature(val signatureAlgorithm: String,
             "NONEwithEdDSA" -> {
                 val verifier = EdDSAEngine()
                 require(this.signatureAlgorithm == verifier.algorithm) { "Signature algorithm not EdDSA" }
-                verifier.initVerify(this.publicKey)
+                verifier.initVerify(publicKey)
                 verifier.update(bytes)
                 if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
@@ -64,18 +60,18 @@ class DigitalSignature(val signatureAlgorithm: String,
     }
 
     // Note the user MUST check that the PublicKey of this signature is appropriate to the context and typically signed over in the payload
-    fun verify(hash: SecureHash) {
+    fun verify(publicKey: PublicKey, hash: SecureHash) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA" -> {
                 val verifier = Signature.getInstance("NONEwithECDSA")
-                verifier.initVerify(this.publicKey)
+                verifier.initVerify(publicKey)
                 verifier.update(hash.bytes)
                 if (!verifier.verify(this.signature))
                     throw SignatureException("Signature did not match")
             }
             "SHA256withRSA" -> {
                 val verifier = Signature.getInstance("NONEwithRSA", "SunJCE")
-                verifier.initVerify(this.publicKey)
+                verifier.initVerify(publicKey)
                 val bytes = ByteArrayOutputStream()
                 // Java wraps hash in DER encoded Digest structure before signing
                 bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
@@ -97,7 +93,6 @@ class DigitalSignature(val signatureAlgorithm: String,
 
         if (signatureAlgorithm != other.signatureAlgorithm) return false
         if (!Arrays.equals(signature, other.signature)) return false
-        if (publicKey != other.publicKey) return false
 
         return true
     }
@@ -105,9 +100,8 @@ class DigitalSignature(val signatureAlgorithm: String,
     override fun hashCode(): Int {
         var result = signatureAlgorithm.hashCode()
         result = 31 * result + Arrays.hashCode(signature)
-        result = 31 * result + publicKey.hashCode()
         return result
     }
 
-    override fun toString(): String = "$signatureAlgorithm($publicKey)[${signature.printHex()}]"
+    override fun toString(): String = "$signatureAlgorithm[${signature.printHex()}]"
 }
