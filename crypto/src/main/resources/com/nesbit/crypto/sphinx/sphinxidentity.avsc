@@ -12,8 +12,8 @@
       "type": "com.nesbit.crypto.PublicKey"
     },
     {
-      "name": "hashChain",
-      "type": "com.nesbit.crypto.HashChainPublic"
+      "name": "targetHash",
+      "type": "com.nesbit.crypto.SecureHash"
     },
     {
       "name": "publicAddress",

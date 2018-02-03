@@ -11,19 +11,19 @@ import java.security.SecureRandom
 
 class SphinxPublicIdentity(val signingPublicKey: PublicKey,
                            val diffieHellmanPublicKey: PublicKey,
-                           val hashChain: HashChainPublic,
+                           val targetHash: SecureHash,
                            val publicAddress: String?) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
             this(signatureRecord.getTyped("signingPublicKey"),
                     signatureRecord.getTyped("diffieHellmanPublicKey"),
-                    signatureRecord.getTyped("hashChain", ::HashChainPublic),
+                    signatureRecord.getTyped("targetHash", ::SecureHash),
                     signatureRecord.getTyped<String?>("publicAddress"))
 
     companion object {
         val ID_HASH_ALGORITHM = "SHA-256"
         val sphinxIdentitySchema: Schema = Schema.Parser().
                 addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
-                        HashChainPublic.hashChainSchema.fullName to HashChainPublic.hashChainSchema)).
+                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).
                 parse(SphinxPublicIdentity::class.java.getResourceAsStream("/com/nesbit/crypto/sphinx/sphinxidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxPublicIdentity {
@@ -33,6 +33,8 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     }
 
+    private val hashChain = HashChainPublic(concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded), targetHash)
+
     init {
         require(diffieHellmanPublicKey.algorithm == "Curve25519")
     }
@@ -41,7 +43,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
         val hashChainRecord = GenericData.Record(sphinxIdentitySchema)
         hashChainRecord.putTyped("signingPublicKey", signingPublicKey)
         hashChainRecord.putTyped("diffieHellmanPublicKey", diffieHellmanPublicKey)
-        hashChainRecord.putTyped("hashChain", hashChain)
+        hashChainRecord.putTyped("targetHash", targetHash)
         hashChainRecord.putTyped("publicAddress", publicAddress)
         return hashChainRecord
     }
@@ -52,8 +54,6 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
     }
 
     fun verifyChainValue(version: SecureVersion): Boolean = hashChain.verifyChainValue(version)
-
-    fun verifyChainValue(hashBytes: ByteArray, stepsFromEnd: Int): Boolean = hashChain.verifyChainValue(hashBytes, stepsFromEnd)
 
     fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean = hashChain.verifyChainValue(hash, stepsFromEnd)
 
@@ -89,7 +89,7 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))
 
-    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.public, publicAddress) }
+    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.targetHash, publicAddress) }
 
     val id: SecureHash get() = public.id
 }
