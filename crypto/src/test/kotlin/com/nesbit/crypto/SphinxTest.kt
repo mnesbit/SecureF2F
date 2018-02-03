@@ -4,6 +4,7 @@ import com.nesbit.avro.serialize
 import com.nesbit.crypto.sphinx.Sphinx
 import com.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import com.nesbit.crypto.sphinx.SphinxPublicIdentity
+import com.nesbit.crypto.sphinx.VersionedIdentity
 import org.junit.Assert.*
 import org.junit.Test
 import kotlin.experimental.xor
@@ -215,5 +216,19 @@ class SphinxTest {
         val idRecord2 = publicId2.toGenericRecord()
         val deserialized4 = SphinxPublicIdentity(idRecord2)
         assertEquals(publicId2, deserialized4)
+    }
+
+    @Test
+    fun `Version ID serialization`() {
+        val id = SphinxIdentityKeyPair.generateKeyPair()
+        val publicId = id.public
+        val version = id.hashChain.getSecureVersion(10)
+        val versionedID = VersionedIdentity(publicId, version)
+        val serialized = versionedID.serialize()
+        val deserialized = VersionedIdentity.deserialize(serialized)
+        assertEquals(versionedID, deserialized)
+        val genericRecord = versionedID.toGenericRecord()
+        val deserialized2 = VersionedIdentity(genericRecord)
+        assertEquals(versionedID, deserialized2)
     }
 }

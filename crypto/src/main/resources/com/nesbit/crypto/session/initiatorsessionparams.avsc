@@ -1,0 +1,27 @@
+{
+  "namespace": "com.nesbit.crypto.session",
+  "name": "InitiatorSessionParams",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "initiatorNonce",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    },
+    {
+      "name": "initiatorDHPublicKey",
+      "type": "com.nesbit.crypto.PublicKey"
+    }
+  ]
+}

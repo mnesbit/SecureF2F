@@ -30,7 +30,7 @@ fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
                         val hash = SchemaNormalization.parsingFingerprint("SHA-256", typePair.value)
                         val sig = "hashed.H" + javax.xml.bind.DatatypeConverter.printHexBinary(hash)
                         typePair.value.addAlias(sig)
-                        types.put(typePair.key, typePair.value)
+                        types[typePair.key] = typePair.value
                     }
                 }
                 iter.remove()
@@ -67,10 +67,13 @@ fun GenericRecord.serialize(): ByteArray {
     }
 }
 
-object AvroTypeHelpers {
-    val helpers = mutableMapOf<Class<*>, Pair<(Any?) -> GenericRecord, (GenericRecord) -> Any?>>()
+typealias AvroEncoder<T> = (T) -> GenericRecord
+typealias AvroDecoder<T> = (GenericRecord) -> T
 
-    fun <T : Any> registerHelper(clazz: Class<T>, encoder: (Any?) -> GenericRecord, decoder: (GenericRecord) -> Any?) {
+object AvroTypeHelpers {
+    val helpers = mutableMapOf<Class<*>, Pair<AvroEncoder<*>, AvroDecoder<*>>>()
+
+    fun <T> registerHelper(clazz: Class<T>, encoder: AvroEncoder<T>, decoder: AvroDecoder<T>) {
         helpers[clazz] = Pair(encoder, decoder)
     }
 }
@@ -227,7 +230,8 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
     }
     val pluginHandlers = AvroTypeHelpers.helpers[T::class.java]
     if (pluginHandlers != null) {
-        put(fieldName, pluginHandlers.first(value))
+        val encoder = pluginHandlers.first as AvroEncoder<T>
+        put(fieldName, encoder(value))
         return
     }
     when (T::class) {

@@ -14,7 +14,27 @@ import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-data class SecureVersion(val version: Int, val chainHash: SecureHash)
+data class SecureVersion(val version: Int, val chainHash: SecureHash) : AvroConvertible {
+    constructor(versionRecord: GenericRecord) :
+            this(versionRecord.getTyped("version"),
+                    versionRecord.getTyped("chainHash", ::SecureHash))
+
+    companion object {
+        val secureVersionSchema: Schema = Schema.Parser().addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).parse(SecureVersion::class.java.getResourceAsStream("/com/nesbit/crypto/secureversion.avsc"))
+
+        fun deserialize(bytes: ByteArray): SecureVersion {
+            val secureVersionRecord = secureVersionSchema.deserialize(bytes)
+            return SecureVersion(secureVersionRecord)
+        }
+    }
+
+    override fun toGenericRecord(): GenericRecord {
+        val secureVersionRecord = GenericData.Record(secureVersionSchema)
+        secureVersionRecord.putTyped("version", version)
+        secureVersionRecord.putTyped("chainHash", chainHash)
+        return secureVersionRecord
+    }
+}
 
 class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) : AvroConvertible {
     constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
@@ -40,6 +60,11 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
         hashChainRecord.putTyped("chainKey", chainKey.encoded)
         hashChainRecord.putTyped("targetHash", targetHash)
         return hashChainRecord
+    }
+
+    fun verifyChainValue(version: SecureVersion): Boolean {
+        require(version.chainHash.algorithm == CHAIN_HASH_ID)
+        return verifyChainValue(version.chainHash.bytes, version.version)
     }
 
     fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean {
@@ -110,6 +135,8 @@ class HashChainPrivate private constructor(private val chainKey: SecretKeySpec, 
         version = maxOf(stepsFromEnd, version)
         return getChainValueInternal(stepsFromEnd, seedHash, chainKey)
     }
+
+    fun getSecureVersion(stepsFromEnd: Int): SecureVersion = SecureVersion(stepsFromEnd, getChainValue(stepsFromEnd))
 
     val public: HashChainPublic by lazy { HashChainPublic(chainKey, targetHash) }
 

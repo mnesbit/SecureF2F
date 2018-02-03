@@ -1,108 +1,89 @@
 package com.nesbit.crypto
 
 import com.nesbit.avro.serialize
-import com.nesbit.crypto.sphinx.IdRequest
-import com.nesbit.crypto.sphinx.IdResponse
+import com.nesbit.crypto.session.InitiatorHelloRequest
+import com.nesbit.crypto.session.InitiatorSessionParams
+import com.nesbit.crypto.session.ResponderHelloResponse
+import com.nesbit.crypto.session.ResponderSessionParams
 import com.nesbit.crypto.sphinx.SphinxIdentityKeyPair
+import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.security.SignatureException
-import kotlin.experimental.xor
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 class LinkTestTests {
     @Test
-    fun `IdRequest Serialization Roundtrip`() {
+    fun `InitiatorSessionParams Serialization Roundtrip`() {
         val secureRandom = newSecureRandom()
-        val idRequestPacket = IdRequest(secureRandom)
-        val serialized = idRequestPacket.serialize()
-        val idRequestPacket2 = IdRequest.deserialize(serialized)
-        assertEquals(idRequestPacket, idRequestPacket2)
-        assertEquals(idRequestPacket, IdRequest.tryDeserialize(serialized))
-        val record = idRequestPacket.toGenericRecord()
-        val idRequestPacket3 = IdRequest(record)
-        assertEquals(idRequestPacket, idRequestPacket3)
+        val (_, initiatorSessionParams) = InitiatorSessionParams.createInitiatorSession(secureRandom)
+        val serialized = initiatorSessionParams.serialize()
+        val initiatorSessionParams2 = InitiatorSessionParams.deserialize(serialized)
+        assertEquals(initiatorSessionParams, initiatorSessionParams2)
+        val record = initiatorSessionParams.toGenericRecord()
+        val initiatorSessionParams3 = InitiatorSessionParams(record)
+        assertEquals(initiatorSessionParams, initiatorSessionParams3)
     }
 
     @Test
-    fun `IdResponse Serialization Roundtrip`() {
+    fun `ResponderSessionParams Serialization Roundtrip`() {
         val secureRandom = newSecureRandom()
-        val id = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
-        val nonce1 = ByteArray(16)
-        secureRandom.nextBytes(nonce1)
-        val nonce2 = ByteArray(16)
-        secureRandom.nextBytes(nonce2)
-        val idResponsePacket = IdResponse(nonce1, nonce2, id.public, "Dummy", "Test".toByteArray())
-        val serialized = idResponsePacket.serialize()
-        val idResponsePacket2 = IdResponse.deserialize(serialized)
-        assertEquals(idResponsePacket, idResponsePacket2)
-        assertEquals(idResponsePacket, IdResponse.tryDeserialize(serialized))
-        val record = idResponsePacket.toGenericRecord()
-        val idResponsePacket3 = IdResponse(record)
-        assertEquals(idResponsePacket, idResponsePacket3)
+        val (_, initiatorSessionParams) = InitiatorSessionParams.createInitiatorSession(secureRandom)
+        val (_, responderSessionParams) = ResponderSessionParams.createResponderSession(initiatorSessionParams, secureRandom)
+        val serialized = responderSessionParams.serialize()
+        val responderSessionParams2 = ResponderSessionParams.deserialize(serialized)
+        assertEquals(responderSessionParams, responderSessionParams2)
+        val record = responderSessionParams.toGenericRecord()
+        val responderSessionParams3 = ResponderSessionParams(record)
+        assertEquals(responderSessionParams, responderSessionParams3)
     }
 
     @Test
-    fun `IdResponse Construction and signing`() {
+    fun `SessionBinding formation and serialize`() {
         val secureRandom = newSecureRandom()
-        val id = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
-        val nonce1 = ByteArray(16)
-        secureRandom.nextBytes(nonce1)
-        val request = IdRequest(nonce1)
-        val signedResponse = IdResponse.createSignedResponse(request, id)
-        val serialisedResponse = signedResponse.serialize()
-        val receivedResponse = IdResponse.deserialize(serialisedResponse)
-        receivedResponse.verifyReponse(request)
-        receivedResponse.responderNonce[0] = receivedResponse.responderNonce[0] xor 1
-        assertFailsWith<SignatureException> {
-            receivedResponse.verifyReponse(request)
-        }
+        val initiatorIdentity = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
+        val initiatorVersionedIdentity = initiatorIdentity.getVersionedId(2)
+        val (initiatorKeys, initiatorSessionParams) = InitiatorSessionParams.createInitiatorSession(secureRandom)
+        val (responderKeys, responderSessionParams) = ResponderSessionParams.createResponderSession(initiatorSessionParams, secureRandom)
+        val initiatorHelloRequest = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams,
+                responderSessionParams,
+                initiatorKeys,
+                initiatorVersionedIdentity,
+                { _, bytes -> initiatorIdentity.signingKeys.sign(bytes) })
+        val serialized = initiatorHelloRequest.serialize()
+        val helloRequestDeserialized = InitiatorHelloRequest.deserialize(serialized)
+        assertEquals(initiatorHelloRequest, helloRequestDeserialized)
+        val helloRequestRecord = initiatorHelloRequest.toGenericRecord()
+        val helloRequestDeserialized2 = InitiatorHelloRequest(helloRequestRecord)
+        assertEquals(initiatorHelloRequest, helloRequestDeserialized2)
+        val receivedIdentity = helloRequestDeserialized.verify(initiatorSessionParams, responderSessionParams, responderKeys)
+        assertEquals(initiatorVersionedIdentity, receivedIdentity)
     }
 
     @Test
-    fun `test tryDeserialize on requests`() {
-        assertEquals(null, IdRequest.tryDeserialize(ByteArray(0)))
-        assertEquals(null, IdRequest.tryDeserialize(ByteArray(47)))
-        assertEquals(null, IdRequest.tryDeserialize(ByteArray(48)))
-        assertEquals(null, IdRequest.tryDeserialize(ByteArray(49)))
-        val request = IdRequest()
-        val serialized = request.serialize()
-        assertEquals(request, IdRequest.tryDeserialize(serialized))
-        assertEquals(null, IdRequest.tryDeserialize(concatByteArrays(ByteArray(1), serialized)))
-        assertEquals(null, IdRequest.tryDeserialize(concatByteArrays(serialized, ByteArray(1))))
-        for (i in 0 until 32) {// Changes to schema fingerprint fail, changes to nonce are ignored
-            for (j in 0 until 8) {
-                val mask = (1 shl j).toByte()
-                serialized[i] = serialized[i] xor mask
-                assertEquals(null, IdRequest.tryDeserialize(serialized))
-                serialized[i] = serialized[i] xor mask
-            }
-        }
-    }
-
-    @Test
-    fun `test tryDeserialize on responses`() {
-        assertEquals(null, IdResponse.tryDeserialize(ByteArray(0)))
-        assertEquals(null, IdResponse.tryDeserialize(ByteArray(47)))
-        assertEquals(null, IdResponse.tryDeserialize(ByteArray(48)))
-        assertEquals(null, IdResponse.tryDeserialize(ByteArray(49)))
+    fun `SessionBinding2 formation and serialize`() {
         val secureRandom = newSecureRandom()
-        val id = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
-        val nonce1 = ByteArray(16)
-        secureRandom.nextBytes(nonce1)
-        val request = IdRequest(nonce1)
-        val signedResponse = IdResponse.createSignedResponse(request, id)
-        val serialized = signedResponse.serialize()
-        assertEquals(signedResponse, IdResponse.tryDeserialize(serialized))
-        assertEquals(null, IdResponse.tryDeserialize(concatByteArrays(ByteArray(1), serialized)))
-        assertEquals(null, IdResponse.tryDeserialize(concatByteArrays(serialized, ByteArray(1))))
-        for (i in 0 until 32) {// Changes to schema fingerprint fail, changes to nonce are ignored
-            for (j in 0 until 8) {
-                val mask = (1 shl j).toByte()
-                serialized[i] = serialized[i] xor mask
-                assertEquals(null, IdResponse.tryDeserialize(serialized))
-                serialized[i] = serialized[i] xor mask
-            }
-        }
+        val initiatorIdentity = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
+        val initiatorVersionedIdentity = initiatorIdentity.getVersionedId(2)
+        val (initiatorKeys, initiatorSessionParams) = InitiatorSessionParams.createInitiatorSession(secureRandom)
+        val (responderKeys, responderSessionParams) = ResponderSessionParams.createResponderSession(initiatorSessionParams, secureRandom)
+        val initiatorHelloRequest = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams,
+                responderSessionParams,
+                initiatorKeys,
+                initiatorVersionedIdentity,
+                { _, bytes -> initiatorIdentity.signingKeys.sign(bytes) })
+        val responderIdentity = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
+        val responderVersionedIdentity = responderIdentity.getVersionedId(4)
+        val responderHelloResponse = ResponderHelloResponse.createHelloResponse(initiatorSessionParams,
+                responderSessionParams,
+                initiatorHelloRequest,
+                responderKeys,
+                responderVersionedIdentity,
+                { _, bytes -> responderIdentity.signingKeys.sign(bytes) })
+        val serialized = responderHelloResponse.serialize()
+        val helloResponseDeserialized = ResponderHelloResponse.deserialize(serialized)
+        assertEquals(responderHelloResponse, helloResponseDeserialized)
+        val helloResponseRecord = responderHelloResponse.toGenericRecord()
+        val helloResponseDeserialized2 = ResponderHelloResponse(helloResponseRecord)
+        assertEquals(responderHelloResponse, helloResponseDeserialized2)
+        val receivedIdentity = helloResponseDeserialized.verify(initiatorSessionParams, responderSessionParams, initiatorHelloRequest, initiatorKeys)
+        assertEquals(responderVersionedIdentity, receivedIdentity)
     }
 }

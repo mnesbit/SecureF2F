@@ -1,6 +1,6 @@
 {
-  "namespace": "com.nesbit.crypto.sphinx",
-  "name": "IdRequest",
+  "namespace": "com.nesbit.crypto.session",
+  "name": "ResponderSessionParams",
   "type": "record",
   "fields": [
     {
@@ -18,6 +18,14 @@
         "type": "fixed",
         "size": 16
       }
+    },
+    {
+      "name": "responderNonce",
+      "type": "nonce"
+    },
+    {
+      "name": "responderDHPublicKey",
+      "type": "com.nesbit.crypto.PublicKey"
     }
   ]
 }

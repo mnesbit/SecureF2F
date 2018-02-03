@@ -1,6 +1,6 @@
 {
-  "namespace": "com.nesbit.crypto.sphinx",
-  "name": "IdResponse",
+  "namespace": "com.nesbit.crypto.session",
+  "name": "InitiatorHelloRequest",
   "type": "record",
   "fields": [
     {
@@ -12,7 +12,7 @@
       }
     },
     {
-      "name": "responderNonce",
+      "name": "initiatorNonce",
       "type": {
         "name": "nonce",
         "type": "fixed",
@@ -20,19 +20,11 @@
       }
     },
     {
-      "name": "initiatorNonce",
+      "name": "responderNonce",
       "type": "nonce"
     },
     {
-      "name": "replyIdentity",
-      "type": "SphinxPublicIdentity"
-    },
-    {
-      "name": "signatureAlgorithm",
-      "type": "string"
-    },
-    {
-      "name": "signature",
+      "name": "encryptedPayload",
       "type": "bytes"
     }
   ]
