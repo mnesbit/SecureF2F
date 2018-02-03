@@ -68,8 +68,8 @@ class ResponderHelloResponse(val schemaId: SecureHash,
                responderInit: ResponderSessionParams,
                initiatorHelloRequest: InitiatorHelloRequest,
                initiatorSessionKeyPair: KeyPair): VersionedIdentity {
-        require(Arrays.equals(initiatorNonce, initiatorInit.initiatorNonce)) { "Inconsistent nonces" }
-        require(Arrays.equals(responderNonce, responderInit.responderNonce)) { "Inconsistent nonces" }
+        require(org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, initiatorInit.initiatorNonce)) { "Inconsistent nonces" }
+        require(org.bouncycastle.util.Arrays.constantTimeAreEqual(responderNonce, responderInit.responderNonce)) { "Inconsistent nonces" }
         initiatorHelloRequest.verify(initiatorInit, responderInit, initiatorSessionKeyPair)
         val sharedState = SessionSecretState(initiatorInit, responderInit, initiatorSessionKeyPair)
         val schemaId = SecureHash("SHA-256", schemaFingerprint)
@@ -105,9 +105,9 @@ class ResponderHelloResponse(val schemaId: SecureHash,
         other as ResponderHelloResponse
 
         if (schemaId != other.schemaId) return false
-        if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
-        if (!Arrays.equals(responderNonce, other.responderNonce)) return false
-        if (!Arrays.equals(encryptedPayload, other.encryptedPayload)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, other.initiatorNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(responderNonce, other.responderNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(encryptedPayload, other.encryptedPayload)) return false
 
         return true
     }

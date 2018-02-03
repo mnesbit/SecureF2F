@@ -20,7 +20,7 @@ class Curve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
 
         other as Curve25519PublicKey
 
-        if (!Arrays.equals(keyBytes, other.keyBytes)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(keyBytes, other.keyBytes)) return false
 
         return true
     }
@@ -52,7 +52,7 @@ class Curve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
 
         other as Curve25519PrivateKey
 
-        if (!Arrays.equals(keyBytes, other.keyBytes)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(keyBytes, other.keyBytes)) return false
 
         return true
     }

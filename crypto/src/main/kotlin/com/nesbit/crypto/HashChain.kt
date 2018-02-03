@@ -10,7 +10,6 @@ import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import java.security.SecureRandom
-import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -83,7 +82,7 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
             hmac.update(endHash)
             hmac.doFinal(endHash, 0)
         }
-        return Arrays.equals(targetHash.bytes, endHash)
+        return org.bouncycastle.util.Arrays.constantTimeAreEqual(targetHash.bytes, endHash)
     }
 
     override fun equals(other: Any?): Boolean {

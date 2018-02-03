@@ -54,8 +54,8 @@ class SessionBinding(val otherPartyNonce: ByteArray,
 
         other as SessionBinding
 
-        if (!Arrays.equals(otherPartyNonce, other.otherPartyNonce)) return false
-        if (!Arrays.equals(ownNonce, other.ownNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(otherPartyNonce, other.otherPartyNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(ownNonce, other.ownNonce)) return false
         if (ownDHPublicKey != other.ownDHPublicKey) return false
         if (identityInfo != other.identityInfo) return false
 

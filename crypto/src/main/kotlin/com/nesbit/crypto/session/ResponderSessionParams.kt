@@ -65,7 +65,10 @@ class ResponderSessionParams(val schemaId: SecureHash,
         require(responderNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
         require(responderDHPublicKey.algorithm == "Curve25519")
-        require(Arrays.equals(initiatorParams.initiatorNonce, initiatorNonce)) { "Inconsistent Nonce" }
+        require(org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorParams.initiatorNonce, initiatorNonce)) { "Inconsistent Nonce" }
+        require(!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, responderNonce)) { "Echoed nonce" }
+        require(!org.bouncycastle.util.Arrays.constantTimeAreEqual(responderDHPublicKey.encoded,
+                initiatorParams.initiatorDHPublicKey.encoded)) { "Echoed key" }
         initiatorParams.verify()
     }
 
@@ -85,8 +88,8 @@ class ResponderSessionParams(val schemaId: SecureHash,
         other as ResponderSessionParams
 
         if (schemaId != other.schemaId) return false
-        if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
-        if (!Arrays.equals(responderNonce, other.responderNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, other.initiatorNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(responderNonce, other.responderNonce)) return false
         if (responderDHPublicKey != other.responderDHPublicKey) return false
 
         return true

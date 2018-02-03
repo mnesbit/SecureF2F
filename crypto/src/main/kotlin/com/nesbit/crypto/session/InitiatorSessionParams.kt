@@ -75,7 +75,7 @@ class InitiatorSessionParams(val schemaId: SecureHash,
         other as InitiatorSessionParams
 
         if (schemaId != other.schemaId) return false
-        if (!Arrays.equals(initiatorNonce, other.initiatorNonce)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, other.initiatorNonce)) return false
         if (initiatorDHPublicKey != other.initiatorDHPublicKey) return false
 
         return true

@@ -50,7 +50,7 @@ class DigitalSignatureAndKey(val signatureAlgorithm: String,
         other as DigitalSignatureAndKey
 
         if (signatureAlgorithm != other.signatureAlgorithm) return false
-        if (!Arrays.equals(signature, other.signature)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(signature, other.signature)) return false
         if (publicKey != other.publicKey) return false
 
         return true

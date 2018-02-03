@@ -92,7 +92,7 @@ class DigitalSignature(val signatureAlgorithm: String,
         other as DigitalSignature
 
         if (signatureAlgorithm != other.signatureAlgorithm) return false
-        if (!Arrays.equals(signature, other.signature)) return false
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(signature, other.signature)) return false
 
         return true
     }
