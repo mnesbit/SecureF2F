@@ -54,7 +54,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version
-            return SecureVersion(version, key.hashChain.getChainValue(version))
+            return key.hashChain.getSecureVersion(version)
         }
     }
 
@@ -63,7 +63,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version + 1
-            return SecureVersion(version, key.hashChain.getChainValue(version))
+            return key.hashChain.getSecureVersion(version)
         }
     }
 }

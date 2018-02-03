@@ -87,9 +87,7 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
         require(diffieHellmanKeys.private.algorithm == "Curve25519")
     }
 
-    fun getChainValue(stepsFromEnd: Int): SecureHash = hashChain.getChainValue(stepsFromEnd)
-
-    fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, SecureVersion(version, getChainValue(version)))
+    fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))
 
     val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.public, publicAddress) }
 
