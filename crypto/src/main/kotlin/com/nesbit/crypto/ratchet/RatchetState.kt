@@ -2,6 +2,9 @@ package com.nesbit.crypto.ratchet
 
 import com.nesbit.avro.serialize
 import com.nesbit.crypto.*
+import com.nesbit.crypto.ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
+import com.nesbit.crypto.ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
+import com.nesbit.crypto.ratchet.RatchetState.Companion.MessageKey.Companion.MESSAGE_KEY_SIZE
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
@@ -26,32 +29,41 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                                        private var receiverNextHeaderKey: MessageKey,
                                        private var receiverSequenceNumber: Int,
                                        private var previousSenderChainNumber: Int,
+                                       val maxSkip: Int,
+                                       val maxLost: Int,
                                        private val secureRandom: SecureRandom) {
     private val skippedMessageKeys = mutableMapOf<HeaderKey, MessageKey>()
 
     companion object {
-        private val emptyKey = ByteArray(32)
-        private val emptyIv = ByteArray(12)
+        private const val CHAIN_KEY_SIZE = 32
+        private val emptyKey = ByteArray(CHACHA_KEY_SIZE_BYTES)
+        private val emptyIv = ByteArray(CHACHA_NONCE_SIZE_BYTES)
         private val INITIAL_SECRET_CONTEXT = "Starting Secrets".toByteArray(Charsets.UTF_8)
         private val ROOT_CHAIN_CONTEXT = "Root Key Chaining".toByteArray(Charsets.UTF_8)
         private val CHAIN_KEY_CONST1 = ByteArray(1, { 0x42 })
         private val CHAIN_KEY_CONST2 = ByteArray(1, { 0x69 })
         private val CHAIN_KEY_CONST3 = "Pootle".toByteArray(Charsets.UTF_8)
-        const val MAX_SKIP = 3
 
         private fun sharedKeysFromStartingSecret(startingSessionSecret: ByteArray, bobDHKey: PublicKey): Triple<ByteArray, MessageKey, MessageKey> {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
 
             hkdf.init(HKDFParameters(startingSessionSecret, INITIAL_SECRET_CONTEXT, bobDHKey.encoded))
-            val hkdfKey = ByteArray(32 + 2 * (32 + 12))
+            val hkdfKey = ByteArray(CHAIN_KEY_SIZE + 2 * MESSAGE_KEY_SIZE)
             hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
-            val rootKey = hkdfKey.copyOf(32)
-            val headerKey = MessageKey(hkdfKey.copyOfRange(32, 32 + 32), hkdfKey.copyOfRange(2 * 32, 2 * 32 + 12))
-            val nextHeaderKey = MessageKey(hkdfKey.copyOfRange(2 * 32 + 12, 3 * 32 + 12), hkdfKey.copyOfRange(3 * 32 + 12, 3 * 32 + 2 * 12))
+            val splits = hkdfKey.splitByteArrays(CHAIN_KEY_SIZE, MESSAGE_KEY_SIZE, MESSAGE_KEY_SIZE)
+            val rootKey = splits[0]
+            val headerKey = MessageKey(splits[1])
+            val nextHeaderKey = MessageKey(splits[2])
             return Triple(rootKey, headerKey, nextHeaderKey)
         }
 
-        private class MessageKey(val key: ByteArray, val iv: ByteArray)
+        private class MessageKey(val key: ByteArray, val iv: ByteArray) {
+            companion object {
+                const val MESSAGE_KEY_SIZE = CHACHA_KEY_SIZE_BYTES + CHACHA_NONCE_SIZE_BYTES
+            }
+
+            constructor(combined: ByteArray) : this(combined.copyOf(CHACHA_KEY_SIZE_BYTES), combined.copyOfRange(CHACHA_KEY_SIZE_BYTES, CHACHA_KEY_SIZE_BYTES + CHACHA_NONCE_SIZE_BYTES))
+        }
 
         private class RootKeyUpdate(val newRootKey: ByteArray, val chainKeyInput: ByteArray, val nextHeaderKey: MessageKey) {
             operator fun component1(): ByteArray = newRootKey
@@ -62,11 +74,12 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         private fun kdfRootKeys(rootKey: ByteArray, sessionDHOutput: ByteArray): RootKeyUpdate {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
             hkdf.init(HKDFParameters(rootKey, ROOT_CHAIN_CONTEXT, sessionDHOutput))
-            val hkdfKey = ByteArray(3 * 32 + 12)
+            val hkdfKey = ByteArray(2 * CHAIN_KEY_SIZE + MESSAGE_KEY_SIZE)
             hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
-            val newRootKey = hkdfKey.copyOf(32)
-            val chainKey = hkdfKey.copyOfRange(32, 2 * 32)
-            val nextHeaderKey = MessageKey(hkdfKey.copyOfRange(2 * 32, 3 * 32), hkdfKey.copyOfRange(3 * 32, 3 * 32 + 12))
+            val splits = hkdfKey.splitByteArrays(CHAIN_KEY_SIZE, CHAIN_KEY_SIZE, MESSAGE_KEY_SIZE)
+            val newRootKey = splits[0]
+            val chainKey = splits[1]
+            val nextHeaderKey = MessageKey(splits[2])
             return RootKeyUpdate(newRootKey, chainKey, nextHeaderKey)
         }
 
@@ -76,10 +89,14 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
             val newChainKey = getHMAC(chainKey, CHAIN_KEY_CONST1)
             val messageKey = getHMAC(chainKey, CHAIN_KEY_CONST2)
             val iv = getHMAC(chainKey, CHAIN_KEY_CONST3)
-            return ChainKeyUpdate(newChainKey.bytes, messageKey.bytes, iv.bytes.copyOf(12))
+            return ChainKeyUpdate(newChainKey.bytes, messageKey.bytes, iv.bytes.copyOf(CHACHA_NONCE_SIZE_BYTES))
         }
 
-        fun ratchetInitAlice(startingSessionSecret: ByteArray, bobDHKey: PublicKey, secureRandom: SecureRandom = newSecureRandom()): RatchetState {
+        fun ratchetInitAlice(startingSessionSecret: ByteArray,
+                             bobDHKey: PublicKey,
+                             secureRandom: SecureRandom = newSecureRandom(),
+                             maxSkip: Int = 3,
+                             maxLost: Int = 10): RatchetState {
             val aliceDHKeyPair = generateCurve25519DHKeyPair(secureRandom)
             val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKey)
             val sessionSharedDHSecret = getSharedDHSecret(aliceDHKeyPair, bobDHKey)
@@ -96,10 +113,16 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                     receiverNextHeaderKey = sharedNextHeaderKeyB,
                     receiverSequenceNumber = 0,
                     previousSenderChainNumber = 0,
+                    maxSkip = maxSkip,
+                    maxLost = maxLost,
                     secureRandom = secureRandom)
         }
 
-        fun ratchetInitBob(startingSessionSecret: ByteArray, bobDHKeyPair: KeyPair, secureRandom: SecureRandom = newSecureRandom()): RatchetState {
+        fun ratchetInitBob(startingSessionSecret: ByteArray,
+                           bobDHKeyPair: KeyPair,
+                           secureRandom: SecureRandom = newSecureRandom(),
+                           maxSkip: Int = 3,
+                           maxLost: Int = 10): RatchetState {
             val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKeyPair.public)
             return RatchetState(senderDHKeyPair = bobDHKeyPair,
                     receiverDHKey = Curve25519PublicKey(emptyKey),
@@ -113,6 +136,8 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                     receiverNextHeaderKey = sharedHeaderKeyA,
                     receiverSequenceNumber = 0,
                     previousSenderChainNumber = 0,
+                    maxSkip = maxSkip,
+                    maxLost = maxLost,
                     secureRandom = secureRandom)
         }
     }
@@ -197,7 +222,10 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     }
 
     private fun skipMessageKeys(until: Int) {
-        if (receiverSequenceNumber + MAX_SKIP < until) {
+        if (receiverSequenceNumber + maxSkip < until) {
+            throw RatchetException()
+        }
+        if ((skippedMessageKeys.size + (until - receiverSequenceNumber)) > maxLost) {
             throw RatchetException()
         }
         if (!Arrays.equals(receiverChainKey, emptyKey)) {

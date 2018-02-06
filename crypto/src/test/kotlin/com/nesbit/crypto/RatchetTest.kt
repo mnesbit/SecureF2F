@@ -146,29 +146,29 @@ class RatchetTest {
         val secureRandom = newSecureRandom()
         val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
         val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
-        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
+        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom, 5)
         val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
         var msgCount = 0
         for (i in 0 until 10) {
             val aliceMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
-            for (j in 0 until RatchetState.MAX_SKIP) {
+            for (j in 0 until ratchetBob.maxSkip) {
                 val msg = "from alice ${msgCount}".toByteArray(Charsets.UTF_8)
                 ++msgCount
                 aliceMessages += Pair(msg, ratchetAlice.encryptMessage(msg, null))
             }
-            for (j in 0 until RatchetState.MAX_SKIP) {
-                val (msg, aliceMessage) = aliceMessages[RatchetState.MAX_SKIP - j - 1]
+            for (j in 0 until ratchetBob.maxSkip) {
+                val (msg, aliceMessage) = aliceMessages[ratchetBob.maxSkip - j - 1]
                 val bobDecode = ratchetBob.decryptMessage(aliceMessage, null)
                 assertArrayEquals(msg, bobDecode)
             }
             val bobMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
-            for (j in 0 until RatchetState.MAX_SKIP) {
+            for (j in 0 until ratchetAlice.maxSkip) {
                 val msg = "from bob ${msgCount}".toByteArray(Charsets.UTF_8)
                 ++msgCount
                 bobMessages += Pair(msg, ratchetBob.encryptMessage(msg, null))
             }
-            for (j in 0 until RatchetState.MAX_SKIP) {
-                val (msg, bobMessage) = bobMessages[RatchetState.MAX_SKIP - j - 1]
+            for (j in 0 until ratchetAlice.maxSkip) {
+                val (msg, bobMessage) = bobMessages[ratchetAlice.maxSkip - j - 1]
                 val aliceDecode = ratchetAlice.decryptMessage(bobMessage, null)
                 assertArrayEquals(msg, aliceDecode)
             }

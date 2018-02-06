@@ -26,14 +26,14 @@ class Sphinx(
         private val ZERO_16 = ByteArray(16)
         private val HKDF_SALT = "SphinxHashes".toByteArray(Charsets.UTF_8)
 
-        private val SECURITY_PARAMETER = 16 // To work with Curve25519 key (32 bytes each) and 16 bytes AES keys
-        private val ID_HASH_SIZE = 2 * SECURITY_PARAMETER // Use SHA-256 of signing key and Curve25519 key
-        private val RHO_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
-        private val GCM_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
-        private val GCM_NONCE_LENGTH = 12 // in bytes
-        private val GCM_TAG_LENGTH = SECURITY_PARAMETER // in bytes
-        private val BLIND_LENGTH = Curve25519.KEY_SIZE // in bytes
-        private val ENTRY_SIZE = ID_HASH_SIZE + GCM_TAG_LENGTH
+        private const val SECURITY_PARAMETER = 16 // To work with Curve25519 key (32 bytes each) and 16 bytes AES keys
+        private const val ID_HASH_SIZE = 2 * SECURITY_PARAMETER // Use SHA-256 of signing key and Curve25519 key
+        private const val RHO_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
+        private const val GCM_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
+        private const val GCM_NONCE_LENGTH = 12 // in bytes
+        private const val GCM_TAG_LENGTH = SECURITY_PARAMETER // in bytes
+        private const val BLIND_LENGTH = Curve25519.KEY_SIZE // in bytes
+        private const val ENTRY_SIZE = ID_HASH_SIZE + GCM_TAG_LENGTH
         private val ZERO_PAD = ByteArray(ENTRY_SIZE)
     }
 
@@ -108,7 +108,7 @@ class Sphinx(
 
     internal class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
         companion object {
-            val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
+            private const val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
         }
 
         val rhoKey: SecretKeySpec
@@ -120,19 +120,12 @@ class Sphinx(
             val hkdf = HKDFBytesGenerator(SHA256Digest())
             hkdf.init(HKDFParameters(sharedSecret.encoded, HKDF_SALT, context.bytes))
             val hkdfKey = ByteArray(TOTAL_KEY_BYTES)
-            hkdf.generateBytes(hkdfKey, 0, TOTAL_KEY_BYTES)
-            var start = 0
-            var end = (RHO_KEY_SIZE / 8)
-            rhoKey = SecretKeySpec(hkdfKey.copyOfRange(start, end), "AES")
-            start = end
-            end += GCM_NONCE_LENGTH
-            gcmNonce = hkdfKey.copyOfRange(start, end)
-            start = end
-            end += (GCM_KEY_SIZE / 8)
-            gcmKey = SecretKeySpec(hkdfKey.copyOfRange(start, end), "AES")
-            start = end
-            end += BLIND_LENGTH
-            blind = Curve25519PrivateKey(hkdfKey.copyOfRange(start, end))
+            hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
+            val splits = hkdfKey.splitByteArrays((RHO_KEY_SIZE / 8), GCM_NONCE_LENGTH, (GCM_KEY_SIZE / 8), BLIND_LENGTH)
+            rhoKey = SecretKeySpec(splits[0], "AES")
+            gcmNonce = splits[1]
+            gcmKey = SecretKeySpec(splits[2], "AES")
+            blind = Curve25519PrivateKey(splits[3])
         }
     }
 

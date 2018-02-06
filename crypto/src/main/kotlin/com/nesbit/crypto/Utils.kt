@@ -18,6 +18,17 @@ fun concatByteArrays(vararg concat: ByteArray): ByteArray {
     return output
 }
 
+fun ByteArray.splitByteArrays(vararg lengths: Int): List<ByteArray> {
+    require(lengths.sum() == this.size) { "Array length ${this.size} doesn't match split lengths ${lengths.sum()}" }
+    var start = 0
+    val splits = mutableListOf<ByteArray>()
+    for (length in lengths) {
+        splits.add(this.copyOfRange(start, start + length))
+        start += length
+    }
+    return splits
+}
+
 fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
     require(array1.size == array2.size) { "Only able to Xor same size arrays" }
     val output = ByteArray(array1.size)
