@@ -7,6 +7,7 @@ import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import java.io.IOException
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -36,7 +37,7 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         private val CHAIN_KEY_CONST1 = ByteArray(1, { 0x42 })
         private val CHAIN_KEY_CONST2 = ByteArray(1, { 0x69 })
         private val CHAIN_KEY_CONST3 = "Pootle".toByteArray(Charsets.UTF_8)
-        private const val MAX_SKIP = 3
+        const val MAX_SKIP = 3
 
         private fun sharedKeysFromStartingSecret(startingSessionSecret: ByteArray, bobDHKey: PublicKey): Triple<ByteArray, MessageKey, MessageKey> {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
@@ -174,9 +175,13 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         for ((headerKey, messageKey) in skippedMessageKeys) {
             try {
                 val decryptedHeaderBytes = headerDecrypt(headerKey.key, headerKey.iv, ratchetMessage.encryptedHeader)
-                val decryptedHeader = RatchetHeader.deserialize(decryptedHeaderBytes)
+                val decryptedHeader = try {
+                    RatchetHeader.deserialize(decryptedHeaderBytes)
+                } catch (ex: IOException) {
+                    continue
+                }
                 val reserialized = decryptedHeader.serialize()
-                if (org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
+                if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
                     throw AEADBadTagException()
                 }
                 if (decryptedHeader.sequenceNumber == headerKey.sequenceNumber) {
@@ -230,7 +235,11 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     private fun decryptHeader(encryptedHeader: ByteArray): HeaderDecryptResult {
         try {
             val decryptedHeaderBytes = headerDecrypt(receiverHeaderKey.key, receiverHeaderKey.iv, encryptedHeader)
-            val decryptedHeader = RatchetHeader.deserialize(decryptedHeaderBytes)
+            val decryptedHeader = try {
+                RatchetHeader.deserialize(decryptedHeaderBytes)
+            } catch (ex: IOException) {
+                throw AEADBadTagException()
+            }
             val reserialized = decryptedHeader.serialize()
             if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
                 throw AEADBadTagException()
@@ -241,7 +250,11 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         }
         try {
             val decryptedHeaderBytes = headerDecrypt(receiverNextHeaderKey.key, receiverNextHeaderKey.iv, encryptedHeader)
-            val decryptedHeader = RatchetHeader.deserialize(decryptedHeaderBytes)
+            val decryptedHeader = try {
+                RatchetHeader.deserialize(decryptedHeaderBytes)
+            } catch (ex: IOException) {
+                throw AEADBadTagException()
+            }
             val reserialized = decryptedHeader.serialize()
             if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
                 throw AEADBadTagException()
@@ -256,7 +269,7 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     fun decryptMessage(encrypted: ByteArray, aad: ByteArray? = null): ByteArray {
         val ratchetMessage = try {
             RatchetMessage.deserialize(encrypted)
-        } catch (ex: Exception) {
+        } catch (ex: IOException) {
             throw RatchetException()
         }
         val reserialized = ratchetMessage.serialize()

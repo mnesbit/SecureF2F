@@ -119,4 +119,60 @@ class RatchetTest {
         val decryptedMessage2 = ratchetAlice.decryptMessage(bobMessage, null) // have to prime bob
         assertArrayEquals(bobPlaintext, decryptedMessage2)
     }
+
+    @Test
+    fun `Drop initial messages`() {
+        val secureRandom = newSecureRandom()
+        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+        val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
+        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
+        val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
+        val alicePlaintext = "From Alice".toByteArray(Charsets.UTF_8)
+        val alicePlaintext2 = "From Alice2".toByteArray(Charsets.UTF_8)
+        ratchetAlice.encryptMessage(alicePlaintext, null) //drop one message
+        val aliceSecondMessage = ratchetAlice.encryptMessage(alicePlaintext2, null)
+        val decryptedMessage1 = ratchetBob.decryptMessage(aliceSecondMessage, null)
+        assertArrayEquals(alicePlaintext2, decryptedMessage1)
+        val bobPlaintext = "From Bob".toByteArray(Charsets.UTF_8)
+        val bobPlaintext2 = "From Bob2".toByteArray(Charsets.UTF_8)
+        ratchetBob.encryptMessage(bobPlaintext, null) // drop one message
+        val bobSecondMessage = ratchetBob.encryptMessage(bobPlaintext2, null)
+        val decryptedMessage2 = ratchetAlice.decryptMessage(bobSecondMessage, null)
+        assertArrayEquals(bobPlaintext2, decryptedMessage2)
+    }
+
+    @Test
+    fun `Scrambled ordering`() {
+        val secureRandom = newSecureRandom()
+        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+        val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
+        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
+        val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
+        var msgCount = 0
+        for (i in 0 until 10) {
+            val aliceMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
+            for (j in 0 until RatchetState.MAX_SKIP) {
+                val msg = "from alice ${msgCount}".toByteArray(Charsets.UTF_8)
+                ++msgCount
+                aliceMessages += Pair(msg, ratchetAlice.encryptMessage(msg, null))
+            }
+            for (j in 0 until RatchetState.MAX_SKIP) {
+                val (msg, aliceMessage) = aliceMessages[RatchetState.MAX_SKIP - j - 1]
+                val bobDecode = ratchetBob.decryptMessage(aliceMessage, null)
+                assertArrayEquals(msg, bobDecode)
+            }
+            val bobMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
+            for (j in 0 until RatchetState.MAX_SKIP) {
+                val msg = "from bob ${msgCount}".toByteArray(Charsets.UTF_8)
+                ++msgCount
+                bobMessages += Pair(msg, ratchetBob.encryptMessage(msg, null))
+            }
+            for (j in 0 until RatchetState.MAX_SKIP) {
+                val (msg, bobMessage) = bobMessages[RatchetState.MAX_SKIP - j - 1]
+                val aliceDecode = ratchetAlice.decryptMessage(bobMessage, null)
+                assertArrayEquals(msg, aliceDecode)
+            }
+        }
+    }
+
 }

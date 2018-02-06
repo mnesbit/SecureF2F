@@ -4,10 +4,10 @@ import org.apache.avro.Conversions
 import org.apache.avro.Schema
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.*
-import org.apache.avro.io.DecoderFactory
 import org.apache.avro.io.EncoderFactory
 import org.apache.avro.util.Utf8
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.math.BigDecimal
 import java.nio.ByteBuffer
 import java.time.*
@@ -80,8 +80,12 @@ object AvroTypeHelpers {
 
 fun Schema.deserialize(bytes: ByteArray): GenericRecord {
     val datumReader = GenericDatumReader<GenericRecord>(this)
-    val decoder = DecoderFactory.get().binaryDecoder(bytes, null)
-    return datumReader.read(null, decoder)
+    val decoder = SafeDecoder(bytes)
+    val record = datumReader.read(null, decoder)
+    if (!decoder.fullyConsumed) {
+        throw IOException()
+    }
+    return record
 }
 
 @Suppress("UNCHECKED_CAST")
