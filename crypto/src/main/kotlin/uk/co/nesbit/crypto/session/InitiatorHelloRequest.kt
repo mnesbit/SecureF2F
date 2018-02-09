@@ -1,18 +1,19 @@
 package uk.co.nesbit.crypto.session
 
-import uk.co.nesbit.avro.*
-import uk.co.nesbit.crypto.*
-import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
-import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import org.apache.avro.Schema
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import uk.co.nesbit.avro.*
+import uk.co.nesbit.crypto.*
+import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
+import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import java.security.KeyPair
 import java.security.SignatureException
 import java.util.*
 
-
+// Third packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
+// See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
 class InitiatorHelloRequest(val schemaId: SecureHash,
                             val initiatorNonce: ByteArray,
                             val responderNonce: ByteArray,

@@ -1,5 +1,9 @@
 package uk.co.nesbit.crypto.session
 
+import org.apache.avro.Schema
+import org.apache.avro.SchemaNormalization
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
@@ -9,15 +13,13 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.generateCurve25519DHKeyPair
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
-import org.apache.avro.Schema
-import org.apache.avro.SchemaNormalization
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.util.*
 
+// First packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
+// See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
 class InitiatorSessionParams(val schemaId: SecureHash,
                              val initiatorNonce: ByteArray,
                              val initiatorDHPublicKey: PublicKey) : AvroConvertible {

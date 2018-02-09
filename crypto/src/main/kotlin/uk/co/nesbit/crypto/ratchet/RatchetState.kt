@@ -1,15 +1,18 @@
 package uk.co.nesbit.crypto.ratchet
 
-import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.*
-import uk.co.nesbit.crypto.ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
-import uk.co.nesbit.crypto.ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
-import uk.co.nesbit.crypto.ratchet.RatchetState.Companion.MessageKey.Companion.MESSAGE_KEY_SIZE
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.*
+import uk.co.nesbit.crypto.ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
+import uk.co.nesbit.crypto.ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
+import uk.co.nesbit.crypto.ratchet.RatchetState.Companion.MessageKey.Companion.MESSAGE_KEY_SIZE
+import uk.co.nesbit.crypto.session.InitiatorSessionParams
+import uk.co.nesbit.crypto.session.ResponderSessionParams
+import uk.co.nesbit.crypto.session.SessionSecretState
 import java.io.IOException
 import java.security.KeyPair
 import java.security.PublicKey
@@ -17,6 +20,8 @@ import java.security.SecureRandom
 import java.util.*
 import javax.crypto.AEADBadTagException
 
+// Based upon header encrypted Axolotl Ratchet/Double ratchet protocol
+// as described in https://signal.org/docs/specifications/doubleratchet/
 class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                                        private var receiverDHKey: PublicKey,
                                        private var rootKey: ByteArray,
@@ -35,6 +40,8 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     private val skippedMessageKeys = mutableMapOf<HeaderKey, MessageKey>()
 
     companion object {
+        private const val DEFAULT_MAX_SKIP = 3
+        private const val DEFAULT_MAX_LOST = 10
         private const val CHAIN_KEY_SIZE = 32
         private val emptyKey = ByteArray(CHACHA_KEY_SIZE_BYTES)
         private val emptyIv = ByteArray(CHACHA_NONCE_SIZE_BYTES)
@@ -95,8 +102,8 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         fun ratchetInitAlice(startingSessionSecret: ByteArray,
                              bobDHKey: PublicKey,
                              secureRandom: SecureRandom = newSecureRandom(),
-                             maxSkip: Int = 3,
-                             maxLost: Int = 10): RatchetState {
+                             maxSkip: Int = DEFAULT_MAX_SKIP,
+                             maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
             val aliceDHKeyPair = generateCurve25519DHKeyPair(secureRandom)
             val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKey)
             val sessionSharedDHSecret = getSharedDHSecret(aliceDHKeyPair, bobDHKey)
@@ -121,8 +128,8 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         fun ratchetInitBob(startingSessionSecret: ByteArray,
                            bobDHKeyPair: KeyPair,
                            secureRandom: SecureRandom = newSecureRandom(),
-                           maxSkip: Int = 3,
-                           maxLost: Int = 10): RatchetState {
+                           maxSkip: Int = DEFAULT_MAX_SKIP,
+                           maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
             val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKeyPair.public)
             return RatchetState(senderDHKeyPair = bobDHKeyPair,
                     receiverDHKey = Curve25519PublicKey(emptyKey),
@@ -139,6 +146,20 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                     maxSkip = maxSkip,
                     maxLost = maxLost,
                     secureRandom = secureRandom)
+        }
+
+        fun ratchetInitForSession(initiatorInit: InitiatorSessionParams,
+                                  responderInit: ResponderSessionParams,
+                                  dhKeys: KeyPair,
+                                  secureRandom: SecureRandom = newSecureRandom(),
+                                  maxSkip: Int = DEFAULT_MAX_SKIP,
+                                  maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
+            val sharedSecretState = SessionSecretState(initiatorInit, responderInit, dhKeys)
+            return if (dhKeys.public == initiatorInit.initiatorDHPublicKey) {
+                ratchetInitAlice(sharedSecretState.sessionRootKey, responderInit.responderDHPublicKey, secureRandom, maxSkip, maxLost)
+            } else {
+                ratchetInitBob(sharedSecretState.sessionRootKey, dhKeys, secureRandom, maxSkip, maxLost)
+            }
         }
     }
 

@@ -1,13 +1,15 @@
 package uk.co.nesbit.crypto
 
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Test
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.ratchet.RatchetState
 import uk.co.nesbit.crypto.session.InitiatorHelloRequest
 import uk.co.nesbit.crypto.session.InitiatorSessionParams
 import uk.co.nesbit.crypto.session.ResponderHelloResponse
 import uk.co.nesbit.crypto.session.ResponderSessionParams
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
-import org.junit.Assert.assertEquals
-import org.junit.Test
 
 class LinkTestTests {
     @Test
@@ -85,5 +87,50 @@ class LinkTestTests {
         assertEquals(responderHelloResponse, helloResponseDeserialized2)
         val receivedIdentity = helloResponseDeserialized.verify(initiatorSessionParams, responderSessionParams, initiatorHelloRequest, initiatorKeys)
         assertEquals(responderVersionedIdentity, receivedIdentity)
+    }
+
+    @Test
+    fun `Handshake then ratchet`() {
+        val secureRandom = newSecureRandom()
+        val initiatorIdentity = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
+        val initiatorVersionedIdentity = initiatorIdentity.getVersionedId(2)
+        val (initiatorKeys, initiatorSessionParams) = InitiatorSessionParams.createInitiatorSession(secureRandom)
+        initiatorSessionParams.verify()
+        val (responderKeys, responderSessionParams) = ResponderSessionParams.createResponderSession(initiatorSessionParams,
+                secureRandom)
+        responderSessionParams.verify(initiatorSessionParams)
+        val initiatorHelloRequest = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams,
+                responderSessionParams,
+                initiatorKeys,
+                initiatorVersionedIdentity,
+                { _, bytes -> initiatorIdentity.signingKeys.sign(bytes) })
+        val validatedInitiatorIdentity = initiatorHelloRequest.verify(initiatorSessionParams,
+                responderSessionParams,
+                responderKeys)
+        assertEquals(initiatorVersionedIdentity, validatedInitiatorIdentity)
+        val responderIdentity = SphinxIdentityKeyPair.generateKeyPair(secureRandom)
+        val responderVersionedIdentity = responderIdentity.getVersionedId(4)
+        val responderHelloResponse = ResponderHelloResponse.createHelloResponse(initiatorSessionParams,
+                responderSessionParams,
+                initiatorHelloRequest,
+                responderKeys,
+                responderVersionedIdentity,
+                { _, bytes -> responderIdentity.signingKeys.sign(bytes) })
+        val validatedResponderIdentity = responderHelloResponse.verify(initiatorSessionParams,
+                responderSessionParams,
+                initiatorHelloRequest,
+                initiatorKeys)
+        assertEquals(responderVersionedIdentity, validatedResponderIdentity)
+        val initiatorRatchet = RatchetState.ratchetInitForSession(initiatorSessionParams, responderSessionParams, initiatorKeys)
+        val responderRatchet = RatchetState.ratchetInitForSession(initiatorSessionParams, responderSessionParams, responderKeys)
+        val message1 = "Message1".toByteArray(Charsets.UTF_8)
+        val context = concatByteArrays(initiatorSessionParams.serialize(), responderSessionParams.serialize())
+        val firstMessage = initiatorRatchet.encryptMessage(message1, context)
+        val firstMessageDecrypted = responderRatchet.decryptMessage(firstMessage, context)
+        assertArrayEquals(message1, firstMessageDecrypted)
+        val message2 = "Message2".toByteArray(Charsets.UTF_8)
+        val secondMessage = responderRatchet.encryptMessage(message2, context)
+        val secondMessageDecrypted = initiatorRatchet.decryptMessage(secondMessage, context)
+        assertArrayEquals(message2, secondMessageDecrypted)
     }
 }
