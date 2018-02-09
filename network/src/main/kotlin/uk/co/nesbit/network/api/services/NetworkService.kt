@@ -1,7 +1,7 @@
 package uk.co.nesbit.network.api.services
 
+import io.reactivex.Observable
 import uk.co.nesbit.network.api.*
-import rx.Observable
 
 interface NetworkService {
     val localAddress: Address

@@ -1,9 +1,9 @@
 package uk.co.nesbit.network.engine
 
+import io.reactivex.Observable
+import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.services.NetworkService
-import rx.Observable
-import rx.subjects.PublishSubject
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
 

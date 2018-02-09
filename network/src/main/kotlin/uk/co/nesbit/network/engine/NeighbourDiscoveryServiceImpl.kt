@@ -1,5 +1,7 @@
 package uk.co.nesbit.network.engine
 
+import io.reactivex.Observable
+import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.LinkInfo
@@ -7,8 +9,6 @@ import uk.co.nesbit.network.api.LinkStatusChange
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
 import uk.co.nesbit.network.api.services.NetworkService
-import rx.Observable
-import rx.subjects.PublishSubject
 
 class NeighbourDiscoveryServiceImpl(val network: NetworkService, val identityService: KeyService) : NeighbourDiscoveryService {
     override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
