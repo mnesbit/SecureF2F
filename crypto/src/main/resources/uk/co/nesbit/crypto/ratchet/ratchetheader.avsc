@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto.ratchet",
+  "name": "RatchetHeader",
+  "type": "record",
+  "fields": [
+    {
+      "name": "senderDHKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "previousChainCount",
+      "type": "int"
+    },
+    {
+      "name": "sequenceNumber",
+      "type": "int"
+    }
+  ]
+}

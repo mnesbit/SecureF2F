@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto.session",
+  "name": "SessionIdentityProof",
+  "type": "record",
+  "fields": [
+    {
+      "name": "identityInfo",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "sessionBindingSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    },
+    {
+      "name": "identityMAC",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    }
+  ]
+}

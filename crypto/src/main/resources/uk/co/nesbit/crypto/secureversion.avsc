@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "SecureVersion",
+  "type": "record",
+  "fields": [
+    {
+      "name": "version",
+      "type": "int"
+    },
+    {
+      "name": "chainHash",
+      "type": "SecureHash"
+    }
+  ]
+}

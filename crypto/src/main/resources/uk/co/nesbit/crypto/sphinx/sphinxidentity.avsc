@@ -1,0 +1,26 @@
+{
+  "namespace": "uk.co.nesbit.crypto.sphinx",
+  "name": "SphinxPublicIdentity",
+  "type": "record",
+  "fields": [
+    {
+      "name": "signingPublicKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "diffieHellmanPublicKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "targetHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "publicAddress",
+      "type": [
+        "null",
+        "string"
+      ]
+    }
+  ]
+}

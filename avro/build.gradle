@@ -1,4 +1,4 @@
-group 'com.nesbit'
+group 'uk.co.nesbit'
 version '1.0-SNAPSHOT'
 
 dependencies {

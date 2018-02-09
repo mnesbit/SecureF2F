@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.crypto.sphinx",
+  "name": "VersionedIdentity",
+  "type": "record",
+  "fields": [
+    {
+      "name": "identity",
+      "type": "SphinxPublicIdentity"
+    },
+    {
+      "name": "currentVersion",
+      "type": "uk.co.nesbit.crypto.SecureVersion"
+    }
+  ]
+}

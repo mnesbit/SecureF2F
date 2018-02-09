@@ -1,0 +1,16 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "SecureHash",
+  "type": "record",
+  "fields": [
+    {
+      "name": "algorithm",
+      "type": "string"
+    },
+    {
+      "name": "bytes",
+      "alias": "bits",
+      "type": "bytes"
+    }
+  ]
+}

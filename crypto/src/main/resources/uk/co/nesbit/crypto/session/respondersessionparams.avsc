@@ -1,0 +1,31 @@
+{
+  "namespace": "uk.co.nesbit.crypto.session",
+  "name": "ResponderSessionParams",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "initiatorNonce",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    },
+    {
+      "name": "responderNonce",
+      "type": "nonce"
+    },
+    {
+      "name": "responderDHPublicKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    }
+  ]
+}

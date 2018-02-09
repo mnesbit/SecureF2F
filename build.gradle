@@ -21,7 +21,7 @@ allprojects {
     apply plugin: 'java'
     apply plugin: 'kotlin'
 
-    group 'com.nesbit'
+    group 'uk.co.nesbit'
     version '1.0-SNAPSHOT'
 
     sourceCompatibility = 1.8
