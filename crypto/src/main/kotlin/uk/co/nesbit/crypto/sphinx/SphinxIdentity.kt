@@ -1,10 +1,10 @@
 package uk.co.nesbit.crypto.sphinx
 
-import uk.co.nesbit.avro.*
-import uk.co.nesbit.crypto.*
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import uk.co.nesbit.avro.*
+import uk.co.nesbit.crypto.*
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -78,7 +78,7 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
         fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom(), publicAddress: String? = null): SphinxIdentityKeyPair {
             val signingKeys = generateEdDSAKeyPair(secureRandom)
             val dhKeys = generateCurve25519DHKeyPair(secureRandom)
-            val hashChain = HashChainPrivate.generateChain(concatByteArrays(signingKeys.public.encoded, dhKeys.public.encoded), secureRandom)
+            val hashChain = PebbledHashChain.generateChain(concatByteArrays(signingKeys.public.encoded, dhKeys.public.encoded), secureRandom)
             return SphinxIdentityKeyPair(signingKeys, dhKeys, hashChain, publicAddress)
         }
     }

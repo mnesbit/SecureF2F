@@ -1,9 +1,10 @@
 package uk.co.nesbit.crypto
 
-import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import org.junit.Assert
 import org.junit.Test
+import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
+import java.util.*
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -41,7 +42,7 @@ class HashChainTest {
 
     @Test
     fun `serialization test`() {
-        val chain = HashChainPrivate.generateChain("Test".toByteArray())
+        val chain = PebbledHashChain.generateChain("Test".toByteArray())
         val publicChain = chain.public
         val serializedChain = publicChain.serialize()
         val deserializedChain = HashChainPublic.deserialize(serializedChain)
@@ -52,5 +53,42 @@ class HashChainTest {
         val id1 = chain.getSecureVersion(100)
         assertTrue(deserializedChain.verifyChainValue(id1.chainHash, 100))
         assertFalse(deserializedChain.verifyChainValue(id1.chainHash, 99))
+    }
+
+    @Test
+    fun `pebble vs simple test`() {
+        val dummySecureRandom = Random()
+        dummySecureRandom.setSeed(100)
+        val keyMaterial = "Test".toByteArray()
+        val pebbledHashChain = PebbledHashChain.generateChain(keyMaterial, dummySecureRandom)
+        dummySecureRandom.setSeed(100)
+        val originalHashChain = SimpleHashChainPrivate.generateChain(keyMaterial, dummySecureRandom)
+        assertEquals(originalHashChain.secureVersion, pebbledHashChain.secureVersion)
+        assertEquals(originalHashChain.targetHash, pebbledHashChain.targetHash)
+        assertEquals(originalHashChain.public, pebbledHashChain.public)
+        for (i in 0 until 50) {
+            val originalVersion = originalHashChain.getSecureVersion(i)
+            val pebbledVersion = pebbledHashChain.getSecureVersion(i)
+            assertEquals(originalVersion, pebbledVersion)
+            assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+        }
+        for (i in 150 until 160 step 3) {
+            val originalVersion = originalHashChain.getSecureVersion(i)
+            val pebbledVersion = pebbledHashChain.getSecureVersion(i)
+            assertEquals(originalVersion, pebbledVersion)
+            assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+        }
+        for (i in 2000 until 2010) {
+            val originalVersion = originalHashChain.getSecureVersion(i)
+            val pebbledVersion = pebbledHashChain.getSecureVersion(i)
+            assertEquals(originalVersion, pebbledVersion)
+            assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+        }
+        for (i in HashChainPublic.MAX_CHAIN_LENGTH - 3..HashChainPublic.MAX_CHAIN_LENGTH) {
+            val originalVersion = originalHashChain.getSecureVersion(i)
+            val pebbledVersion = pebbledHashChain.getSecureVersion(i)
+            assertEquals(originalVersion, pebbledVersion)
+            assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+        }
     }
 }
