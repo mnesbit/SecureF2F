@@ -16,6 +16,7 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
+apply plugin: 'application'
 
 allprojects {
     apply plugin: 'java'
@@ -46,3 +47,10 @@ allprojects {
         kotlinOptions.jvmTarget = "1.8"
     }
 }
+
+
+dependencies {
+    compile project(':crypto')
+}
+
+mainClassName = "uk.co.nesbit.Main"
