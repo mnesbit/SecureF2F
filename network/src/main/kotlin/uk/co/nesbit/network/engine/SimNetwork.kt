@@ -3,6 +3,7 @@ package uk.co.nesbit.network.engine
 import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.services.LinkReceivedMessage
 import uk.co.nesbit.network.api.services.NetworkService
 import java.io.IOException
 import java.util.concurrent.LinkedBlockingQueue
@@ -11,47 +12,57 @@ class SimNetwork {
     private val networkNodes = mutableMapOf<Address, NetworkServiceImpl>()
     private val messageQueue = LinkedBlockingQueue<Packet>()
 
-    private data class Packet(val route: Route, val viaLinkId: LinkId, val message: Message)
+    private class Packet(val route: Route, val viaLinkId: LinkId, val message: ByteArray)
 
-    private class NetworkServiceImpl(val parent: SimNetwork, override val localAddress: Address) : NetworkService {
+    private class NetworkServiceImpl(val parent: SimNetwork, override val networkId: Address) : NetworkService {
         companion object {
             var linkIdCounter = 0
         }
 
-        override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
-        private val addresses = mutableMapOf<Address, LinkId>()
+        override val links: MutableMap<LinkId, LinkStatus> = mutableMapOf()
+        val addresses = mutableMapOf<Address, LinkId>()
+        private val linkToAddress = mutableMapOf<LinkId, Address>()
 
-        private val _onReceive = PublishSubject.create<Message>()
-        override val onReceive: Observable<Message>
+        private val _onReceive = PublishSubject.create<LinkReceivedMessage>()
+        override val onReceive: Observable<LinkReceivedMessage>
             get() = _onReceive
 
         private val _onLinkStatusChange = PublishSubject.create<LinkStatusChange>()
         override val onLinkStatusChange: Observable<LinkStatusChange>
             get() = _onLinkStatusChange
 
-        init {
-            openLink(localAddress)
+        private fun linkOpenedByRemote(remoteAddress: Address) {
+            if (addresses.containsKey(remoteAddress)) {
+                return
+            }
+            val newLink = SimpleLinkId(linkIdCounter++)
+            links[newLink] = LinkStatus.LINK_UP_PASSIVE
+            linkToAddress[newLink] = remoteAddress
+            addresses[remoteAddress] = newLink
+            _onLinkStatusChange.onNext(LinkStatusChange(newLink, links[newLink]!!))
         }
 
         override fun openLink(remoteAddress: Address): Boolean {
             if (addresses.containsKey(remoteAddress)) {
                 return false
             }
-            val newLink = LinkInfo(SimpleLinkId(linkIdCounter++), RouteState(Route(localAddress, remoteAddress), LinkStatus.LINK_UP))
-            links[newLink.linkId] = newLink
-            addresses[remoteAddress] = newLink.linkId
-            linkChange(LinkStatusChange(newLink.linkId, newLink.state.status))
+            val newLink = SimpleLinkId(linkIdCounter++)
+            links[newLink] = LinkStatus.LINK_UP_ACTIVE
+            linkToAddress[newLink] = remoteAddress
+            addresses[remoteAddress] = newLink
+            parent.networkNodes[remoteAddress]?.linkOpenedByRemote(networkId)
+            _onLinkStatusChange.onNext(LinkStatusChange(newLink, links[newLink]!!))
             return true
         }
 
         override fun closeLink(linkId: LinkId) {
             val link = links.remove(linkId)
             if (link != null) {
-                addresses.remove(link.state.route.to)
-                _onLinkStatusChange.onNext(LinkStatusChange(link.linkId, LinkStatus.LINK_DOWN))
-                val otherEnd = parent.networkNodes[link.state.route.to]
+                val linkAddress = linkToAddress.remove(linkId)
+                _onLinkStatusChange.onNext(LinkStatusChange(linkId, LinkStatus.LINK_DOWN))
+                val otherEnd = parent.networkNodes[linkAddress]
                 if (otherEnd != null) {
-                    val reverseLink = otherEnd.findLinkTo(localAddress)
+                    val reverseLink = otherEnd.addresses[networkId]
                     if (reverseLink != null) {
                         otherEnd.closeLink(reverseLink)
                     }
@@ -59,25 +70,24 @@ class SimNetwork {
             }
         }
 
-        override fun findLinkTo(target: Address): LinkId? = addresses[target]
-
-        override fun send(linkId: LinkId, msg: Message) {
-            val link = links[linkId] ?: throw IllegalArgumentException("Invalid LinkId $linkId")
-            if (link.state.status != LinkStatus.LINK_UP) {
-                throw IOException("Link Unavailable $link")
+        override fun send(linkId: LinkId, msg: ByteArray) {
+            val status = links[linkId] ?: throw IllegalArgumentException("Invalid LinkId $linkId")
+            if (!status.active()) {
+                throw IOException("Link Unavailable $linkId")
             }
-            parent.messageQueue.offer(Packet(link.state.route, linkId, msg))
+            parent.messageQueue.offer(Packet(Route(networkId, linkToAddress[linkId]!!), linkId, msg))
         }
 
-        fun deliver(msg: Message) {
+        fun deliver(msg: LinkReceivedMessage) {
             ++parent._messageCount
             _onReceive.onNext(msg)
         }
 
         fun linkChange(statusChange: LinkStatusChange) {
-            val link = links[statusChange.linkId] ?: throw java.lang.IllegalArgumentException("Invalid LinkId $statusChange")
-            if (link.state.status != statusChange.status) {
-                links[statusChange.linkId] = LinkInfo(link.linkId, state = link.state.copy(status = statusChange.status))
+            val currenStatus = links[statusChange.linkId]
+                    ?: throw java.lang.IllegalArgumentException("Invalid LinkId $statusChange")
+            if (currenStatus != statusChange.status) {
+                links[statusChange.linkId] = statusChange.status
                 _onLinkStatusChange.onNext(statusChange)
             }
         }
@@ -93,23 +103,19 @@ class SimNetwork {
     fun changeLinkStatus(address1: Address, address2: Address, status: LinkStatus) {
         val node1 = networkNodes[address1] ?: throw IllegalArgumentException("Unknown node $address1")
         val node2 = networkNodes[address2] ?: throw IllegalArgumentException("Unknown node $address2")
-        val links1to2 = node1.links.values.filter { it.state.route.to == address2 && it.state.status != status }
-        for (link in links1to2) {
-            node1.linkChange(LinkStatusChange(link.linkId, status))
-        }
-        val links2to1 = node1.links.values.filter { it.state.route.to == address1 && it.state.status != status }
-        for (link in links2to1) {
-            node2.linkChange(LinkStatusChange(link.linkId, status))
-        }
+        val link12Id = node1.addresses[address2]
+        node1.linkChange(LinkStatusChange(link12Id!!, status))
+        val link21Id = node2.addresses[address1]
+        node2.linkChange(LinkStatusChange(link21Id!!, status))
     }
 
     private fun nodeForMessage(packet: Packet?): NetworkServiceImpl? {
         if (packet != null) {
             val sourceNode = networkNodes[packet.route.from]
             if (sourceNode != null) {
-                val link = sourceNode.links[packet.viaLinkId]
-                if (link != null) {
-                    if (link.state.status == LinkStatus.LINK_UP) {
+                val status = sourceNode.links[packet.viaLinkId]
+                if (status != null) {
+                    if (status.active()) {
                         return networkNodes[packet.route.to]
                     }
                 }
@@ -121,7 +127,12 @@ class SimNetwork {
     fun deliverOne() {
         val nextMsg = messageQueue.poll()
         val targetNode = nodeForMessage(nextMsg)
-        targetNode?.deliver(nextMsg.message)
+        if (targetNode != null) {
+            val receivingLinkId = targetNode.addresses[nextMsg.route.from]
+            if (receivingLinkId != null) {
+                targetNode.deliver(LinkReceivedMessage(receivingLinkId, nextMsg.message))
+            }
+        }
     }
 
     fun deliverTillEmpty() {

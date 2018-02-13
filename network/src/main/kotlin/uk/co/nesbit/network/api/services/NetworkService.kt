@@ -1,15 +1,19 @@
 package uk.co.nesbit.network.api.services
 
 import io.reactivex.Observable
-import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.Address
+import uk.co.nesbit.network.api.LinkId
+import uk.co.nesbit.network.api.LinkStatus
+import uk.co.nesbit.network.api.LinkStatusChange
+
+data class LinkReceivedMessage(val linkId: LinkId, val msg: ByteArray)
 
 interface NetworkService {
-    val localAddress: Address
-    fun send(linkId: LinkId, msg: Message)
-    fun findLinkTo(target: Address): LinkId?
-    val onReceive: Observable<Message>
+    val networkId: Address
+    fun send(linkId: LinkId, msg: ByteArray)
+    val onReceive: Observable<LinkReceivedMessage>
 
-    val links: Map<LinkId, LinkInfo>
+    val links: Map<LinkId, LinkStatus>
     val onLinkStatusChange: Observable<LinkStatusChange>
 
     fun openLink(remoteAddress: Address): Boolean
