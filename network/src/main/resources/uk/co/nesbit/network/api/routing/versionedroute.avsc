@@ -1,0 +1,31 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "VersionedRoute",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "nonce",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    },
+    {
+      "name": "from",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "to",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    }
+  ]
+}

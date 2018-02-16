@@ -1,0 +1,31 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "Heartbeat",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "currentVersion",
+      "type": "uk.co.nesbit.crypto.SecureVersion"
+    },
+    {
+      "name": "versionedRouteSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    },
+    {
+      "name": "nextExpectedNonce",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    }
+  ]
+}
