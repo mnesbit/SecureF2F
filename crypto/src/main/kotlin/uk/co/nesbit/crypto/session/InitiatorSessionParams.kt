@@ -35,8 +35,7 @@ class InitiatorSessionParams(val schemaId: SecureHash,
     }
 
     companion object {
-        val initiatorSessionParamsSchema: Schema = Schema.Parser().addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).parse(InitiatorSessionParams::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorSessionParams.avsc"))
-
+        val initiatorSessionParamsSchema: Schema = Schema.Parser().addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).parse(InitiatorSessionParams::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorsessionparams.avsc"))
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", initiatorSessionParamsSchema)
 
         fun deserialize(bytes: ByteArray): InitiatorSessionParams {
