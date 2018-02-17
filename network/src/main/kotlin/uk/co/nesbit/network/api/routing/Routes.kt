@@ -6,6 +6,7 @@ import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
+import uk.co.nesbit.network.api.services.KeyService
 
 class Routes(val from: VersionedIdentity,
              val entries: List<RouteEntry>,
@@ -29,9 +30,27 @@ class Routes(val from: VersionedIdentity,
                         DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
                 .parse(Routes::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routes.avsc"))
 
+        private val fromSigningSchema: Schema = Schema.createArray(VersionedRoute.versionedRouteSchema)
+
         fun deserialize(bytes: ByteArray): Routes {
             val routesRecord = routesSchema.deserialize(bytes)
             return Routes(routesRecord)
+        }
+
+        fun createRoutes(routes: List<Pair<RouteEntry, DigitalSignature>>, fromKeyService: KeyService): Routes {
+            val from = fromKeyService.getVersion(fromKeyService.networkId.identity.id)
+            val entries = mutableListOf<RouteEntry>()
+            val signatures = mutableListOf<DigitalSignature>()
+            val versionedRoutes = GenericData.Array<GenericRecord>(routes.size, fromSigningSchema)
+            for ((entry, signature) in routes) {
+                val route = entry.verify(from, signature)
+                versionedRoutes.add(route.toGenericRecord())
+                entries += entry
+                signatures += signature
+            }
+            val serializedRoutes = versionedRoutes.serialize()
+            val fromSignature = fromKeyService.sign(fromKeyService.networkId.identity.id, serializedRoutes)
+            return Routes(from, entries, signatures, fromSignature.toDigitalSignature())
         }
     }
 
@@ -42,6 +61,18 @@ class Routes(val from: VersionedIdentity,
         routesRecord.putObjectArray("toSignatures", toSignatures)
         routesRecord.putTyped("fromSignature", fromSignature)
         return routesRecord
+    }
+
+    fun verify() {
+        require(entries.isNotEmpty() && (entries.size == toSignatures.size)) { "Invalid number of route entries" }
+        val versionedRoutes = GenericData.Array<GenericRecord>(entries.size, fromSigningSchema)
+        for (i in 0 until entries.size) {
+            val entry = entries[i]
+            val route = entry.verify(from, toSignatures[i])
+            versionedRoutes.add(route.toGenericRecord())
+        }
+        val serializedRoutes = versionedRoutes.serialize()
+        fromSignature.verify(from.identity.signingPublicKey, serializedRoutes)
     }
 
     override fun equals(other: Any?): Boolean {

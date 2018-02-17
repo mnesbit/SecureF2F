@@ -12,15 +12,19 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import java.util.*
 
-class VersionedRoute(val schemaId: SecureHash,
-                     val nonce: ByteArray,
-                     val from: VersionedIdentity,
-                     val to: VersionedIdentity) : AvroConvertible {
+class VersionedRoute private constructor(val schemaId: SecureHash,
+                                         val nonce: ByteArray,
+                                         val from: VersionedIdentity,
+                                         val to: VersionedIdentity) : AvroConvertible {
     constructor(versionedRoute: GenericRecord) :
             this(SecureHash("SHA-256", versionedRoute.getTyped("schemaFingerprint")),
                     versionedRoute.getTyped("nonce"),
                     versionedRoute.getTyped("from", ::VersionedIdentity),
                     versionedRoute.getTyped("to", ::VersionedIdentity))
+
+    constructor(nonce: ByteArray,
+                from: VersionedIdentity,
+                to: VersionedIdentity) : this(SecureHash("SHA-256", schemaFingerprint), nonce, from, to)
 
     init {
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
@@ -34,7 +38,7 @@ class VersionedRoute(val schemaId: SecureHash,
                 .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema))
                 .parse(VersionedRoute::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/versionedroute.avsc"))
 
-        val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", versionedRouteSchema)
+        private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", versionedRouteSchema)
 
         fun deserialize(bytes: ByteArray): VersionedRoute {
             val versionedRouteRecord = versionedRouteSchema.deserialize(bytes)

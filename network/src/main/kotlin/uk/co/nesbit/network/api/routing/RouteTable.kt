@@ -12,6 +12,12 @@ class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
     constructor(routeTable: GenericRecord) :
             this(routeTable.getObjectArray("allRoutes", ::Routes))
 
+    init {
+        for (route in allRoutes) {
+            route.verify()
+        }
+    }
+
     companion object {
         val routeTableSchema: Schema = Schema.Parser()
                 .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema))

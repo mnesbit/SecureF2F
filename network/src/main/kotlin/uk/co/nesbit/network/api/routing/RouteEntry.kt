@@ -3,10 +3,8 @@ package uk.co.nesbit.network.api.routing
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.avro.AvroConvertible
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getTyped
-import uk.co.nesbit.avro.putTyped
+import uk.co.nesbit.avro.*
+import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import java.util.*
@@ -30,6 +28,14 @@ class RouteEntry(val nonce: ByteArray,
             val routeEntryRecord = routeEntrySchema.deserialize(bytes)
             return RouteEntry(routeEntryRecord)
         }
+    }
+
+    fun verify(from: VersionedIdentity, signature: DigitalSignature): VersionedRoute {
+        require(nonce.size == NONCE_SIZE) { "Bad Nonce" }
+        val versionedRoute = VersionedRoute(nonce, from, to)
+        val serializedRoute = versionedRoute.serialize()
+        signature.verify(to.identity.signingPublicKey, serializedRoute)
+        return versionedRoute
     }
 
     override fun toGenericRecord(): GenericRecord {

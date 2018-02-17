@@ -67,6 +67,18 @@ fun GenericRecord.serialize(): ByteArray {
     }
 }
 
+fun GenericArray<GenericRecord>.serialize(): ByteArray {
+    val datumWriter = GenericDatumWriter<GenericArray<GenericRecord>>(this.schema)
+    val byteStream = ByteArrayOutputStream()
+    byteStream.use {
+        val encoder = EncoderFactory.get().binaryEncoder(byteStream, null)
+        datumWriter.write(this, encoder)
+        encoder.flush()
+        byteStream.flush()
+        return byteStream.toByteArray()
+    }
+}
+
 typealias AvroEncoder<T> = (T) -> GenericRecord
 typealias AvroDecoder<T> = (GenericRecord) -> T
 

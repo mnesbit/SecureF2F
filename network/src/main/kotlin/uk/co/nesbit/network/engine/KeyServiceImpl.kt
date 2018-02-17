@@ -2,6 +2,7 @@ package uk.co.nesbit.network.engine
 
 import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
+import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.OverlayAddress
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.services.KeyService
@@ -49,21 +50,21 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
         }
     }
 
-    override fun getVersion(id: SecureHash): SecureVersion {
+    override fun getVersion(id: SecureHash): VersionedIdentity {
         synchronized(lock) {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version
-            return key.hashChain.getSecureVersion(version)
+            return key.getVersionedId(version)
         }
     }
 
-    override fun incrementAndGetVersion(id: SecureHash): SecureVersion {
+    override fun incrementAndGetVersion(id: SecureHash): VersionedIdentity {
         synchronized(lock) {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version + 1
-            return key.hashChain.getSecureVersion(version)
+            return key.getVersionedId(version)
         }
     }
 }

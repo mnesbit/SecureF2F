@@ -2,7 +2,7 @@ package uk.co.nesbit.network.api.services
 
 import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.SecureVersion
+import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.OverlayAddress
 import uk.co.nesbit.network.api.SphinxAddress
 import java.security.PublicKey
@@ -14,6 +14,6 @@ interface KeyService {
     val overlayAddress: OverlayAddress
     fun sign(id: SecureHash, bytes: ByteArray): DigitalSignatureAndKey
     fun getSharedDHSecret(id: SecureHash, remotePublicKey: PublicKey): ByteArray
-    fun getVersion(id: SecureHash): SecureVersion
-    fun incrementAndGetVersion(id: SecureHash): SecureVersion
+    fun getVersion(id: SecureHash): VersionedIdentity
+    fun incrementAndGetVersion(id: SecureHash): VersionedIdentity
 }

@@ -14,15 +14,22 @@ import java.util.*
 
 // Third packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
 // See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
-class InitiatorHelloRequest(val schemaId: SecureHash,
-                            val initiatorNonce: ByteArray,
-                            val responderNonce: ByteArray,
-                            val encryptedPayload: ByteArray) : AvroConvertible {
+class InitiatorHelloRequest private constructor(val schemaId: SecureHash,
+                                                val initiatorNonce: ByteArray,
+                                                val responderNonce: ByteArray,
+                                                val encryptedPayload: ByteArray) : AvroConvertible {
     constructor(initiatorHelloRequestRecord: GenericRecord) :
             this(SecureHash("SHA-256", initiatorHelloRequestRecord.getTyped("schemaFingerprint")),
                     initiatorHelloRequestRecord.getTyped("initiatorNonce"),
                     initiatorHelloRequestRecord.getTyped("responderNonce"),
                     initiatorHelloRequestRecord.getTyped("encryptedPayload"))
+
+    constructor(initiatorNonce: ByteArray,
+                responderNonce: ByteArray,
+                encryptedPayload: ByteArray) : this(SecureHash("SHA-256", schemaFingerprint),
+            initiatorNonce,
+            responderNonce,
+            encryptedPayload)
 
     init {
         require(initiatorNonce.size == NONCE_SIZE)
