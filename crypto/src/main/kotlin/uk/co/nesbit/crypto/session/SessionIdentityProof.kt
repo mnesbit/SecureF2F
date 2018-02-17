@@ -1,5 +1,8 @@
 package uk.co.nesbit.crypto.session
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
@@ -7,9 +10,6 @@ import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 
 data class SessionIdentityProof(val identityInfo: VersionedIdentity,
                                 val sessionBindingSignature: DigitalSignature,
@@ -20,9 +20,11 @@ data class SessionIdentityProof(val identityInfo: VersionedIdentity,
                     sessionIdentityProofRecord.getTyped("identityMAC", ::SecureHash))
 
     companion object {
-        val sessionIdentityProofSchema: Schema = Schema.Parser().addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema,
-                SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).parse(SessionIdentityProof::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionidentityproof.avsc"))
+        val sessionIdentityProofSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                        DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema,
+                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(SessionIdentityProof::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionidentityproof.avsc"))
 
         fun deserialize(bytes: ByteArray): SessionIdentityProof {
             val sessionIdentityProofRecord = sessionIdentityProofSchema.deserialize(bytes)

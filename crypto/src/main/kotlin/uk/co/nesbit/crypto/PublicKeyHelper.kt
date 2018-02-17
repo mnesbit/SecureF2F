@@ -1,10 +1,10 @@
 package uk.co.nesbit.crypto
 
-import uk.co.nesbit.avro.*
 import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import uk.co.nesbit.avro.*
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
@@ -15,7 +15,8 @@ object PublicKeyHelper {
         AvroTypeHelpers.registerHelper(PublicKey::class.java, { x -> x.toGenericRecord() }, { y -> PublicKeyHelper.fromGenericRecord(y) })
     }
 
-    val publicKeySchema: Schema = Schema.Parser().parse(PublicKeyHelper::class.java.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
+    val publicKeySchema: Schema = Schema.Parser()
+            .parse(PublicKeyHelper::class.java.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     fun deserialize(bytes: ByteArray): PublicKey {
         val keyRecord = publicKeySchema.deserialize(bytes)

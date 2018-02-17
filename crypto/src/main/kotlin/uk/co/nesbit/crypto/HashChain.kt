@@ -16,7 +16,9 @@ data class SecureVersion(val version: Int, val chainHash: SecureHash) : AvroConv
                     versionRecord.getTyped("chainHash", ::SecureHash))
 
     companion object {
-        val secureVersionSchema: Schema = Schema.Parser().addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).parse(SecureVersion::class.java.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
+        val secureVersionSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(SecureVersion::class.java.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
 
         fun deserialize(bytes: ByteArray): SecureVersion {
             val secureVersionRecord = secureVersionSchema.deserialize(bytes)
@@ -43,9 +45,9 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     companion object {
         val CHAIN_HASH_ID = "HmacSHA256"
         val MAX_CHAIN_LENGTH = 65536
-        val hashChainSchema: Schema = Schema.Parser().
-                addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).
-                parse(HashChainPublic::class.java.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
+        val hashChainSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(HashChainPublic::class.java.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
 
         fun deserialize(bytes: ByteArray): HashChainPublic {
             val hashChainRecord = hashChainSchema.deserialize(bytes)

@@ -31,7 +31,9 @@ class InitiatorHelloRequest(val schemaId: SecureHash,
     }
 
     companion object {
-        val initiatorHelloRequestSchema: Schema = Schema.Parser().addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).parse(InitiatorHelloRequest::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorhellorequest.avsc"))
+        val initiatorHelloRequestSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(InitiatorHelloRequest::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorhellorequest.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", initiatorHelloRequestSchema)
 

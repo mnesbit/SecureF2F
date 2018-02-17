@@ -1,13 +1,13 @@
 package uk.co.nesbit.crypto.ratchet
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.PublicKeyHelper
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.security.PublicKey
 
 class RatchetHeader(val senderDHKey: PublicKey,
@@ -19,7 +19,9 @@ class RatchetHeader(val senderDHKey: PublicKey,
                     ratchetHeaderRecord.getTyped("sequenceNumber"))
 
     companion object {
-        val ratchetHeaderSchema: Schema = Schema.Parser().addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).parse(RatchetHeader::class.java.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
+        val ratchetHeaderSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+                .parse(RatchetHeader::class.java.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
 
         fun deserialize(bytes: ByteArray): RatchetHeader {
             val ratchetHeaderRecord = ratchetHeaderSchema.deserialize(bytes)

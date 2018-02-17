@@ -1,13 +1,13 @@
 package uk.co.nesbit.crypto
 
-import uk.co.nesbit.avro.AvroConvertible
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getTyped
-import uk.co.nesbit.avro.putTyped
 import net.i2p.crypto.eddsa.EdDSAEngine
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import uk.co.nesbit.avro.AvroConvertible
+import uk.co.nesbit.avro.deserialize
+import uk.co.nesbit.avro.getTyped
+import uk.co.nesbit.avro.putTyped
 import java.io.ByteArrayOutputStream
 import java.security.PublicKey
 import java.security.Signature
@@ -21,7 +21,8 @@ class DigitalSignature(val signatureAlgorithm: String,
                     signatureRecord.getTyped("signature"))
 
     companion object {
-        val digitalSignatureSchema: Schema = Schema.Parser().parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
+        val digitalSignatureSchema: Schema = Schema.Parser()
+                .parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignature {
             val signatureRecord = digitalSignatureSchema.deserialize(bytes)

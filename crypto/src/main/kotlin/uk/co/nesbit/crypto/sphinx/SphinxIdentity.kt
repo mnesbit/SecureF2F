@@ -21,10 +21,10 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     companion object {
         val ID_HASH_ALGORITHM = "SHA-256"
-        val sphinxIdentitySchema: Schema = Schema.Parser().
-                addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
-                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema)).
-                parse(SphinxPublicIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
+        val sphinxIdentitySchema: Schema = Schema.Parser()
+                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
+                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(SphinxPublicIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxPublicIdentity {
             val idRecord = sphinxIdentitySchema.deserialize(bytes)
@@ -104,8 +104,10 @@ data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVers
     }
 
     companion object {
-        val versionedIdentitySchema: Schema = Schema.Parser().addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
-                SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema)).parse(VersionedIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
+        val versionedIdentitySchema: Schema = Schema.Parser()
+                .addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
+                        SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema))
+                .parse(VersionedIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): VersionedIdentity {
             val versionedIdentityRecord = versionedIdentitySchema.deserialize(bytes)

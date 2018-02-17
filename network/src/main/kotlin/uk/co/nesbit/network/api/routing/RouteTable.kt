@@ -13,7 +13,9 @@ class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
             this(routeTable.getObjectArray("allRoutes", ::Routes))
 
     companion object {
-        val routeTableSchema: Schema = Schema.Parser().addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema)).parse(RouteTable::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
+        val routeTableSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema))
+                .parse(RouteTable::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
 
         fun deserialize(bytes: ByteArray): RouteTable {
             val routeTableRecord = routeTableSchema.deserialize(bytes)

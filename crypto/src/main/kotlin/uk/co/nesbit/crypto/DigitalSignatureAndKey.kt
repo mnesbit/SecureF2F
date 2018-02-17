@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.security.PublicKey
 import java.util.*
 
@@ -19,7 +19,9 @@ class DigitalSignatureAndKey(val signatureAlgorithm: String,
                     signatureRecord.getTyped("publicKey"))
 
     companion object {
-        val digitalSignatureAndKeySchema: Schema = Schema.Parser().addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
+        val digitalSignatureAndKeySchema: Schema = Schema.Parser()
+                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+                .parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignatureAndKey {
             val signatureRecord = digitalSignatureAndKeySchema.deserialize(bytes)

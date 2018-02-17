@@ -1,5 +1,8 @@
 package uk.co.nesbit.crypto.session
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
@@ -7,9 +10,6 @@ import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.PublicKeyHelper
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.security.PublicKey
 import java.util.*
 
@@ -30,8 +30,10 @@ class SessionBinding(val otherPartyNonce: ByteArray,
     }
 
     companion object {
-        val sessionBindingSchema: Schema = Schema.Parser().addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema)).parse(SessionBinding::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionbinding.avsc"))
+        val sessionBindingSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                        PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+                .parse(SessionBinding::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionbinding.avsc"))
 
         fun deserialize(bytes: ByteArray): SessionBinding {
             val sessionBindingRecord = sessionBindingSchema.deserialize(bytes)

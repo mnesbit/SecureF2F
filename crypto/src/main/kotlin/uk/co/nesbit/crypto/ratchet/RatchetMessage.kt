@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto.ratchet
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.util.*
 
 class RatchetMessage(val encryptedHeader: ByteArray, val encryptedPayload: ByteArray) : AvroConvertible {
@@ -15,7 +15,8 @@ class RatchetMessage(val encryptedHeader: ByteArray, val encryptedPayload: ByteA
                     ratchetMessageRecord.getTyped("encryptedPayload"))
 
     companion object {
-        val ratchetMessageSchema: Schema = Schema.Parser().parse(RatchetMessage::class.java.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetmessage.avsc"))
+        val ratchetMessageSchema: Schema = Schema.Parser()
+                .parse(RatchetMessage::class.java.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetmessage.avsc"))
 
         fun deserialize(bytes: ByteArray): RatchetMessage {
             val ratchetMessageRecord = ratchetMessageSchema.deserialize(bytes)

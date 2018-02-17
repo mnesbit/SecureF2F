@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto
 
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
-import org.apache.avro.Schema
-import org.apache.avro.generic.GenericData
-import org.apache.avro.generic.GenericRecord
 import java.security.MessageDigest
 import java.util.*
 
@@ -16,7 +16,8 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
                     hashRecord.getTyped("bytes"))
 
     companion object {
-        val secureHashSchema: Schema = Schema.Parser().parse(SecureHash::class.java.getResourceAsStream("securehash.avsc"))
+        val secureHashSchema: Schema = Schema.Parser()
+                .parse(SecureHash::class.java.getResourceAsStream("securehash.avsc"))
 
         fun secureHash(bytes: ByteArray, algorithm: String = "SHA-256"): SecureHash = SecureHash(algorithm, MessageDigest.getInstance(algorithm).digest(bytes))
         fun secureHash(str: String, algorithm: String = "SHA-256") = secureHash(str.toByteArray(Charsets.UTF_8), algorithm)

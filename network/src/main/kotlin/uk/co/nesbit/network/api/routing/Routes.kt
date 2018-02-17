@@ -23,9 +23,11 @@ class Routes(val from: VersionedIdentity,
 
 
     companion object {
-        val routesSchema: Schema = Schema.Parser().addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                RouteEntry.routeEntrySchema.fullName to RouteEntry.routeEntrySchema,
-                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema)).parse(Routes::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routes.avsc"))
+        val routesSchema: Schema = Schema.Parser()
+                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                        RouteEntry.routeEntrySchema.fullName to RouteEntry.routeEntrySchema,
+                        DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
+                .parse(Routes::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routes.avsc"))
 
         fun deserialize(bytes: ByteArray): Routes {
             val routesRecord = routesSchema.deserialize(bytes)
