@@ -4,34 +4,38 @@ import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.OverlayAddress
-import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.services.KeyService
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : KeyService {
     private val lock = ReentrantLock()
-    private val networkKeys = mutableListOf<SphinxIdentityKeyPair>()
+    private val networkKeys = mutableMapOf<SecureHash, SphinxIdentityKeyPair>()
     private val overlayKeys = mutableListOf<KeyPair>()
+    override val networkId: SecureHash
 
     init {
-        networkKeys += SphinxIdentityKeyPair.generateKeyPair(random)
+        networkId = generateSecondaryNetworkID()
         overlayKeys += generateEdDSAKeyPair(random)
     }
 
-    override val networkId: SphinxAddress
-        get() = synchronized(lock) { SphinxAddress(networkKeys.first().public) }
-
     override val overlayAddress: OverlayAddress
-        get() = synchronized(lock) { OverlayAddress(overlayKeys.first().public) }
+        get() = lock.withLock { OverlayAddress(overlayKeys.first().public) }
 
-    private fun findById(id: SecureHash): SphinxIdentityKeyPair? = networkKeys.singleOrNull { it.id == id }
+    override fun generateSecondaryNetworkID(): SecureHash {
+        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random)
+        networkKeys[newNetworkKeys.id] = newNetworkKeys
+        return newNetworkKeys.id
+    }
+
+    private fun findById(id: SecureHash): SphinxIdentityKeyPair? = networkKeys[id]
     private fun findById2(id: SecureHash): KeyPair? = overlayKeys.singleOrNull { SecureHash.secureHash(it.public.encoded) == id }
 
     override fun sign(id: SecureHash, bytes: ByteArray): DigitalSignatureAndKey {
-        synchronized(lock) {
+        lock.withLock {
             val key = findById(id)
             if (key != null) {
                 return key.signingKeys.sign(bytes)
@@ -43,7 +47,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
     }
 
     override fun getSharedDHSecret(id: SecureHash, remotePublicKey: PublicKey): ByteArray {
-        synchronized(lock) {
+        lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             return getSharedDHSecret(key!!.diffieHellmanKeys, remotePublicKey)
@@ -51,7 +55,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
     }
 
     override fun getVersion(id: SecureHash): VersionedIdentity {
-        synchronized(lock) {
+        lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version
@@ -60,7 +64,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
     }
 
     override fun incrementAndGetVersion(id: SecureHash): VersionedIdentity {
-        synchronized(lock) {
+        lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version + 1

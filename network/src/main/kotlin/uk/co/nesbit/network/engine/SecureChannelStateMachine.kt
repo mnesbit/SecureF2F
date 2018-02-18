@@ -178,7 +178,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        currentVersion = keyService.getVersion(keyService.networkId.identity.id)
+        currentVersion = keyService.getVersion(keyService.networkId)
         val initiatorHello = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams!!,
                 responderSessionParams!!,
                 sessionInitKeys!!,
@@ -205,7 +205,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        currentVersion = keyService.getVersion(keyService.networkId.identity.id)
+        currentVersion = keyService.getVersion(keyService.networkId)
         val responderHello = ResponderHelloResponse.createHelloResponse(initiatorSessionParams!!,
                 responderSessionParams!!,
                 initiatorHelloRequest!!,
@@ -331,7 +331,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             return
         }
 
-        currentVersion = keyService.getVersion(keyService.networkId.identity.id)
+        currentVersion = keyService.getVersion(keyService.networkId)
         val helloPacket = concatByteArrays(helloBytes, currentVersion!!.serialize())
         val heartbeatMessage = encryptedChannel!!.encryptMessage(helloPacket, null)
         networkService.send(linkId, heartbeatMessage)

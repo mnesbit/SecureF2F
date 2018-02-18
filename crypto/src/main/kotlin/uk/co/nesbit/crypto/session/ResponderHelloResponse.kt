@@ -61,7 +61,7 @@ class ResponderHelloResponse private constructor(val schemaId: SecureHash,
                     responderInit.responderNonce,
                     responderInit.responderDHPublicKey,
                     responderIdentity)
-            val sessionBindingSignature = responderSigner(responderIdentity.identity.id, sessionBinding.serialize()).toDigitalSignature()
+            val sessionBindingSignature = responderSigner(responderIdentity.id, sessionBinding.serialize()).toDigitalSignature()
             val identityMAC = getHMAC(sharedState.responseMACKey, responderIdentity.serialize())
             val initiatorProof = SessionIdentityProof(responderIdentity, sessionBindingSignature, identityMAC)
             val payload = initiatorProof.serialize()

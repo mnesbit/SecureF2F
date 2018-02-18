@@ -88,7 +88,7 @@ class RoutingDataTest {
         val sphinxIdentityKeyService: KeyService = KeyServiceImpl(random)
         val sphinxIdentityKeyPairTo1 = SphinxIdentityKeyPair.generateKeyPair(random)
         val sphinxIdentityKeyPairTo2 = SphinxIdentityKeyPair.generateKeyPair(random)
-        val versionedIDFrom = sphinxIdentityKeyService.incrementAndGetVersion(sphinxIdentityKeyService.networkId.identity.id)
+        val versionedIDFrom = sphinxIdentityKeyService.incrementAndGetVersion(sphinxIdentityKeyService.networkId)
         val versionedIDTo1 = sphinxIdentityKeyPairTo1.getVersionedId(3)
         val versionedIDTo2 = sphinxIdentityKeyPairTo2.getVersionedId(4)
         val nonce1 = ByteArray(NONCE_SIZE)
@@ -140,21 +140,21 @@ class RoutingDataTest {
     @Test
     fun `Generation and validation of Heartbeats`() {
         val aliceKeyService: KeyService = KeyServiceImpl()
-        aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId.identity.id)
+        aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId)
         val bobKeyService: KeyService = KeyServiceImpl()
-        var aliceIdentity = aliceKeyService.getVersion(aliceKeyService.networkId.identity.id)
-        var bobIdentity = bobKeyService.getVersion(bobKeyService.networkId.identity.id)
+        var aliceIdentity = aliceKeyService.getVersion(aliceKeyService.networkId)
+        var bobIdentity = bobKeyService.getVersion(bobKeyService.networkId)
         var aliceNonce: ByteArray
         var bobNonce = ByteArray(NONCE_SIZE, { i -> i.toByte() })
         for (i in 0 until 30) {
             if ((i.rem(3)) == 1) {
-                aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId.identity.id)
+                aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId)
             }
             val aliceHeartbeat1 = Heartbeat.createHeartbeat(bobNonce, bobIdentity, aliceKeyService)
             aliceIdentity = aliceHeartbeat1.verify(bobNonce, bobIdentity, aliceIdentity)
             aliceNonce = aliceHeartbeat1.nextExpectedNonce
             if ((i.rem(5)) == 2) {
-                bobKeyService.incrementAndGetVersion(bobKeyService.networkId.identity.id)
+                bobKeyService.incrementAndGetVersion(bobKeyService.networkId)
             }
             val bobHeartbeat1 = Heartbeat.createHeartbeat(aliceNonce, aliceIdentity, bobKeyService)
             bobIdentity = bobHeartbeat1.verify(aliceNonce, aliceIdentity, bobIdentity)

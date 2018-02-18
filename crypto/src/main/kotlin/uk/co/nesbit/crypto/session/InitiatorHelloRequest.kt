@@ -60,7 +60,7 @@ class InitiatorHelloRequest private constructor(val schemaId: SecureHash,
                     initiatorInit.initiatorNonce,
                     initiatorInit.initiatorDHPublicKey,
                     initiatorIdentity)
-            val sessionBindingSignature = initiatorSigner(initiatorIdentity.identity.id, sessionBinding.serialize()).toDigitalSignature()
+            val sessionBindingSignature = initiatorSigner(initiatorIdentity.id, sessionBinding.serialize()).toDigitalSignature()
             val identityMAC = getHMAC(sharedState.requestMACKey, initiatorIdentity.serialize())
             val initiatorProof = SessionIdentityProof(initiatorIdentity, sessionBindingSignature, identityMAC)
             val payload = initiatorProof.serialize()

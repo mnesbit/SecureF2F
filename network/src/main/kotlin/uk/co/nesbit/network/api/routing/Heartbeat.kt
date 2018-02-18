@@ -69,10 +69,10 @@ class Heartbeat private constructor(val schemaId: SecureHash,
         fun createHeartbeat(expectedNonce: ByteArray, from: VersionedIdentity, toKeyService: KeyService): Heartbeat {
             val newNonce = ByteArray(NONCE_SIZE)
             toKeyService.random.nextBytes(newNonce)
-            val to = toKeyService.getVersion(toKeyService.networkId.identity.id)
+            val to = toKeyService.getVersion(toKeyService.networkId)
             val versionedRoute = VersionedRoute(expectedNonce, from, to)
             val serializedRoute = versionedRoute.serialize()
-            val signature = toKeyService.sign(to.identity.id, serializedRoute)
+            val signature = toKeyService.sign(to.id, serializedRoute)
             return Heartbeat(to.currentVersion, signature.toDigitalSignature(), newNonce)
         }
     }

@@ -103,6 +103,8 @@ data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVers
         require(identity.verifyChainValue(currentVersion)) { "Invalid version information" }
     }
 
+    val id: SecureHash get() = identity.id
+
     companion object {
         val versionedIdentitySchema: Schema = Schema.Parser()
                 .addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,

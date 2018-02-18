@@ -38,7 +38,7 @@ class Routes(val from: VersionedIdentity,
         }
 
         fun createRoutes(routes: List<Pair<RouteEntry, DigitalSignature>>, fromKeyService: KeyService): Routes {
-            val from = fromKeyService.getVersion(fromKeyService.networkId.identity.id)
+            val from = fromKeyService.getVersion(fromKeyService.networkId)
             val entries = mutableListOf<RouteEntry>()
             val signatures = mutableListOf<DigitalSignature>()
             val versionedRoutes = GenericData.Array<GenericRecord>(routes.size, fromSigningSchema)
@@ -49,7 +49,7 @@ class Routes(val from: VersionedIdentity,
                 signatures += signature
             }
             val serializedRoutes = versionedRoutes.serialize()
-            val fromSignature = fromKeyService.sign(fromKeyService.networkId.identity.id, serializedRoutes)
+            val fromSignature = fromKeyService.sign(fromKeyService.networkId, serializedRoutes)
             return Routes(from, entries, signatures, fromSignature.toDigitalSignature())
         }
     }
