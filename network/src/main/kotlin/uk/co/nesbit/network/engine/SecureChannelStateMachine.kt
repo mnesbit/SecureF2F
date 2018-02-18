@@ -4,6 +4,8 @@ import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.DigitalSignature
+import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.ratchet.RatchetState
 import uk.co.nesbit.crypto.session.InitiatorHelloRequest
@@ -13,12 +15,14 @@ import uk.co.nesbit.crypto.session.ResponderSessionParams
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.SphinxAddress
+import uk.co.nesbit.network.api.routing.Heartbeat
+import uk.co.nesbit.network.api.routing.RouteEntry
+import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.LinkReceivedMessage
 import uk.co.nesbit.network.api.services.NeighbourReceivedMessage
 import uk.co.nesbit.network.api.services.NetworkService
 import java.security.KeyPair
-import java.util.*
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -27,8 +31,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                                          private val keyService: KeyService,
                                          private val networkService: NetworkService) : AutoCloseable {
     companion object {
-        const val TIMEOUT_TICKS = 5
-        val helloBytes = "Hello".toByteArray(Charsets.UTF_8)
+        const val TIMEOUT_TICKS = 4
     }
 
     enum class ChannelState {
@@ -52,6 +55,10 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         get
         private set
 
+    var routeEntry: Pair<RouteEntry, DigitalSignature>? = null
+        get
+        private set
+
     private var receiveSubscription: Disposable? = null
     private var timeout: Int? = null
     private var sessionInitKeys: KeyPair? = null
@@ -60,7 +67,8 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private var initiatorHelloRequest: InitiatorHelloRequest? = null
     private var responderHelloResponse: ResponderHelloResponse? = null
     private var encryptedChannel: RatchetState? = null
-    private var currentVersion: VersionedIdentity? = null
+    private var heartbeatSendNonce: ByteArray? = null
+    private var heartbeatReceiveNonce: ByteArray? = null
 
     fun runStateMachine(): ChannelState {
         lock.withLock {
@@ -78,6 +86,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                     runWaitTimeout()
                 }
                 SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
+                    runWaitTimeout()
                     sendHeartbeat()
                 }
             }
@@ -108,8 +117,10 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         initiatorHelloRequest = null
         responderHelloResponse = null
         encryptedChannel = null
-        currentVersion = null
         remoteID = null
+        routeEntry = null
+        heartbeatSendNonce = null
+        heartbeatReceiveNonce = null
     }
 
     private fun onReceived(msg: LinkReceivedMessage) {
@@ -178,11 +189,11 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        currentVersion = keyService.getVersion(keyService.networkId)
+        val initiatorIdentity = keyService.getVersion(keyService.networkId)
         val initiatorHello = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams!!,
                 responderSessionParams!!,
                 sessionInitKeys!!,
-                currentVersion!!,
+                initiatorIdentity,
                 { id, data -> keyService.sign(id, data) })
         networkService.send(linkId, initiatorHello.serialize())
         initiatorHelloRequest = initiatorHello
@@ -205,12 +216,12 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        currentVersion = keyService.getVersion(keyService.networkId)
+        val responderIdentity = keyService.getVersion(keyService.networkId)
         val responderHello = ResponderHelloResponse.createHelloResponse(initiatorSessionParams!!,
                 responderSessionParams!!,
                 initiatorHelloRequest!!,
                 sessionInitKeys!!,
-                currentVersion!!,
+                responderIdentity,
                 { id, data -> keyService.sign(id, data) })
         networkService.send(linkId, responderHello.serialize())
         responderHelloResponse = responderHello
@@ -242,19 +253,18 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 responderSessionParams!!,
                 sessionInitKeys!!,
                 keyService.random)
-        val firstSessionMessage = encryptedChannel!!.encryptMessage(helloBytes,
-                concatByteArrays(initiatorSessionParams!!.serialize(),
-                        responderSessionParams!!.serialize(),
-                        initiatorHelloRequest!!.serialize(),
-                        responderSessionParams!!.serialize()))
-        networkService.send(linkId, firstSessionMessage)
+        heartbeatSendNonce = SecureHash.secureHash(concatByteArrays(initiatorSessionParams!!.serialize(),
+                responderSessionParams!!.serialize(),
+                initiatorHelloRequest!!.serialize(),
+                responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
+        sendHeartbeat()
         initiatorSessionParams = null
         sessionInitKeys = null
         responderSessionParams = null
         initiatorHelloRequest = null
         responderHelloResponse = null
         state = ChannelState.SESSION_ACTIVE
-        timeout = null
+        timeout = TIMEOUT_TICKS
     }
 
     private fun processFirstSessionMessage(msg: LinkReceivedMessage) {
@@ -267,17 +277,17 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        try {
-            val firstMessage = encryptedChannel!!.decryptMessage(msg.msg,
-                    concatByteArrays(initiatorSessionParams!!.serialize(),
-                            responderSessionParams!!.serialize(),
-                            initiatorHelloRequest!!.serialize(),
-                            responderSessionParams!!.serialize()))
-            if (!Arrays.equals(helloBytes, firstMessage)) {
-                setError()
-                return
-            }
+        val firstMessage = try {
+            encryptedChannel!!.decryptMessage(msg.msg, null)
         } catch (ex: Exception) {
+            setError()
+            return
+        }
+        heartbeatReceiveNonce = SecureHash.secureHash(concatByteArrays(initiatorSessionParams!!.serialize(),
+                responderSessionParams!!.serialize(),
+                initiatorHelloRequest!!.serialize(),
+                responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
+        if (!processHeartbeat(firstMessage)) {
             setError()
             return
         }
@@ -287,7 +297,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         initiatorHelloRequest = null
         responderHelloResponse = null
         state = ChannelState.SESSION_ACTIVE
-        timeout = null
+        timeout = TIMEOUT_TICKS
     }
 
     private fun processSessionMessage(msg: LinkReceivedMessage) {
@@ -302,24 +312,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        if (Arrays.equals(decrypted.copyOf(helloBytes.size), helloBytes)) { // Possible heartbeat
-            val restOfHeartbeat = decrypted.copyOfRange(helloBytes.size, decrypted.size)
-            try {
-                val versionedIdentity = VersionedIdentity.deserialize(restOfHeartbeat)
-                if (versionedIdentity.identity != remoteID!!.identity) {
-                    setError()
-                    return
-                }
-                if (versionedIdentity.currentVersion.version < remoteID!!.currentVersion.version) {
-                    setError()
-                    return
-                }
-                remoteID = versionedIdentity
-                return // swallow heartbeat
-            } catch (ex: Exception) {
-                // Ignore an assume not a heartbeat
-            }
-        }
+        if (processHeartbeat(decrypted)) return
         val neighbourAddress = SphinxAddress(remoteID!!.identity)
         _onReceive.onNext(NeighbourReceivedMessage(neighbourAddress, decrypted))
     }
@@ -330,14 +323,39 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-
-        currentVersion = keyService.getVersion(keyService.networkId)
-        val helloPacket = concatByteArrays(helloBytes, currentVersion!!.serialize())
-        val heartbeatMessage = encryptedChannel!!.encryptMessage(helloPacket, null)
+        if (heartbeatSendNonce == null) {
+            return
+        }
+        val heartbeat = Heartbeat.createHeartbeat(heartbeatSendNonce!!, remoteID!!, keyService)
+        heartbeatReceiveNonce = heartbeat.nextExpectedNonce
+        heartbeatSendNonce = null
+        val heartbeatMessage = encryptedChannel!!.encryptMessage(heartbeat.serialize(), null)
         networkService.send(linkId, heartbeatMessage)
     }
 
+    private fun processHeartbeat(decrypted: ByteArray): Boolean {
+        if (heartbeatReceiveNonce != null) {
+            val heartbeat = Heartbeat.tryDeserialize(decrypted)
+            if (heartbeat != null) { // Possible heartbeat
+                val localIdentity = keyService.getVersion(keyService.networkId)
+                try {
+                    remoteID = heartbeat.verify(heartbeatReceiveNonce!!, localIdentity, remoteID!!)
+                    routeEntry = Pair(RouteEntry(heartbeatReceiveNonce!!, remoteID!!), heartbeat.versionedRouteSignature)
+                    heartbeatSendNonce = heartbeat.nextExpectedNonce
+                    heartbeatReceiveNonce = null
+                    timeout = TIMEOUT_TICKS
+                    return true
+                } catch (ex: Exception) {
+                    // Pass along as message
+                    println("Heartbeat verify failed")
+                }
+            }
+        }
+        return false
+    }
+
     private fun setError() {
+        println("Error")
         lock.withLock {
             state = ChannelState.ERRORED
             close()
