@@ -37,7 +37,7 @@ class Routes(val from: VersionedIdentity,
             return Routes(routesRecord)
         }
 
-        fun createRoutes(routes: List<Pair<RouteEntry, DigitalSignature>>, fromKeyService: KeyService): Routes {
+        fun createRoutes(routes: List<SignedEntry>, fromKeyService: KeyService): Routes {
             val from = fromKeyService.getVersion(fromKeyService.networkId)
             val entries = mutableListOf<RouteEntry>()
             val signatures = mutableListOf<DigitalSignature>()

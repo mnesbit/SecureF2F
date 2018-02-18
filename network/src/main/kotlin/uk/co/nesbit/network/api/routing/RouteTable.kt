@@ -7,15 +7,19 @@ import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getObjectArray
 import uk.co.nesbit.avro.putObjectArray
+import uk.co.nesbit.crypto.SecureHash
 
 class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
     constructor(routeTable: GenericRecord) :
             this(routeTable.getObjectArray("allRoutes", ::Routes))
 
     init {
+        val uniqueIds = mutableSetOf<SecureHash>()
         for (route in allRoutes) {
             route.verify()
+            uniqueIds += route.from.id
         }
+        require(uniqueIds.size == allRoutes.size) { "All Routes must be from distinct sources" }
     }
 
     companion object {

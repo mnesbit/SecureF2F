@@ -4,7 +4,6 @@ import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.ratchet.RatchetState
@@ -17,6 +16,7 @@ import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.routing.Heartbeat
 import uk.co.nesbit.network.api.routing.RouteEntry
+import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.LinkReceivedMessage
@@ -27,7 +27,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 internal class SecureChannelStateMachine(val linkId: LinkId,
-                                         private val initiator: Boolean,
+                                         val initiator: Boolean,
                                          private val keyService: KeyService,
                                          private val networkService: NetworkService) : AutoCloseable {
     companion object {
@@ -48,15 +48,12 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private val lock = ReentrantLock()
 
     var state: ChannelState = ChannelState.INIT
-        get
         private set
 
     var remoteID: VersionedIdentity? = null
-        get
         private set
 
-    var routeEntry: Pair<RouteEntry, DigitalSignature>? = null
-        get
+    var routeEntry: Pair<Int, SignedEntry>? = null
         private set
 
     private var receiveSubscription: Disposable? = null
@@ -340,7 +337,9 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 val localIdentity = keyService.getVersion(keyService.networkId)
                 try {
                     remoteID = heartbeat.verify(heartbeatReceiveNonce!!, localIdentity, remoteID!!)
-                    routeEntry = Pair(RouteEntry(heartbeatReceiveNonce!!, remoteID!!), heartbeat.versionedRouteSignature)
+                    routeEntry = Pair(localIdentity.currentVersion.version,
+                            SignedEntry(RouteEntry(heartbeatReceiveNonce!!, remoteID!!),
+                                    heartbeat.versionedRouteSignature))
                     heartbeatSendNonce = heartbeat.nextExpectedNonce
                     heartbeatReceiveNonce = null
                     timeout = TIMEOUT_TICKS

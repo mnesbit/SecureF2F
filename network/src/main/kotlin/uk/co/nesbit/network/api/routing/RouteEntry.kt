@@ -64,3 +64,5 @@ class RouteEntry(val nonce: ByteArray,
     }
 }
 
+data class SignedEntry(val routeEntry: RouteEntry, val signature: DigitalSignature)
+
