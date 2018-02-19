@@ -3,7 +3,7 @@ package uk.co.nesbit.network.api.services
 import io.reactivex.Observable
 import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.LinkId
-import uk.co.nesbit.network.api.LinkStatus
+import uk.co.nesbit.network.api.LinkInfo
 import uk.co.nesbit.network.api.LinkStatusChange
 
 data class LinkReceivedMessage(val linkId: LinkId, val msg: ByteArray)
@@ -13,7 +13,7 @@ interface NetworkService {
     fun send(linkId: LinkId, msg: ByteArray)
     val onReceive: Observable<LinkReceivedMessage>
 
-    val links: Map<LinkId, LinkStatus>
+    val links: Map<LinkId, LinkInfo>
     val onLinkStatusChange: Observable<LinkStatusChange>
 
     fun openLink(remoteAddress: Address): Boolean

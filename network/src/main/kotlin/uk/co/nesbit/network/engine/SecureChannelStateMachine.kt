@@ -69,6 +69,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
 
     fun runStateMachine(): ChannelState {
         lock.withLock {
+            val prevState = state
             when (state) {
                 SecureChannelStateMachine.ChannelState.INIT -> runInit()
                 SecureChannelStateMachine.ChannelState.ERRORED -> {
@@ -87,8 +88,12 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                     sendHeartbeat()
                 }
             }
+            if (prevState != state) {
+                println("$initiator state $state")
+            }
             return state
         }
+
     }
 
     private fun runInit() {
@@ -126,6 +131,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             return
         }
         lock.withLock {
+            val prevState = state
             when (state) {
                 SecureChannelStateMachine.ChannelState.INIT -> {
                     runInit()
@@ -152,6 +158,9 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
                     processSessionMessage(msg)
                 }
+            }
+            if (prevState != state) {
+                println("$initiator state $state")
             }
         }
     }
@@ -354,7 +363,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     }
 
     private fun setError() {
-        println("Error")
+        println("${initiator} Error")
         lock.withLock {
             state = ChannelState.ERRORED
             close()

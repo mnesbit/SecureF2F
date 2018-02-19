@@ -50,6 +50,9 @@ class Heartbeat private constructor(val schemaId: SecureHash,
         }
 
         fun tryDeserialize(bytes: ByteArray): Heartbeat? {
+            if (bytes.size <= schemaFingerprint.size + NONCE_SIZE) {
+                return null
+            }
             if (ByteBuffer.wrap(bytes, 0, schemaFingerprint.size) != ByteBuffer.wrap(schemaFingerprint)) {
                 return null
             }

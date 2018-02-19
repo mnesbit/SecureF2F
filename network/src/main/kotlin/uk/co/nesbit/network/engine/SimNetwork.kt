@@ -19,7 +19,7 @@ class SimNetwork {
             var linkIdCounter = 0
         }
 
-        override val links: MutableMap<LinkId, LinkStatus> = mutableMapOf()
+        override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
         val addresses = mutableMapOf<Address, LinkId>()
         private val linkToAddress = mutableMapOf<LinkId, Address>()
 
@@ -36,10 +36,11 @@ class SimNetwork {
                 return
             }
             val newLink = SimpleLinkId(linkIdCounter++)
-            links[newLink] = LinkStatus.LINK_UP_PASSIVE
+            val linkInfo = LinkInfo(newLink, RouteState(Route(networkId, remoteAddress), LinkStatus.LINK_UP_PASSIVE))
+            links[newLink] = linkInfo
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
-            _onLinkStatusChange.onNext(LinkStatusChange(newLink, links[newLink]!!))
+            _onLinkStatusChange.onNext(LinkStatusChange(newLink, linkInfo.state.status))
         }
 
         override fun openLink(remoteAddress: Address): Boolean {
@@ -47,11 +48,12 @@ class SimNetwork {
                 return false
             }
             val newLink = SimpleLinkId(linkIdCounter++)
-            links[newLink] = LinkStatus.LINK_UP_ACTIVE
+            val linkInfo = LinkInfo(newLink, RouteState(Route(networkId, remoteAddress), LinkStatus.LINK_UP_ACTIVE))
+            links[newLink] = linkInfo
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
             parent.networkNodes[remoteAddress]?.linkOpenedByRemote(networkId)
-            _onLinkStatusChange.onNext(LinkStatusChange(newLink, links[newLink]!!))
+            _onLinkStatusChange.onNext(LinkStatusChange(newLink, linkInfo.state.status))
             return true
         }
 
@@ -59,6 +61,7 @@ class SimNetwork {
             val link = links.remove(linkId)
             if (link != null) {
                 val linkAddress = linkToAddress.remove(linkId)
+                addresses.remove(linkAddress)
                 _onLinkStatusChange.onNext(LinkStatusChange(linkId, LinkStatus.LINK_DOWN))
                 val otherEnd = parent.networkNodes[linkAddress]
                 if (otherEnd != null) {
@@ -71,8 +74,8 @@ class SimNetwork {
         }
 
         override fun send(linkId: LinkId, msg: ByteArray) {
-            val status = links[linkId] ?: throw IllegalArgumentException("Invalid LinkId $linkId")
-            if (!status.active()) {
+            val linkInfo = links[linkId] ?: throw IllegalArgumentException("Invalid LinkId $linkId")
+            if (!linkInfo.state.status.active()) {
                 throw IOException("Link Unavailable $linkId")
             }
             parent.messageQueue.offer(Packet(Route(networkId, linkToAddress[linkId]!!), linkId, msg))
@@ -84,10 +87,10 @@ class SimNetwork {
         }
 
         fun linkChange(statusChange: LinkStatusChange) {
-            val currenStatus = links[statusChange.linkId]
+            val currentInfo = links[statusChange.linkId]
                     ?: throw java.lang.IllegalArgumentException("Invalid LinkId $statusChange")
-            if (currenStatus != statusChange.status) {
-                links[statusChange.linkId] = statusChange.status
+            if (currentInfo.state.status != statusChange.status) {
+                links[statusChange.linkId] = LinkInfo(currentInfo.linkId, RouteState(currentInfo.state.route, statusChange.status))
                 _onLinkStatusChange.onNext(statusChange)
             }
         }
@@ -115,7 +118,7 @@ class SimNetwork {
             if (sourceNode != null) {
                 val status = sourceNode.links[packet.viaLinkId]
                 if (status != null) {
-                    if (status.active()) {
+                    if (status.state.status.active()) {
                         return networkNodes[packet.route.to]
                     }
                 }
