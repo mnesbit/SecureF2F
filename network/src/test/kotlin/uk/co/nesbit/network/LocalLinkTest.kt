@@ -4,10 +4,12 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import uk.co.nesbit.network.api.LinkStatus
 import uk.co.nesbit.network.api.NetworkAddress
-import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.engine.Node
 import uk.co.nesbit.network.engine.SimNetwork
+import java.nio.ByteBuffer
+import java.util.concurrent.LinkedBlockingQueue
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class LocalLinkTest {
     @Test
@@ -58,8 +60,8 @@ class LocalLinkTest {
             node2.runStateMachine()
             network.deliverTillEmpty()
         }
-        val node1Address = SphinxAddress(node1.keyService.getVersion(node1.keyService.networkId).identity)
-        val node2Address = SphinxAddress(node2.keyService.getVersion(node2.keyService.networkId).identity)
+        val node1Address = node1.neighbourDiscoveryService.networkAddress
+        val node2Address = node2.neighbourDiscoveryService.networkAddress
         val link1to2 = node1.neighbourDiscoveryService.findLinkTo(node2Address)
         val testMessage1 = "Test1".toByteArray(Charsets.UTF_8)
         node1.neighbourDiscoveryService.send(link1to2!!, testMessage1)
@@ -70,6 +72,78 @@ class LocalLinkTest {
         node2.neighbourDiscoveryService.send(link2to1!!, testMessage2)
         network.deliverTillEmpty()
         assertArrayEquals(testMessage2, receivedOn1)
+        node1Subs.dispose()
+        node2Subs.dispose()
+    }
+
+    @Test
+    fun `rand messages`() {
+        val network = SimNetwork()
+        val net1 = network.getNetworkService(NetworkAddress(1))
+        val net2 = network.getNetworkService(NetworkAddress(2))
+        val node1 = Node(net1)
+        val receivedOn1 = LinkedBlockingQueue<ByteArray>()
+        val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
+            receivedOn1.offer(it.msg)
+        }
+        val node2 = Node(net2)
+        val receivedOn2 = LinkedBlockingQueue<ByteArray>()
+        val node2Subs = node2.neighbourDiscoveryService.onReceive.subscribe {
+            receivedOn2.offer(it.msg)
+        }
+        net1.openLink(net2.networkId)
+        for (i in 0 until 2) {
+            if (node1.keyService.random.nextBoolean()) {
+                node1.runStateMachine()
+                node2.runStateMachine()
+            } else {
+                node2.runStateMachine()
+                node1.runStateMachine()
+            }
+            network.shuffleMessages()
+            network.deliverTillEmpty()
+        }
+        val node1Address = node1.neighbourDiscoveryService.networkAddress
+        val node2Address = node2.neighbourDiscoveryService.networkAddress
+        val link1to2 = node1.neighbourDiscoveryService.findLinkTo(node2Address)
+        val link2to1 = node2.neighbourDiscoveryService.findLinkTo(node1Address)
+        assertNotNull(link1to2)
+        assertNotNull(link2to1)
+        for (i in 0 until 100) {
+            val testMessage1a = "Test1a_$i".toByteArray(Charsets.UTF_8)
+            val testMessage1b = "Test1b_$i".toByteArray(Charsets.UTF_8)
+            val testMessage1c = "Test1c_$i".toByteArray(Charsets.UTF_8)
+            val testMessage2a = "Test2a_$i".toByteArray(Charsets.UTF_8)
+            val testMessage2b = "Test2b_$i".toByteArray(Charsets.UTF_8)
+            val testMessage2c = "Test2c_$i".toByteArray(Charsets.UTF_8)
+            node1.neighbourDiscoveryService.send(link1to2!!, testMessage1a)
+            node2.neighbourDiscoveryService.send(link2to1!!, testMessage2a)
+            node1.neighbourDiscoveryService.send(link1to2, testMessage1b)
+            node2.neighbourDiscoveryService.send(link2to1, testMessage2b)
+            node1.neighbourDiscoveryService.send(link1to2, testMessage1c)
+            node2.neighbourDiscoveryService.send(link2to1, testMessage2c)
+            if (node1.keyService.random.nextBoolean()) {
+                node1.runStateMachine()
+                node2.runStateMachine()
+            } else {
+                node2.runStateMachine()
+                node1.runStateMachine()
+            }
+            network.shuffleMessages()
+            network.deliverTillEmpty()
+            val message1 = ByteBuffer.wrap(receivedOn1.poll())
+            val message2 = ByteBuffer.wrap(receivedOn1.poll())
+            val message3 = ByteBuffer.wrap(receivedOn1.poll())
+            val messagesA = setOf(message1, message2, message3)
+            val expectedMessagesA = setOf(ByteBuffer.wrap(testMessage2a), ByteBuffer.wrap(testMessage2b), ByteBuffer.wrap(testMessage2c))
+            assertEquals(expectedMessagesA, messagesA)
+            val message4 = ByteBuffer.wrap(receivedOn2.poll())
+            val message5 = ByteBuffer.wrap(receivedOn2.poll())
+            val message6 = ByteBuffer.wrap(receivedOn2.poll())
+            val messagesB = setOf(message4, message5, message6)
+            val expectedMessagesB = setOf(ByteBuffer.wrap(testMessage1a), ByteBuffer.wrap(testMessage1b), ByteBuffer.wrap(testMessage1c))
+            assertEquals(expectedMessagesB, messagesB)
+        }
         node1Subs.dispose()
         node2Subs.dispose()
     }
@@ -203,6 +277,5 @@ class LocalLinkTest {
         assertEquals(node2.neighbourDiscoveryService.networkAddress, link2to1b.state.route.from)
         assertEquals(node1.neighbourDiscoveryService.networkAddress, link2to1b.state.route.to)
         assertEquals(link2to1b.linkId, node2.neighbourDiscoveryService.findLinkTo(node1.neighbourDiscoveryService.networkAddress))
-
     }
 }

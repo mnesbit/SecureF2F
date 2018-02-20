@@ -138,6 +138,13 @@ class SimNetwork {
         }
     }
 
+    fun shuffleMessages() {
+        val reorderList = mutableListOf<Packet>()
+        messageQueue.drainTo(reorderList)
+        reorderList.shuffle()
+        messageQueue.addAll(reorderList)
+    }
+
     fun deliverTillEmpty() {
         while (!messageQueue.isEmpty()) {
             deliverOne()
