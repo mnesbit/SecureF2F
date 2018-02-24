@@ -12,6 +12,7 @@ import uk.co.nesbit.crypto.session.InitiatorSessionParams
 import uk.co.nesbit.crypto.session.ResponderHelloResponse
 import uk.co.nesbit.crypto.session.ResponderSessionParams
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
+import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.routing.Heartbeat
@@ -27,6 +28,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 internal class SecureChannelStateMachine(val linkId: LinkId,
+                                         val networkTarget: Address,
                                          val initiator: Boolean,
                                          private val keyService: KeyService,
                                          private val networkService: NetworkService) : AutoCloseable {
@@ -66,20 +68,34 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private var encryptedChannel: RatchetState? = null
     private var heartbeatSendNonce: ByteArray? = null
     private var heartbeatReceiveNonce: ByteArray? = null
+    private val earlyMessages = mutableListOf<ByteArray>()
+
+    private val _onReceive = PublishSubject.create<NeighbourReceivedMessage>()
+    val onReceive: Observable<NeighbourReceivedMessage>
+        get() = _onReceive
+
+    init {
+        receiveSubscription = networkService.onReceive.filter { it.linkId == linkId }.subscribe({ onReceived(it) }, { setError() })
+    }
 
     override fun close() {
-        receiveSubscription?.dispose()
-        receiveSubscription = null
-        sessionInitKeys = null
-        initiatorSessionParams = null
-        responderSessionParams = null
-        initiatorHelloRequest = null
-        responderHelloResponse = null
-        encryptedChannel = null
-        remoteID = null
-        routeEntry = null
-        heartbeatSendNonce = null
-        heartbeatReceiveNonce = null
+        lock.withLock {
+            state = ChannelState.ERRORED
+            receiveSubscription?.dispose()
+            receiveSubscription = null
+            _onReceive.onComplete()
+            earlyMessages.clear()
+            sessionInitKeys = null
+            initiatorSessionParams = null
+            responderSessionParams = null
+            initiatorHelloRequest = null
+            responderHelloResponse = null
+            encryptedChannel = null
+            remoteID = null
+            routeEntry = null
+            heartbeatSendNonce = null
+            heartbeatReceiveNonce = null
+        }
     }
 
     fun runStateMachine(): ChannelState {
@@ -165,7 +181,6 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     }
 
     private fun runInit() {
-        receiveSubscription = networkService.onReceive.filter { it.linkId == linkId }.subscribe({ onReceived(it) }, { setError() })
         if (initiator) {
             val (keys, initiatorNonce) = InitiatorSessionParams.createInitiatorSession(keyService.random)
             initiatorSessionParams = initiatorNonce
@@ -287,7 +302,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 initiatorHelloRequest!!.serialize(),
                 responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
         if (!processHeartbeat(firstMessage)) {
-            setError()
+            earlyMessages += firstMessage // re-ordering might put a message ahead of the heartbeat
             return
         }
         initiatorSessionParams = null
@@ -297,6 +312,13 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         responderHelloResponse = null
         state = ChannelState.SESSION_ACTIVE
         timeout = TIMEOUT_TICKS
+        if (earlyMessages.isNotEmpty()) {
+            val neighbourAddress = SphinxAddress(remoteID!!.identity)
+            for (message in earlyMessages) {
+                _onReceive.onNext(NeighbourReceivedMessage(neighbourAddress, message))
+            }
+            earlyMessages.clear()
+        }
     }
 
     private fun processSessionMessage(msg: LinkReceivedMessage): NeighbourReceivedMessage? {
@@ -353,10 +375,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private fun setError() {
         Exception().printStackTrace()
         println("${initiator} Error")
-        lock.withLock {
-            state = ChannelState.ERRORED
-            close()
-        }
+        close()
     }
 
     private fun runWaitTimeout() {
@@ -388,9 +407,4 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             }
         }
     }
-
-    private val _onReceive = PublishSubject.create<NeighbourReceivedMessage>()
-    val onReceive: Observable<NeighbourReceivedMessage>
-        get() = _onReceive
-
 }

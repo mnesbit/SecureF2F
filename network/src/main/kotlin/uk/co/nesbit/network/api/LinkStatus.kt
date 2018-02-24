@@ -7,5 +7,3 @@ enum class LinkStatus {
 }
 
 fun LinkStatus.active(): Boolean = (this != LinkStatus.LINK_DOWN)
-
-data class LinkStatusChange(val linkId: LinkId, val status: LinkStatus)

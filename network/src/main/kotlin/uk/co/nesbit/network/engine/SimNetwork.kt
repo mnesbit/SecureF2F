@@ -27,8 +27,8 @@ class SimNetwork {
         override val onReceive: Observable<LinkReceivedMessage>
             get() = _onReceive
 
-        private val _onLinkStatusChange = PublishSubject.create<LinkStatusChange>()
-        override val onLinkStatusChange: Observable<LinkStatusChange>
+        private val _onLinkStatusChange = PublishSubject.create<LinkInfo>()
+        override val onLinkStatusChange: Observable<LinkInfo>
             get() = _onLinkStatusChange
 
         private fun linkOpenedByRemote(remoteAddress: Address) {
@@ -40,7 +40,7 @@ class SimNetwork {
             links[newLink] = linkInfo
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
-            _onLinkStatusChange.onNext(LinkStatusChange(newLink, linkInfo.state.status))
+            _onLinkStatusChange.onNext(linkInfo)
         }
 
         override fun openLink(remoteAddress: Address): Boolean {
@@ -53,7 +53,7 @@ class SimNetwork {
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
             parent.networkNodes[remoteAddress]?.linkOpenedByRemote(networkId)
-            _onLinkStatusChange.onNext(LinkStatusChange(newLink, linkInfo.state.status))
+            _onLinkStatusChange.onNext(linkInfo)
             return true
         }
 
@@ -62,7 +62,8 @@ class SimNetwork {
             if (link != null) {
                 val linkAddress = linkToAddress.remove(linkId)
                 addresses.remove(linkAddress)
-                _onLinkStatusChange.onNext(LinkStatusChange(linkId, LinkStatus.LINK_DOWN))
+                val linkDown = LinkInfo(linkId, link.state.copy(status = LinkStatus.LINK_DOWN))
+                _onLinkStatusChange.onNext(linkDown)
                 val otherEnd = parent.networkNodes[linkAddress]
                 if (otherEnd != null) {
                     val reverseLink = otherEnd.addresses[networkId]
@@ -74,7 +75,7 @@ class SimNetwork {
         }
 
         override fun send(linkId: LinkId, msg: ByteArray) {
-            val linkInfo = links[linkId] ?: throw IllegalArgumentException("Invalid LinkId $linkId")
+            val linkInfo = links[linkId] ?: throw IOException("Invalid LinkId $linkId")
             if (!linkInfo.state.status.active()) {
                 throw IOException("Link Unavailable $linkId")
             }
@@ -85,15 +86,6 @@ class SimNetwork {
             ++parent._messageCount
             _onReceive.onNext(msg)
         }
-
-        fun linkChange(statusChange: LinkStatusChange) {
-            val currentInfo = links[statusChange.linkId]
-                    ?: throw java.lang.IllegalArgumentException("Invalid LinkId $statusChange")
-            if (currentInfo.state.status != statusChange.status) {
-                links[statusChange.linkId] = LinkInfo(currentInfo.linkId, RouteState(currentInfo.state.route, statusChange.status))
-                _onLinkStatusChange.onNext(statusChange)
-            }
-        }
     }
 
     private var _messageCount = 0L
@@ -101,15 +93,6 @@ class SimNetwork {
 
     fun getNetworkService(id: Address): NetworkService {
         return networkNodes.getOrPut(id) { NetworkServiceImpl(this, id) }
-    }
-
-    fun changeLinkStatus(address1: Address, address2: Address, status: LinkStatus) {
-        val node1 = networkNodes[address1] ?: throw IllegalArgumentException("Unknown node $address1")
-        val node2 = networkNodes[address2] ?: throw IllegalArgumentException("Unknown node $address2")
-        val link12Id = node1.addresses[address2]
-        node1.linkChange(LinkStatusChange(link12Id!!, status))
-        val link21Id = node2.addresses[address1]
-        node2.linkChange(LinkStatusChange(link21Id!!, status))
     }
 
     private fun nodeForMessage(packet: Packet?): NetworkServiceImpl? {
