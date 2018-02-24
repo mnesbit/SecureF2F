@@ -81,13 +81,17 @@ class NeighbourDiscoveryServiceImpl(val networkService: NetworkService,
                 LinkStatus.LINK_UP_ACTIVE -> {
                     if (!channels.containsKey(linkStatusChange.linkId)) {
                         resetLinkInfo(linkStatusChange.linkId)
-                        channels[linkStatusChange.linkId] = SecureChannelStateMachine(linkStatusChange.linkId, true, keyService, networkService)
+                        val channel = SecureChannelStateMachine(linkStatusChange.linkId, true, keyService, networkService)
+                        channels[linkStatusChange.linkId] = channel
+                        channel.onReceive.subscribe(_onReceive)
                     }
                 }
                 LinkStatus.LINK_UP_PASSIVE -> {
                     if (!channels.containsKey(linkStatusChange.linkId)) {
                         resetLinkInfo(linkStatusChange.linkId)
-                        channels[linkStatusChange.linkId] = SecureChannelStateMachine(linkStatusChange.linkId, false, keyService, networkService)
+                        val channel = SecureChannelStateMachine(linkStatusChange.linkId, false, keyService, networkService)
+                        channels[linkStatusChange.linkId] = channel
+                        channel.onReceive.subscribe(_onReceive)
                     }
                 }
                 LinkStatus.LINK_DOWN -> {
@@ -148,7 +152,6 @@ class NeighbourDiscoveryServiceImpl(val networkService: NetworkService,
                         }
                         links[channel.linkId] = LinkInfo(channel.linkId, RouteState(Route(localAddress, remoteAddress), status))
                         neighbourToLink[remoteAddress] = channel.linkId
-                        channel.onReceive.subscribe(_onReceive)
                         _onLinkStatusChange.onNext(LinkStatusChange(channel.linkId, status))
                     }
                 }

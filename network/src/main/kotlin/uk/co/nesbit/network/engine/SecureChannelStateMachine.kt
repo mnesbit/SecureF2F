@@ -67,49 +67,6 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private var heartbeatSendNonce: ByteArray? = null
     private var heartbeatReceiveNonce: ByteArray? = null
 
-    fun runStateMachine(): ChannelState {
-        lock.withLock {
-            val prevState = state
-            when (state) {
-                SecureChannelStateMachine.ChannelState.INIT -> runInit()
-                SecureChannelStateMachine.ChannelState.ERRORED -> {
-                    //Terminal state nothing to do
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_NONCE,
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_NONCE,
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_HELLO,
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_HELLO,
-                SecureChannelStateMachine.ChannelState.WAIT_RATCHET_SYNC -> {
-                    // All these states are clocked by received messages, or a timeout to error
-                    runWaitTimeout()
-                }
-                SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
-                    runWaitTimeout()
-                    sendHeartbeat()
-                }
-            }
-            if (prevState != state) {
-                println("$initiator state $state")
-            }
-            return state
-        }
-
-    }
-
-    private fun runInit() {
-        receiveSubscription = networkService.onReceive.filter { it.linkId == linkId }.subscribe({ onReceived(it) }, { setError() })
-        if (initiator) {
-            val (keys, initiatorNonce) = InitiatorSessionParams.createInitiatorSession(keyService.random)
-            initiatorSessionParams = initiatorNonce
-            sessionInitKeys = keys
-            networkService.send(linkId, initiatorNonce.serialize())
-            state = ChannelState.WAIT_FOR_RESPONDER_NONCE
-        } else {
-            state = ChannelState.WAIT_FOR_INITIATOR_NONCE
-        }
-        timeout = TIMEOUT_TICKS
-    }
-
     override fun close() {
         receiveSubscription?.dispose()
         receiveSubscription = null
@@ -125,44 +82,100 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         heartbeatReceiveNonce = null
     }
 
+    fun runStateMachine(): ChannelState {
+        lock.withLock {
+            val prevState = state
+            try {
+                when (state) {
+                    SecureChannelStateMachine.ChannelState.INIT -> runInit()
+                    SecureChannelStateMachine.ChannelState.ERRORED -> {
+                        //Terminal state nothing to do
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_NONCE,
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_NONCE,
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_HELLO,
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_HELLO,
+                    SecureChannelStateMachine.ChannelState.WAIT_RATCHET_SYNC -> {
+                        // All these states are clocked by received messages, or a timeout to error
+                        runWaitTimeout()
+                    }
+                    SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
+                        runWaitTimeout()
+                        sendHeartbeat()
+                    }
+                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+                setError()
+            }
+            if (prevState != state) {
+                println("$initiator state $state")
+            }
+            return state
+        }
+    }
+
     private fun onReceived(msg: LinkReceivedMessage) {
         if (msg.linkId != linkId) {
             setError()
             return
         }
+        var processedMessage: NeighbourReceivedMessage? = null
         lock.withLock {
             val prevState = state
-            when (state) {
-                SecureChannelStateMachine.ChannelState.INIT -> {
-                    runInit()
-                    onReceived(msg)
+            try {
+                when (state) {
+                    SecureChannelStateMachine.ChannelState.INIT -> {
+                        runInit()
+                        onReceived(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.ERRORED -> {
+                        // Terminal state nothing to do/discard message
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_NONCE -> {
+                        processInitiatorParams(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_NONCE -> {
+                        processResponderParams(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_HELLO -> {
+                        processInitiatorHello(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_HELLO -> {
+                        processResponderHello(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.WAIT_RATCHET_SYNC -> {
+                        processFirstSessionMessage(msg)
+                    }
+                    SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
+                        processedMessage = processSessionMessage(msg)
+                    }
                 }
-                SecureChannelStateMachine.ChannelState.ERRORED -> {
-                    // Terminal state nothing to do/discard message
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_NONCE -> {
-                    processInitiatorParams(msg)
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_NONCE -> {
-                    processResponderParams(msg)
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_INITIATOR_HELLO -> {
-                    processInitiatorHello(msg)
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_FOR_RESPONDER_HELLO -> {
-                    processResponderHello(msg)
-                }
-                SecureChannelStateMachine.ChannelState.WAIT_RATCHET_SYNC -> {
-                    processFirstSessionMessage(msg)
-                }
-                SecureChannelStateMachine.ChannelState.SESSION_ACTIVE -> {
-                    processSessionMessage(msg)
-                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+                setError()
             }
             if (prevState != state) {
                 println("$initiator state $state")
             }
         }
+        if (processedMessage != null) {
+            _onReceive.onNext(processedMessage!!) // forward outside of state machine lock in case of reply sends
+        }
+    }
+
+    private fun runInit() {
+        receiveSubscription = networkService.onReceive.filter { it.linkId == linkId }.subscribe({ onReceived(it) }, { setError() })
+        if (initiator) {
+            val (keys, initiatorNonce) = InitiatorSessionParams.createInitiatorSession(keyService.random)
+            initiatorSessionParams = initiatorNonce
+            sessionInitKeys = keys
+            networkService.send(linkId, initiatorNonce.serialize())
+            state = ChannelState.WAIT_FOR_RESPONDER_NONCE
+        } else {
+            state = ChannelState.WAIT_FOR_INITIATOR_NONCE
+        }
+        timeout = TIMEOUT_TICKS
     }
 
     private fun processInitiatorParams(msg: LinkReceivedMessage) {
@@ -187,14 +200,9 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        try {
-            val responderSession = ResponderSessionParams.deserialize(msg.msg)
-            responderSession.verify(initiatorSessionParams!!)
-            responderSessionParams = responderSession
-        } catch (ex: Exception) {
-            setError()
-            return
-        }
+        val responderSession = ResponderSessionParams.deserialize(msg.msg)
+        responderSession.verify(initiatorSessionParams!!)
+        responderSessionParams = responderSession
         val initiatorIdentity = keyService.getVersion(keyService.networkId)
         val initiatorHello = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams!!,
                 responderSessionParams!!,
@@ -214,14 +222,9 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        try {
-            val initiatorHello = InitiatorHelloRequest.deserialize(msg.msg)
-            remoteID = initiatorHello.verify(initiatorSessionParams!!, responderSessionParams!!, sessionInitKeys!!)
-            initiatorHelloRequest = initiatorHello
-        } catch (ex: Exception) {
-            setError()
-            return
-        }
+        val initiatorHello = InitiatorHelloRequest.deserialize(msg.msg)
+        remoteID = initiatorHello.verify(initiatorSessionParams!!, responderSessionParams!!, sessionInitKeys!!)
+        initiatorHelloRequest = initiatorHello
         val responderIdentity = keyService.getVersion(keyService.networkId)
         val responderHello = ResponderHelloResponse.createHelloResponse(initiatorSessionParams!!,
                 responderSessionParams!!,
@@ -247,14 +250,9 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        try {
-            val responderHello = ResponderHelloResponse.deserialize(msg.msg)
-            remoteID = responderHello.verify(initiatorSessionParams!!, responderSessionParams!!, initiatorHelloRequest!!, sessionInitKeys!!)
-            responderHelloResponse = responderHello
-        } catch (ex: Exception) {
-            setError()
-            return
-        }
+        val responderHello = ResponderHelloResponse.deserialize(msg.msg)
+        remoteID = responderHello.verify(initiatorSessionParams!!, responderSessionParams!!, initiatorHelloRequest!!, sessionInitKeys!!)
+        responderHelloResponse = responderHello
         encryptedChannel = RatchetState.ratchetInitForSession(initiatorSessionParams!!,
                 responderSessionParams!!,
                 sessionInitKeys!!,
@@ -283,12 +281,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             setError()
             return
         }
-        val firstMessage = try {
-            encryptedChannel!!.decryptMessage(msg.msg, null)
-        } catch (ex: Exception) {
-            setError()
-            return
-        }
+        val firstMessage = encryptedChannel!!.decryptMessage(msg.msg, null)
         heartbeatReceiveNonce = SecureHash.secureHash(concatByteArrays(initiatorSessionParams!!.serialize(),
                 responderSessionParams!!.serialize(),
                 initiatorHelloRequest!!.serialize(),
@@ -306,21 +299,16 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         timeout = TIMEOUT_TICKS
     }
 
-    private fun processSessionMessage(msg: LinkReceivedMessage) {
+    private fun processSessionMessage(msg: LinkReceivedMessage): NeighbourReceivedMessage? {
         if ((encryptedChannel == null)
                 || (remoteID == null)) {
             setError()
-            return
+            return null
         }
-        val decrypted = try {
-            encryptedChannel!!.decryptMessage(msg.msg, null)
-        } catch (ex: Exception) {
-            setError()
-            return
-        }
-        if (processHeartbeat(decrypted)) return
+        val decrypted = encryptedChannel!!.decryptMessage(msg.msg, null)
+        if (processHeartbeat(decrypted)) return null
         val neighbourAddress = SphinxAddress(remoteID!!.identity)
-        _onReceive.onNext(NeighbourReceivedMessage(neighbourAddress, decrypted))
+        return NeighbourReceivedMessage(neighbourAddress, decrypted)
     }
 
     private fun sendHeartbeat() {
@@ -363,6 +351,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     }
 
     private fun setError() {
+        Exception().printStackTrace()
         println("${initiator} Error")
         lock.withLock {
             state = ChannelState.ERRORED
@@ -384,13 +373,20 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     }
 
     fun send(msg: ByteArray) {
-        if ((encryptedChannel == null)
-                || (remoteID == null)) {
-            setError()
-            return
+        lock.withLock {
+            if ((encryptedChannel == null)
+                    || (remoteID == null)) {
+                setError()
+                return
+            }
+            val encryptedMsg = encryptedChannel!!.encryptMessage(msg, null)
+            try {
+                networkService.send(linkId, encryptedMsg)
+            } catch (ex: Exception) {
+                setError()
+                return
+            }
         }
-        val encryptedMsg = encryptedChannel!!.encryptMessage(msg, null)
-        networkService.send(linkId, encryptedMsg)
     }
 
     private val _onReceive = PublishSubject.create<NeighbourReceivedMessage>()

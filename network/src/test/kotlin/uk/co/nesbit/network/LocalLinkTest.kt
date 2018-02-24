@@ -7,7 +7,10 @@ import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.engine.Node
 import uk.co.nesbit.network.engine.SimNetwork
 import java.nio.ByteBuffer
+import java.time.Clock
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -144,6 +147,82 @@ class LocalLinkTest {
             val expectedMessagesB = setOf(ByteBuffer.wrap(testMessage1a), ByteBuffer.wrap(testMessage1b), ByteBuffer.wrap(testMessage1c))
             assertEquals(expectedMessagesB, messagesB)
         }
+        node1Subs.dispose()
+        node2Subs.dispose()
+    }
+
+    @Test
+    fun `async test`() {
+        val network = SimNetwork()
+        val net1 = network.getNetworkService(NetworkAddress(1))
+        val net2 = network.getNetworkService(NetworkAddress(2))
+        val node1 = Node(net1)
+        val receivedOn1 = AtomicInteger(0)
+        val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
+            val i = receivedOn1.incrementAndGet()
+            println("1 $i ${it.msg.toString(Charsets.UTF_8)}")
+        }
+        val node2 = Node(net2)
+        val receivedOn2 = AtomicInteger(0)
+        val node2Subs = node2.neighbourDiscoveryService.onReceive.subscribe {
+            val link = node2.neighbourDiscoveryService.findLinkTo(node1.neighbourDiscoveryService.networkAddress)
+            val i = receivedOn2.incrementAndGet()
+            println("2 $i ${it.msg.toString(Charsets.UTF_8)}")
+            if (link != null) {
+                val msg = "From 2_$i".toByteArray(Charsets.UTF_8)
+                node2.neighbourDiscoveryService.send(link, msg)
+            }
+        }
+        net1.openLink(net2.networkId)
+        var stopping = false
+        val networkThread = thread {
+            while (!stopping) {
+                network.deliverOne()
+                Thread.sleep(15)
+            }
+            network.deliverTillEmpty()
+            println("Done network")
+        }
+        val N = 20
+        val node1Thread = thread {
+            var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
+            var i = 0
+            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+                val now = Clock.systemUTC().instant()
+                if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
+                    lastHeartbeat = now
+                    node1.runStateMachine()
+                }
+                if (i < N) {
+                    val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
+                    if (link != null) {
+                        val msg = "From 1_$i".toByteArray(Charsets.UTF_8)
+                        node1.neighbourDiscoveryService.send(link, msg)
+                        ++i
+                    }
+                }
+                Thread.sleep(100)
+            }
+            println("Node 1 done")
+        }
+        val node2Thread = thread {
+            var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
+            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+                val now = Clock.systemUTC().instant()
+                if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
+                    lastHeartbeat = now
+                    node2.runStateMachine()
+                }
+                Thread.sleep(100)
+            }
+            println("Node 2 done")
+        }
+        node1Thread.join()
+        node2Thread.join()
+        stopping = true
+        networkThread.join()
+        assertEquals(N, receivedOn1.get())
+        assertEquals(N, receivedOn2.get())
         node1Subs.dispose()
         node2Subs.dispose()
     }
