@@ -283,21 +283,6 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
 
     private fun decryptHeader(encryptedHeader: ByteArray): HeaderDecryptResult {
         try {
-            val decryptedHeaderBytes = headerDecrypt(receiverHeaderKey.key, receiverHeaderKey.iv, encryptedHeader)
-            val decryptedHeader = try {
-                RatchetHeader.deserialize(decryptedHeaderBytes)
-            } catch (ex: IOException) {
-                throw AEADBadTagException()
-            }
-            val reserialized = decryptedHeader.serialize()
-            if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
-                throw AEADBadTagException()
-            }
-            return HeaderDecryptResult(decryptedHeader, false)
-        } catch (ex: AEADBadTagException) {
-            // Ignore
-        }
-        try {
             val decryptedHeaderBytes = headerDecrypt(receiverNextHeaderKey.key, receiverNextHeaderKey.iv, encryptedHeader)
             val decryptedHeader = try {
                 RatchetHeader.deserialize(decryptedHeaderBytes)
@@ -309,6 +294,21 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                 throw AEADBadTagException()
             }
             return HeaderDecryptResult(decryptedHeader, true)
+        } catch (ex: AEADBadTagException) {
+            // Ignore
+        }
+        try {
+            val decryptedHeaderBytes = headerDecrypt(receiverHeaderKey.key, receiverHeaderKey.iv, encryptedHeader)
+            val decryptedHeader = try {
+                RatchetHeader.deserialize(decryptedHeaderBytes)
+            } catch (ex: IOException) {
+                throw AEADBadTagException()
+            }
+            val reserialized = decryptedHeader.serialize()
+            if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
+                throw AEADBadTagException()
+            }
+            return HeaderDecryptResult(decryptedHeader, false)
         } catch (ex: AEADBadTagException) {
             // Ignore
         }
