@@ -9,11 +9,11 @@ import java.security.SecureRandom
 
 interface KeyService {
     val random: SecureRandom
-    val networkId: SecureHash
-    val overlayAddress: OverlayAddress
-    fun generateSecondaryNetworkID(): SecureHash
+    fun generateNetworkID(): SecureHash
+    fun generateOverlayID(): SecureHash
     fun sign(id: SecureHash, bytes: ByteArray): DigitalSignatureAndKey
     fun getSharedDHSecret(id: SecureHash, remotePublicKey: PublicKey): ByteArray
     fun getVersion(id: SecureHash): VersionedIdentity
     fun incrementAndGetVersion(id: SecureHash): VersionedIdentity
+    fun getOverlayAddress(id: SecureHash): OverlayAddress
 }

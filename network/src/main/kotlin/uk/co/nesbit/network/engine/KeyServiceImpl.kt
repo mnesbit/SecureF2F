@@ -14,25 +14,23 @@ import kotlin.concurrent.withLock
 class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : KeyService {
     private val lock = ReentrantLock()
     private val networkKeys = mutableMapOf<SecureHash, SphinxIdentityKeyPair>()
-    private val overlayKeys = mutableListOf<KeyPair>()
-    override val networkId: SecureHash
+    private val overlayKeys = mutableMapOf<SecureHash, KeyPair>()
 
-    init {
-        networkId = generateSecondaryNetworkID()
-        overlayKeys += generateEdDSAKeyPair(random)
-    }
-
-    override val overlayAddress: OverlayAddress
-        get() = lock.withLock { OverlayAddress(overlayKeys.first().public) }
-
-    override fun generateSecondaryNetworkID(): SecureHash {
+    override fun generateNetworkID(): SecureHash {
         val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random)
         networkKeys[newNetworkKeys.id] = newNetworkKeys
         return newNetworkKeys.id
     }
 
+    override fun generateOverlayID(): SecureHash {
+        val newOverlayKeys = generateECDSAKeyPair(random)
+        val newId = SecureHash.secureHash(newOverlayKeys.public.encoded)
+        overlayKeys[newId] = newOverlayKeys
+        return newId
+    }
+
     private fun findById(id: SecureHash): SphinxIdentityKeyPair? = networkKeys[id]
-    private fun findById2(id: SecureHash): KeyPair? = overlayKeys.singleOrNull { SecureHash.secureHash(it.public.encoded) == id }
+    private fun findById2(id: SecureHash): KeyPair? = overlayKeys[id]
 
     override fun sign(id: SecureHash, bytes: ByteArray): DigitalSignatureAndKey {
         lock.withLock {
@@ -69,6 +67,14 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
             require(key != null) { "Key id $id not found" }
             val version = key!!.hashChain.version + 1
             return key.getVersionedId(version)
+        }
+    }
+
+    override fun getOverlayAddress(id: SecureHash): OverlayAddress {
+        lock.withLock {
+            val keys = findById2(id)
+            require(keys != null) { "Key id $id not found" }
+            return OverlayAddress(keys!!.public)
         }
     }
 }

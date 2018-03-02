@@ -11,15 +11,16 @@ import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
 import uk.co.nesbit.network.api.services.NeighbourReceivedMessage
 import uk.co.nesbit.network.api.services.NetworkService
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                                     private val keyService: KeyService) : NeighbourDiscoveryService, AutoCloseable {
-    override val networkAddress: SphinxAddress by lazy { SphinxAddress(keyService.getVersion(keyService.networkId).identity) }
+    override val networkAddress: SphinxAddress by lazy { SphinxAddress(keyService.getVersion(keyService.generateNetworkID()).identity) }
 
-    override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
-    private val neighbourToLink: MutableMap<Address, LinkId> = mutableMapOf()
+    override val links = ConcurrentHashMap<LinkId, LinkInfo>()
+    private val neighbourToLink = ConcurrentHashMap<Address, LinkId>()
 
     override val knownNeighbours: MutableSet<Address> get() = neighbourToLink.keys
 
@@ -32,7 +33,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
         get() = _onReceive
 
     private val lock = ReentrantLock()
-    private val channels = mutableMapOf<LinkId, SecureChannelStateMachine>()
+    private val channels = ConcurrentHashMap<LinkId, SecureChannelStateMachine>()
     private var networkLinkSubscription: Disposable? = null
 
     init {
@@ -47,11 +48,11 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
         networkLinkSubscription = null
     }
 
-    override val routes: Routes
+    override val routes: Routes?
         get() {
             val routes = mutableListOf<SignedEntry>()
             lock.withLock {
-                val currentVersion = keyService.getVersion(keyService.networkId)
+                val currentVersion = keyService.getVersion(networkAddress.id)
                 for (channel in channels.values) {
                     if (channel.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE) {
                         val routeEntry = channel.routeEntry
@@ -64,7 +65,10 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     }
                 }
             }
-            return Routes.createRoutes(routes, keyService)
+            if (routes.isEmpty()) {
+                return null
+            }
+            return Routes.createRoutes(routes, keyService, networkAddress.id)
         }
 
     private fun resetLinkInfo(linkId: LinkId): Boolean {
@@ -84,7 +88,12 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 LinkStatus.LINK_UP_ACTIVE -> {
                     if (!channels.containsKey(linkChange.linkId)) {
                         resetLinkInfo(linkChange.linkId)
-                        val channel = SecureChannelStateMachine(linkChange.linkId, linkChange.state.route.to, true, keyService, networkService)
+                        val channel = SecureChannelStateMachine(linkChange.linkId,
+                                networkAddress.id,
+                                linkChange.state.route.to,
+                                true,
+                                keyService,
+                                networkService)
                         channels[linkChange.linkId] = channel
                         channel.onReceive.subscribe(_onReceive)
                     }
@@ -92,7 +101,12 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 LinkStatus.LINK_UP_PASSIVE -> {
                     if (!channels.containsKey(linkChange.linkId)) {
                         resetLinkInfo(linkChange.linkId)
-                        val channel = SecureChannelStateMachine(linkChange.linkId, linkChange.state.route.to, false, keyService, networkService)
+                        val channel = SecureChannelStateMachine(linkChange.linkId,
+                                networkAddress.id,
+                                linkChange.state.route.to,
+                                false,
+                                keyService,
+                                networkService)
                         channels[linkChange.linkId] = channel
                         channel.onReceive.subscribe(_onReceive)
                     }
@@ -100,7 +114,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 LinkStatus.LINK_DOWN -> {
                     channels[linkChange.linkId]?.close()
                     if (resetLinkInfo(linkChange.linkId)) {
-                        keyService.incrementAndGetVersion(keyService.networkId)
+                        keyService.incrementAndGetVersion(networkAddress.id)
                     }
                 }
             }
@@ -109,21 +123,42 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
 
     override fun findLinkTo(neighbourAddress: Address): LinkId? {
         lock.withLock {
-            val linkId = neighbourToLink[neighbourAddress]
-            if (linkId != null) {
-                val linkInfo = links[linkId]
-                if (linkInfo != null) {
-                    if (linkInfo.state.status.active()) {
-                        return linkId
+            when (neighbourAddress) {
+                is SphinxAddress -> {
+                    val linkId = neighbourToLink[neighbourAddress]
+                    if (linkId != null) {
+                        val linkInfo = links[linkId]
+                        if (linkInfo != null) {
+                            if (linkInfo.state.status.active()) {
+                                return linkId
+                            }
+                        }
+                    }
+                    // Handle race condition where messages start arriving before we have signalled the link is up
+                    val channel = channels.values
+                            .filter { it.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE }
+                            .firstOrNull { SphinxAddress(it.remoteID!!.identity) == neighbourAddress }
+                    if (channel != null) {
+                        return channel.linkId
                     }
                 }
-            }
-            // Handle race condition where messages start arriving before we have signalled the link is up
-            val channel = channels.values
-                    .filter { it.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE }
-                    .firstOrNull { SphinxAddress(it.remoteID!!.identity) == neighbourAddress }
-            if (channel != null) {
-                return channel.linkId
+                is NetworkAddress -> {
+                    val localLink = networkService.addresses[neighbourAddress]
+                    if (localLink != null) {
+                        val linkInfo = networkService.links[localLink]
+                        if (linkInfo != null && linkInfo.state.status.active()) {
+                            return localLink
+                        }
+                    }
+                }
+                is HashAddress -> {
+                    val channel = channels.values
+                            .filter { it.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE }
+                            .firstOrNull { it.remoteID!!.id == neighbourAddress.id }
+                    if (channel != null) {
+                        return channel.linkId
+                    }
+                }
             }
             return null
         }
@@ -153,14 +188,13 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 } else if (channel.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE) {
                     val linkInfo = links[channel.linkId]
                     if ((linkInfo == null) || (linkInfo.state.status == LinkStatus.LINK_DOWN)) {
-                        val localAddress = SphinxAddress(keyService.getVersion(keyService.networkId).identity)
                         val remoteAddress = SphinxAddress(channel.remoteID!!.identity)
                         val status = if (channel.initiator) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
                         val oldLink = neighbourToLink.remove(remoteAddress)
                         if (oldLink != null) {
                             links.remove(oldLink)
                         }
-                        val newLink = LinkInfo(channel.linkId, RouteState(Route(localAddress, remoteAddress), status))
+                        val newLink = LinkInfo(channel.linkId, RouteState(Route(networkAddress, remoteAddress), status))
                         links[channel.linkId] = newLink
                         neighbourToLink[remoteAddress] = channel.linkId
                         _onLinkStatusChange.onNext(newLink)
@@ -178,7 +212,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 }
             }
             if (versionUpdate) {
-                keyService.incrementAndGetVersion(keyService.networkId)
+                keyService.incrementAndGetVersion(networkAddress.id)
             }
             for (channel in errored) {
                 if (channel.initiator) {

@@ -4,7 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import uk.co.nesbit.network.api.LinkStatus
 import uk.co.nesbit.network.api.NetworkAddress
-import uk.co.nesbit.network.engine.Node
+import uk.co.nesbit.network.engine.Layer1Node
 import uk.co.nesbit.network.engine.SimNetwork
 import java.nio.ByteBuffer
 import java.time.Clock
@@ -20,8 +20,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         net1.openLink(net2.networkId)
         for (i in 0 until 100) {
             node1.runStateMachine()
@@ -47,12 +47,12 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
+        val node1 = Layer1Node(net1)
         var receivedOn1: ByteArray? = null
         val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
             receivedOn1 = it.msg
         }
-        val node2 = Node(net2)
+        val node2 = Layer1Node(net2)
         var receivedOn2: ByteArray? = null
         val node2Subs = node2.neighbourDiscoveryService.onReceive.subscribe {
             receivedOn2 = it.msg
@@ -84,12 +84,12 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
+        val node1 = Layer1Node(net1)
         val receivedOn1 = LinkedBlockingQueue<ByteArray>()
         val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
             receivedOn1.offer(it.msg)
         }
-        val node2 = Node(net2)
+        val node2 = Layer1Node(net2)
         val receivedOn2 = LinkedBlockingQueue<ByteArray>()
         val node2Subs = node2.neighbourDiscoveryService.onReceive.subscribe {
             receivedOn2.offer(it.msg)
@@ -156,8 +156,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         val receivedOn1 = AtomicInteger(0)
         val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
             val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
@@ -185,17 +185,17 @@ class LocalLinkTest {
             network.deliverTillEmpty()
             println("Done network")
         }
-        val N = 20
+        val n = 20
         val node1Thread = thread {
             var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
             var i = 0
-            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+            while (receivedOn1.get() < n || receivedOn2.get() < n) {
                 val now = Clock.systemUTC().instant()
                 if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
                     lastHeartbeat = now
                     node1.runStateMachine()
                 }
-                if (i < N) {
+                if (i < n) {
                     val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
                     if (link != null) {
                         val msg = "From 1_$i".toByteArray(Charsets.UTF_8)
@@ -209,7 +209,7 @@ class LocalLinkTest {
         }
         val node2Thread = thread {
             var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
-            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+            while (receivedOn1.get() < n || receivedOn2.get() < n) {
                 val now = Clock.systemUTC().instant()
                 if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
                     lastHeartbeat = now
@@ -223,8 +223,8 @@ class LocalLinkTest {
         node2Thread.join()
         stopping = true
         networkThread.join()
-        assertEquals(N, receivedOn1.get())
-        assertEquals(N, receivedOn2.get())
+        assertEquals(n, receivedOn1.get())
+        assertEquals(n, receivedOn2.get())
         node1Subs.dispose()
         node2Subs.dispose()
     }
@@ -234,8 +234,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         val receivedOn1 = AtomicInteger(0)
         val node1Subs = node1.neighbourDiscoveryService.onReceive.subscribe {
             val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
@@ -263,17 +263,17 @@ class LocalLinkTest {
             network.deliverTillEmpty()
             println("Done network")
         }
-        val N = 20
+        val n = 20
         val node1Thread = thread {
             var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
             var i = 0
-            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+            while (receivedOn1.get() < n || receivedOn2.get() < n) {
                 val now = Clock.systemUTC().instant()
                 if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
                     lastHeartbeat = now
                     node1.runStateMachine()
                 }
-                if (i < N) {
+                if (i < n) {
                     val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
                     if (link != null) {
                         val msg = "From 1_$i".toByteArray(Charsets.UTF_8)
@@ -287,7 +287,7 @@ class LocalLinkTest {
         }
         val node2Thread = thread {
             var lastHeartbeat = Clock.systemUTC().instant().minusMillis(2000)
-            while (receivedOn1.get() < N || receivedOn2.get() < N) {
+            while (receivedOn1.get() < n || receivedOn2.get() < n) {
                 val now = Clock.systemUTC().instant()
                 if (now.isAfter(lastHeartbeat.plusMillis(1000))) {
                     lastHeartbeat = now
@@ -301,8 +301,8 @@ class LocalLinkTest {
         node2Thread.join()
         stopping = true
         networkThread.join()
-        assertEquals(N, receivedOn1.get())
-        assertEquals(N, receivedOn2.get())
+        assertEquals(n, receivedOn1.get())
+        assertEquals(n, receivedOn2.get())
         node1Subs.dispose()
         node2Subs.dispose()
     }
@@ -312,8 +312,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         val receivedOn2 = AtomicInteger(0)
         val node2Subs = node2.neighbourDiscoveryService.onReceive.subscribe {
             val link = node2.neighbourDiscoveryService.findLinkTo(node1.neighbourDiscoveryService.networkAddress)
@@ -358,11 +358,11 @@ class LocalLinkTest {
             }
             println("Node 1a done")
         }
-        val N = 20
+        val n = 20
         val node1Thread1 = thread {
             var i = 0
-            while (receivedOn2.get() < 2 * N) {
-                if (i < N) {
+            while (receivedOn2.get() < 2 * n) {
+                if (i < n) {
                     val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
                     if (link != null) {
                         val msg = "From 1a_$i".toByteArray(Charsets.UTF_8)
@@ -376,8 +376,8 @@ class LocalLinkTest {
         }
         val node1Thread2 = thread {
             var i = 0
-            while (receivedOn2.get() < 2 * N) {
-                if (i < N) {
+            while (receivedOn2.get() < 2 * n) {
+                if (i < n) {
                     val link = node1.neighbourDiscoveryService.findLinkTo(node2.neighbourDiscoveryService.networkAddress)
                     if (link != null) {
                         val msg = "From 1a_$i".toByteArray(Charsets.UTF_8)
@@ -395,7 +395,7 @@ class LocalLinkTest {
         node1HeartbeatThread.join()
         node2HeartbeatThread.join()
         networkThread.join()
-        assertEquals(2 * N, receivedOn2.get())
+        assertEquals(2 * n, receivedOn2.get())
         node2Subs.dispose()
     }
 
@@ -404,8 +404,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         net1.openLink(net2.networkId)
         for (i in 0 until 50) {
             node1.runStateMachine()
@@ -440,8 +440,8 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         net1.openLink(net2.networkId)
         for (i in 0 until 2) {
             node1.runStateMachine()
@@ -477,16 +477,16 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         net1.openLink(net2.networkId)
         for (i in 0 until 2) {
             node1.runStateMachine()
             node2.runStateMachine()
             network.deliverTillEmpty()
         }
-        assertEquals(0, node1.keyService.getVersion(node1.keyService.networkId).currentVersion.version)
-        assertEquals(0, node2.keyService.getVersion(node2.keyService.networkId).currentVersion.version)
+        assertEquals(0, node1.keyService.getVersion(node1.networkAddress.id).currentVersion.version)
+        assertEquals(0, node2.keyService.getVersion(node2.networkAddress.id).currentVersion.version)
         assertEquals(1, node1.neighbourDiscoveryService.links.size)
         val link1to2 = node1.neighbourDiscoveryService.links.values.single()
         assertEquals(LinkStatus.LINK_UP_ACTIVE, link1to2.state.status)
@@ -514,8 +514,8 @@ class LocalLinkTest {
             node2.runStateMachine()
             network.deliverTillEmpty()
         }
-        assertEquals(1, node1.keyService.getVersion(node1.keyService.networkId).currentVersion.version)
-        assertEquals(1, node2.keyService.getVersion(node2.keyService.networkId).currentVersion.version)
+        assertEquals(1, node1.keyService.getVersion(node1.networkAddress.id).currentVersion.version)
+        assertEquals(1, node2.keyService.getVersion(node2.networkAddress.id).currentVersion.version)
         assertEquals(1, node1.neighbourDiscoveryService.links.size)
         val link1to2b = node1.neighbourDiscoveryService.links.values.single()
         assertEquals(LinkStatus.LINK_UP_ACTIVE, link1to2b.state.status)
@@ -535,16 +535,16 @@ class LocalLinkTest {
         val network = SimNetwork()
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
-        val node1 = Node(net1)
-        val node2 = Node(net2)
+        val node1 = Layer1Node(net1)
+        val node2 = Layer1Node(net2)
         net2.openLink(net1.networkId)
         for (i in 0 until 2) {
             node1.runStateMachine()
             node2.runStateMachine()
             network.deliverTillEmpty()
         }
-        assertEquals(0, node1.keyService.getVersion(node1.keyService.networkId).currentVersion.version)
-        assertEquals(0, node2.keyService.getVersion(node2.keyService.networkId).currentVersion.version)
+        assertEquals(0, node1.keyService.getVersion(node1.networkAddress.id).currentVersion.version)
+        assertEquals(0, node2.keyService.getVersion(node2.networkAddress.id).currentVersion.version)
         assertEquals(1, node1.neighbourDiscoveryService.links.size)
         val link1to2 = node1.neighbourDiscoveryService.links.values.single()
         assertEquals(LinkStatus.LINK_UP_PASSIVE, link1to2.state.status)
@@ -572,8 +572,8 @@ class LocalLinkTest {
             node2.runStateMachine()
             network.deliverTillEmpty()
         }
-        assertEquals(1, node1.keyService.getVersion(node1.keyService.networkId).currentVersion.version)
-        assertEquals(1, node2.keyService.getVersion(node2.keyService.networkId).currentVersion.version)
+        assertEquals(1, node1.keyService.getVersion(node1.networkAddress.id).currentVersion.version)
+        assertEquals(1, node2.keyService.getVersion(node2.networkAddress.id).currentVersion.version)
         assertEquals(1, node1.neighbourDiscoveryService.links.size)
         val link1to2b = node1.neighbourDiscoveryService.links.values.single()
         assertEquals(LinkStatus.LINK_UP_PASSIVE, link1to2b.state.status)

@@ -9,6 +9,13 @@
         "type": "array",
         "items": "Routes"
       }
+    },
+    {
+      "name": "replyTo",
+      "type": [
+        "null",
+        "uk.co.nesbit.crypto.SecureHash"
+      ]
     }
   ]
 }

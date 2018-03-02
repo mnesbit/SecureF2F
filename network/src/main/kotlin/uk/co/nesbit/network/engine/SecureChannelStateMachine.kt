@@ -28,6 +28,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 internal class SecureChannelStateMachine(val linkId: LinkId,
+                                         private val fromId: SecureHash,
                                          val networkTarget: Address,
                                          val initiator: Boolean,
                                          private val keyService: KeyService,
@@ -218,7 +219,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         val responderSession = ResponderSessionParams.deserialize(msg.msg)
         responderSession.verify(initiatorSessionParams!!)
         responderSessionParams = responderSession
-        val initiatorIdentity = keyService.getVersion(keyService.networkId)
+        val initiatorIdentity = keyService.getVersion(fromId)
         val initiatorHello = InitiatorHelloRequest.createHelloRequest(initiatorSessionParams!!,
                 responderSessionParams!!,
                 sessionInitKeys!!,
@@ -240,7 +241,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         val initiatorHello = InitiatorHelloRequest.deserialize(msg.msg)
         remoteID = initiatorHello.verify(initiatorSessionParams!!, responderSessionParams!!, sessionInitKeys!!)
         initiatorHelloRequest = initiatorHello
-        val responderIdentity = keyService.getVersion(keyService.networkId)
+        val responderIdentity = keyService.getVersion(fromId)
         val responderHello = ResponderHelloResponse.createHelloResponse(initiatorSessionParams!!,
                 responderSessionParams!!,
                 initiatorHelloRequest!!,
@@ -342,7 +343,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         if (heartbeatSendNonce == null) {
             return
         }
-        val heartbeat = Heartbeat.createHeartbeat(heartbeatSendNonce!!, remoteID!!, keyService)
+        val heartbeat = Heartbeat.createHeartbeat(heartbeatSendNonce!!, remoteID!!, keyService, fromId)
         heartbeatReceiveNonce = heartbeat.nextExpectedNonce
         heartbeatSendNonce = null
         val heartbeatMessage = encryptedChannel!!.encryptMessage(heartbeat.serialize(), null)
@@ -353,7 +354,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
         if (heartbeatReceiveNonce != null) {
             val heartbeat = Heartbeat.tryDeserialize(decrypted)
             if (heartbeat != null) { // Possible heartbeat
-                val localIdentity = keyService.getVersion(keyService.networkId)
+                val localIdentity = keyService.getVersion(fromId)
                 try {
                     remoteID = heartbeat.verify(heartbeatReceiveNonce!!, localIdentity, remoteID!!)
                     routeEntry = Pair(localIdentity.currentVersion.version,
@@ -374,7 +375,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
 
     private fun setError() {
         Exception().printStackTrace()
-        println("${initiator} Error")
+        println("$initiator Error")
         close()
     }
 

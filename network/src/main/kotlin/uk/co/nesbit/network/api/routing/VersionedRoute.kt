@@ -12,7 +12,7 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import java.util.*
 
-class VersionedRoute private constructor(val schemaId: SecureHash,
+class VersionedRoute private constructor(private val schemaId: SecureHash,
                                          val nonce: ByteArray,
                                          val from: VersionedIdentity,
                                          val to: VersionedIdentity) : AvroConvertible {

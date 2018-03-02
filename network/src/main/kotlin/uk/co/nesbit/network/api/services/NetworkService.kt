@@ -5,7 +5,7 @@ import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.LinkInfo
 
-data class LinkReceivedMessage(val linkId: LinkId, val msg: ByteArray)
+class LinkReceivedMessage(val linkId: LinkId, val msg: ByteArray)
 
 interface NetworkService {
     val networkId: Address
@@ -13,6 +13,7 @@ interface NetworkService {
     val onReceive: Observable<LinkReceivedMessage>
 
     val links: Map<LinkId, LinkInfo>
+    val addresses: Map<Address, LinkId>
     val onLinkStatusChange: Observable<LinkInfo>
 
     fun openLink(remoteAddress: Address): Boolean

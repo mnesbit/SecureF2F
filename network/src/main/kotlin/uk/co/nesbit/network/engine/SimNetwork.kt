@@ -20,7 +20,7 @@ class SimNetwork {
         }
 
         override val links: MutableMap<LinkId, LinkInfo> = mutableMapOf()
-        val addresses = mutableMapOf<Address, LinkId>()
+        override val addresses = mutableMapOf<Address, LinkId>()
         private val linkToAddress = mutableMapOf<LinkId, Address>()
 
         private val _onReceive = PublishSubject.create<LinkReceivedMessage>()

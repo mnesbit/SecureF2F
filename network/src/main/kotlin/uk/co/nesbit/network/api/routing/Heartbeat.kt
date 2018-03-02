@@ -14,7 +14,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import java.nio.ByteBuffer
 import java.util.*
 
-class Heartbeat private constructor(val schemaId: SecureHash,
+class Heartbeat private constructor(private val schemaId: SecureHash,
                                     val currentVersion: SecureVersion,
                                     val versionedRouteSignature: DigitalSignature,
                                     val nextExpectedNonce: ByteArray) : AvroConvertible {
@@ -69,10 +69,10 @@ class Heartbeat private constructor(val schemaId: SecureHash,
             }
         }
 
-        fun createHeartbeat(expectedNonce: ByteArray, from: VersionedIdentity, toKeyService: KeyService): Heartbeat {
+        fun createHeartbeat(expectedNonce: ByteArray, from: VersionedIdentity, toKeyService: KeyService, toId: SecureHash): Heartbeat {
             val newNonce = ByteArray(NONCE_SIZE)
             toKeyService.random.nextBytes(newNonce)
-            val to = toKeyService.getVersion(toKeyService.networkId)
+            val to = toKeyService.getVersion(toId)
             val versionedRoute = VersionedRoute(expectedNonce, from, to)
             val serializedRoute = versionedRoute.serialize()
             val signature = toKeyService.sign(to.id, serializedRoute)

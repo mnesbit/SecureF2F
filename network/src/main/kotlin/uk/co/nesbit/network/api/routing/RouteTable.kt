@@ -3,15 +3,13 @@ package uk.co.nesbit.network.api.routing
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.avro.AvroConvertible
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getObjectArray
-import uk.co.nesbit.avro.putObjectArray
+import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.SecureHash
 
-class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
+class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : AvroConvertible {
     constructor(routeTable: GenericRecord) :
-            this(routeTable.getObjectArray("allRoutes", ::Routes))
+            this(routeTable.getObjectArray("allRoutes", ::Routes),
+                    routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash))
 
     init {
         val uniqueIds = mutableSetOf<SecureHash>()
@@ -20,11 +18,15 @@ class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
             uniqueIds += route.from.id
         }
         require(uniqueIds.size == allRoutes.size) { "All Routes must be from distinct sources" }
+        if (replyTo != null) {
+            require(replyTo in uniqueIds) { "RouteTable doesn't include self links" }
+        }
     }
 
     companion object {
         val routeTableSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema))
+                .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema,
+                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
                 .parse(RouteTable::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
 
         fun deserialize(bytes: ByteArray): RouteTable {
@@ -36,6 +38,7 @@ class RouteTable(val allRoutes: List<Routes>) : AvroConvertible {
     override fun toGenericRecord(): GenericRecord {
         val routeTableRecord = GenericData.Record(routeTableSchema)
         routeTableRecord.putObjectArray("allRoutes", allRoutes)
+        routeTableRecord.putTyped("replyTo", replyTo)
         return routeTableRecord
     }
 

@@ -11,6 +11,7 @@ import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engine.KeyServiceImpl
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class RoutingDataTest {
@@ -86,14 +87,17 @@ class RoutingDataTest {
     fun `RouteTable serialization test`() {
         val random = newSecureRandom()
         val sphinxIdentityKeyService: KeyService = KeyServiceImpl(random)
+        val fromId = sphinxIdentityKeyService.generateNetworkID()
         val sphinxIdentityKeyPairTo1: KeyService = KeyServiceImpl(random)
+        val idTo1 = sphinxIdentityKeyPairTo1.generateNetworkID()
         val sphinxIdentityKeyPairTo2: KeyService = KeyServiceImpl(random)
-        val versionedIDFrom = sphinxIdentityKeyService.incrementAndGetVersion(sphinxIdentityKeyService.networkId)
-        sphinxIdentityKeyPairTo1.incrementAndGetVersion(sphinxIdentityKeyPairTo1.networkId)
-        val versionedIDTo1 = sphinxIdentityKeyPairTo1.incrementAndGetVersion(sphinxIdentityKeyPairTo1.networkId)
-        sphinxIdentityKeyPairTo2.incrementAndGetVersion(sphinxIdentityKeyPairTo2.networkId)
-        sphinxIdentityKeyPairTo2.incrementAndGetVersion(sphinxIdentityKeyPairTo2.networkId)
-        val versionedIDTo2 = sphinxIdentityKeyPairTo2.incrementAndGetVersion(sphinxIdentityKeyPairTo2.networkId)
+        val idTo2 = sphinxIdentityKeyPairTo2.generateNetworkID()
+        val versionedIDFrom = sphinxIdentityKeyService.incrementAndGetVersion(fromId)
+        sphinxIdentityKeyPairTo1.incrementAndGetVersion(idTo1)
+        val versionedIDTo1 = sphinxIdentityKeyPairTo1.incrementAndGetVersion(idTo1)
+        sphinxIdentityKeyPairTo2.incrementAndGetVersion(idTo2)
+        sphinxIdentityKeyPairTo2.incrementAndGetVersion(idTo2)
+        val versionedIDTo2 = sphinxIdentityKeyPairTo2.incrementAndGetVersion(idTo2)
         val nonce1 = ByteArray(NONCE_SIZE)
         random.nextBytes(nonce1)
         val nonce2 = ByteArray(NONCE_SIZE)
@@ -106,22 +110,30 @@ class RoutingDataTest {
         val route1Serialized = versionedRoute1.serialize()
         val route2Serialized = versionedRoute2.serialize()
         val route3Serialized = versionedRoute3.serialize()
-        val sig1 = sphinxIdentityKeyPairTo1.sign(sphinxIdentityKeyPairTo1.networkId, route1Serialized).toDigitalSignature()
-        val sig2 = sphinxIdentityKeyPairTo2.sign(sphinxIdentityKeyPairTo2.networkId, route2Serialized).toDigitalSignature()
-        val sig3 = sphinxIdentityKeyService.sign(sphinxIdentityKeyService.networkId, route3Serialized).toDigitalSignature()
+        val sig1 = sphinxIdentityKeyPairTo1.sign(idTo1, route1Serialized).toDigitalSignature()
+        val sig2 = sphinxIdentityKeyPairTo2.sign(idTo2, route2Serialized).toDigitalSignature()
+        val sig3 = sphinxIdentityKeyService.sign(fromId, route3Serialized).toDigitalSignature()
         val routeEntries1 = listOf(SignedEntry(versionedRoute1.entry, sig1), SignedEntry(versionedRoute2.entry, sig2))
-        val routes1 = Routes.createRoutes(routeEntries1, sphinxIdentityKeyService)
+        val routes1 = Routes.createRoutes(routeEntries1, sphinxIdentityKeyService, fromId)
         routes1.verify()
         val routeEntries2 = listOf(SignedEntry(versionedRoute3.entry, sig3))
-        val routes2 = Routes.createRoutes(routeEntries2, sphinxIdentityKeyPairTo2)
+        val routes2 = Routes.createRoutes(routeEntries2, sphinxIdentityKeyPairTo2, idTo2)
         routes2.verify()
-        val routeTable = RouteTable(listOf(routes1, routes2))
+        val routeTable = RouteTable(listOf(routes1, routes2), null)
         val serialized = routeTable.serialize()
         val deserialized = RouteTable.deserialize(serialized)
         assertEquals(routeTable, deserialized)
         val record = routeTable.toGenericRecord()
         val deserialized2 = RouteTable(record)
         assertEquals(routeTable, deserialized2)
+        val routeTable2 = RouteTable(listOf(routes1, routes2), fromId)
+        val serialized3 = routeTable2.serialize()
+        val deserialized3 = RouteTable.deserialize(serialized3)
+        assertEquals(routeTable2, deserialized3)
+        val record2 = routeTable2.toGenericRecord()
+        val deserialized4 = RouteTable(record2)
+        assertEquals(routeTable2, deserialized4)
+        assertFailsWith<IllegalArgumentException> { RouteTable(listOf(routes1, routes2), idTo1) }
     }
 
     @Test
@@ -151,23 +163,25 @@ class RoutingDataTest {
     @Test
     fun `Generation and validation of Heartbeats`() {
         val aliceKeyService: KeyService = KeyServiceImpl()
-        aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId)
+        val aliceId = aliceKeyService.generateNetworkID()
+        aliceKeyService.incrementAndGetVersion(aliceId)
         val bobKeyService: KeyService = KeyServiceImpl()
-        var aliceIdentity = aliceKeyService.getVersion(aliceKeyService.networkId)
-        var bobIdentity = bobKeyService.getVersion(bobKeyService.networkId)
+        val bobId = bobKeyService.generateNetworkID()
+        var aliceIdentity = aliceKeyService.getVersion(aliceId)
+        var bobIdentity = bobKeyService.getVersion(bobId)
         var aliceNonce: ByteArray
         var bobNonce = ByteArray(NONCE_SIZE, { i -> i.toByte() })
         for (i in 0 until 30) {
             if ((i.rem(3)) == 1) {
-                aliceKeyService.incrementAndGetVersion(aliceKeyService.networkId)
+                aliceKeyService.incrementAndGetVersion(aliceId)
             }
-            val aliceHeartbeat1 = Heartbeat.createHeartbeat(bobNonce, bobIdentity, aliceKeyService)
+            val aliceHeartbeat1 = Heartbeat.createHeartbeat(bobNonce, bobIdentity, aliceKeyService, aliceId)
             aliceIdentity = aliceHeartbeat1.verify(bobNonce, bobIdentity, aliceIdentity)
             aliceNonce = aliceHeartbeat1.nextExpectedNonce
             if ((i.rem(5)) == 2) {
-                bobKeyService.incrementAndGetVersion(bobKeyService.networkId)
+                bobKeyService.incrementAndGetVersion(bobId)
             }
-            val bobHeartbeat1 = Heartbeat.createHeartbeat(aliceNonce, aliceIdentity, bobKeyService)
+            val bobHeartbeat1 = Heartbeat.createHeartbeat(aliceNonce, aliceIdentity, bobKeyService, bobId)
             bobIdentity = bobHeartbeat1.verify(aliceNonce, aliceIdentity, bobIdentity)
             bobNonce = bobHeartbeat1.nextExpectedNonce
         }
