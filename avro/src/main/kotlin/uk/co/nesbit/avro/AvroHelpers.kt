@@ -218,8 +218,12 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
 }
 
 @Suppress("UNCHECKED_CAST")
-inline fun <reified T : Any> GenericRecord.getTyped(fieldName: String, constructor: (GenericRecord) -> T): T {
-    return constructor(get(fieldName) as GenericRecord)
+inline fun <reified T> GenericRecord.getTyped(fieldName: String, constructor: (GenericRecord) -> T): T {
+    val field = get(fieldName) as GenericRecord?
+    if ((field == null) && (null is T)) {
+        return null as T
+    }
+    return constructor(field!!)
 }
 
 @Suppress("UNCHECKED_CAST")
