@@ -50,7 +50,8 @@ class ResponderHelloResponse private constructor(private val schemaId: SecureHas
                                 responderSigner: (keyId: SecureHash, toSign: ByteArray) -> DigitalSignatureAndKey): ResponderHelloResponse {
             initiatorHelloRequest.verify(initiatorInit, responderInit, responderSessionKeyPair)
             val sharedState = SessionSecretState(initiatorInit, responderInit, responderSessionKeyPair)
-            val sessionBinding = SessionBinding(initiatorInit.initiatorNonce,
+            val sessionBinding = SessionBinding(responderInit.protocolVersion,
+                    initiatorInit.initiatorNonce,
                     responderInit.responderNonce,
                     responderInit.responderDHPublicKey,
                     responderIdentity)
@@ -80,7 +81,8 @@ class ResponderHelloResponse private constructor(private val schemaId: SecureHas
         val decipher = ChaCha20Poly1305.Decode(sharedState.responseEncParams)
         val decodedPayload = decipher.decodeCiphertext(encryptedPayload, concatByteArrays(schemaId.serialize(), initiatorNonce, responderNonce))
         val initiatorProof = SessionIdentityProof.deserialize(decodedPayload)
-        val recreatedSessionBinding = SessionBinding(initiatorNonce,
+        val recreatedSessionBinding = SessionBinding(responderInit.protocolVersion,
+                initiatorNonce,
                 responderNonce,
                 responderInit.responderDHPublicKey,
                 initiatorProof.identityInfo)

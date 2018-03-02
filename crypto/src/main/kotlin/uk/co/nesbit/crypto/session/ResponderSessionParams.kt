@@ -13,6 +13,7 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.generateCurve25519DHKeyPair
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
+import uk.co.nesbit.crypto.session.SessionSecretState.Companion.PROTO_VERSION
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -21,11 +22,13 @@ import java.util.*
 // Second packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
 // See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
 class ResponderSessionParams private constructor(private val schemaId: SecureHash,
+                                                 val protocolVersion: Int,
                                                  private val initiatorNonce: ByteArray,
                                                  val responderNonce: ByteArray,
                                                  val responderDHPublicKey: PublicKey) : AvroConvertible {
     constructor(responderSessionParams: GenericRecord) :
             this(SecureHash("SHA-256", responderSessionParams.getTyped("schemaFingerprint")),
+                    responderSessionParams.getTyped("protocolVersion"),
                     responderSessionParams.getTyped("initiatorNonce"),
                     responderSessionParams.getTyped("responderNonce"),
                     responderSessionParams.getTyped("responderDHPublicKey")) {
@@ -33,6 +36,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
     }
 
     init {
+        require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE)
         require(responderNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
@@ -56,15 +60,13 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
             val nonce = ByteArray(NONCE_SIZE)
             random.nextBytes(nonce)
             val ephemeralDHKeyPair = generateCurve25519DHKeyPair(random)
-            return Pair(ephemeralDHKeyPair, ResponderSessionParams(SecureHash("SHA-256", schemaFingerprint), initiatorParams.initiatorNonce, nonce, ephemeralDHKeyPair.public))
+            return Pair(ephemeralDHKeyPair, ResponderSessionParams(SecureHash("SHA-256", schemaFingerprint), PROTO_VERSION, initiatorParams.initiatorNonce, nonce, ephemeralDHKeyPair.public))
         }
     }
 
-    init {
-        require(responderNonce.size == NONCE_SIZE)
-    }
-
     fun verify(initiatorParams: InitiatorSessionParams) {
+        require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
+        require(initiatorParams.protocolVersion == protocolVersion) { "Incorrect protocol version ${initiatorParams.protocolVersion} should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE)
         require(responderNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
@@ -79,6 +81,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
     override fun toGenericRecord(): GenericRecord {
         val responderRecord = GenericData.Record(responderSessionParamsSchema)
         responderRecord.putTyped("schemaFingerprint", schemaFingerprint)
+        responderRecord.putTyped("protocolVersion", protocolVersion)
         responderRecord.putTyped("initiatorNonce", initiatorNonce)
         responderRecord.putTyped("responderNonce", responderNonce)
         responderRecord.putTyped("responderDHPublicKey", responderDHPublicKey)
@@ -92,6 +95,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
         other as ResponderSessionParams
 
         if (schemaId != other.schemaId) return false
+        if (protocolVersion != other.protocolVersion) return false
         if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, other.initiatorNonce)) return false
         if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(responderNonce, other.responderNonce)) return false
         if (responderDHPublicKey != other.responderDHPublicKey) return false
@@ -101,6 +105,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
 
     override fun hashCode(): Int {
         var result = schemaId.hashCode()
+        result = 31 * result + protocolVersion.hashCode()
         result = 31 * result + Arrays.hashCode(initiatorNonce)
         result = 31 * result + Arrays.hashCode(responderNonce)
         result = 31 * result + responderDHPublicKey.hashCode()

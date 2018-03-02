@@ -4,6 +4,10 @@
   "type": "record",
   "fields": [
     {
+      "name": "protocolVersion",
+      "type": "int"
+    },
+    {
       "name": "otherPartyNonce",
       "type": {
         "name": "nonce",

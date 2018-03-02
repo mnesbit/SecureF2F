@@ -12,6 +12,10 @@
       }
     },
     {
+      "name": "protocolVersion",
+      "type": "int"
+    },
+    {
       "name": "initiatorNonce",
       "type": {
         "name": "nonce",

@@ -16,8 +16,9 @@ class SessionSecretState(initiatorInit: InitiatorSessionParams,
                          responderInit: ResponderSessionParams,
                          dhKeys: KeyPair) {
     companion object {
+        const val PROTO_VERSION = 1
         const val NONCE_SIZE = 16
-        val HKDF_SALT = "LinkProto".toByteArray(Charsets.UTF_8)
+        val HKDF_SALT = "LinkProto_$PROTO_VERSION".toByteArray(Charsets.UTF_8)
         const val REQUEST_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
         const val REQUEST_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
         const val REQUEST_MAC_KEY_BYTES = 32

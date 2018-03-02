@@ -13,6 +13,7 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.generateCurve25519DHKeyPair
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
+import uk.co.nesbit.crypto.session.SessionSecretState.Companion.PROTO_VERSION
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
@@ -21,13 +22,17 @@ import java.util.*
 // First packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
 // See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
 class InitiatorSessionParams private constructor(private val schemaId: SecureHash,
+                                                 val protocolVersion: Int,
                                                  val initiatorNonce: ByteArray,
                                                  val initiatorDHPublicKey: PublicKey) : AvroConvertible {
     constructor(initiatorSessionParams: GenericRecord) :
             this(SecureHash("SHA-256", initiatorSessionParams.getTyped("schemaFingerprint")),
+                    initiatorSessionParams.getTyped("protocolVersion"),
                     initiatorSessionParams.getTyped("initiatorNonce"),
                     initiatorSessionParams.getTyped("initiatorDHPublicKey"))
+
     init {
+        require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
         require(initiatorDHPublicKey.algorithm == "Curve25519")
@@ -48,15 +53,12 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
             val nonce = ByteArray(NONCE_SIZE)
             random.nextBytes(nonce)
             val ephemeralDHKeyPair = generateCurve25519DHKeyPair(random)
-            return Pair(ephemeralDHKeyPair, InitiatorSessionParams(SecureHash("SHA-256", schemaFingerprint), nonce, ephemeralDHKeyPair.public))
+            return Pair(ephemeralDHKeyPair, InitiatorSessionParams(SecureHash("SHA-256", schemaFingerprint), PROTO_VERSION, nonce, ephemeralDHKeyPair.public))
         }
     }
 
-    init {
-        require(initiatorNonce.size == NONCE_SIZE)
-    }
-
     fun verify() {
+        require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
         require(initiatorDHPublicKey.algorithm == "Curve25519")
@@ -65,6 +67,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
     override fun toGenericRecord(): GenericRecord {
         val initiatorRecord = GenericData.Record(initiatorSessionParamsSchema)
         initiatorRecord.putTyped("schemaFingerprint", schemaFingerprint)
+        initiatorRecord.putTyped("protocolVersion", protocolVersion)
         initiatorRecord.putTyped("initiatorNonce", initiatorNonce)
         initiatorRecord.putTyped("initiatorDHPublicKey", initiatorDHPublicKey)
         return initiatorRecord
@@ -77,6 +80,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
         other as InitiatorSessionParams
 
         if (schemaId != other.schemaId) return false
+        if (protocolVersion != other.protocolVersion) return false
         if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, other.initiatorNonce)) return false
         if (initiatorDHPublicKey != other.initiatorDHPublicKey) return false
 
@@ -85,6 +89,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
 
     override fun hashCode(): Int {
         var result = schemaId.hashCode()
+        result = 31 * result + protocolVersion.hashCode()
         result = 31 * result + Arrays.hashCode(initiatorNonce)
         result = 31 * result + initiatorDHPublicKey.hashCode()
         return result
