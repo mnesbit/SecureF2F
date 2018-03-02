@@ -36,7 +36,7 @@ class SimNetwork {
                 return
             }
             val newLink = SimpleLinkId(linkIdCounter++)
-            val linkInfo = LinkInfo(newLink, RouteState(Route(networkId, remoteAddress), LinkStatus.LINK_UP_PASSIVE))
+            val linkInfo = LinkInfo(newLink, Route(networkId, remoteAddress), LinkStatus.LINK_UP_PASSIVE)
             links[newLink] = linkInfo
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
@@ -48,7 +48,7 @@ class SimNetwork {
                 return false
             }
             val newLink = SimpleLinkId(linkIdCounter++)
-            val linkInfo = LinkInfo(newLink, RouteState(Route(networkId, remoteAddress), LinkStatus.LINK_UP_ACTIVE))
+            val linkInfo = LinkInfo(newLink, Route(networkId, remoteAddress), LinkStatus.LINK_UP_ACTIVE)
             links[newLink] = linkInfo
             linkToAddress[newLink] = remoteAddress
             addresses[remoteAddress] = newLink
@@ -62,7 +62,7 @@ class SimNetwork {
             if (link != null) {
                 val linkAddress = linkToAddress.remove(linkId)
                 addresses.remove(linkAddress)
-                val linkDown = LinkInfo(linkId, link.state.copy(status = LinkStatus.LINK_DOWN))
+                val linkDown = link.copy(status = LinkStatus.LINK_DOWN)
                 _onLinkStatusChange.onNext(linkDown)
                 val otherEnd = parent.networkNodes[linkAddress]
                 if (otherEnd != null) {
@@ -76,7 +76,7 @@ class SimNetwork {
 
         override fun send(linkId: LinkId, msg: ByteArray) {
             val linkInfo = links[linkId] ?: throw IOException("Invalid LinkId $linkId")
-            if (!linkInfo.state.status.active()) {
+            if (!linkInfo.status.active()) {
                 throw IOException("Link Unavailable $linkId")
             }
             parent.messageQueue.offer(Packet(Route(networkId, linkToAddress[linkId]!!), linkId, msg))
@@ -101,7 +101,7 @@ class SimNetwork {
             if (sourceNode != null) {
                 val status = sourceNode.links[packet.viaLinkId]
                 if (status != null) {
-                    if (status.state.status.active()) {
+                    if (status.status.active()) {
                         return networkNodes[packet.route.to]
                     }
                 }

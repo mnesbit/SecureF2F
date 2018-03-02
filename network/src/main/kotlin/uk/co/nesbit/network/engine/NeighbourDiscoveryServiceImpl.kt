@@ -74,23 +74,23 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
     private fun resetLinkInfo(linkId: LinkId): Boolean {
         val linkInfo = links[linkId]
         if (linkInfo != null) {
-            val linkDown = LinkInfo(linkId, linkInfo.state.copy(status = LinkStatus.LINK_DOWN))
+            val linkDown = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = linkDown
             _onLinkStatusChange.onNext(linkDown)
-            return linkInfo.state.status.active()
+            return linkInfo.status.active()
         }
         return false
     }
 
     private fun onLinkChange(linkChange: LinkInfo) {
         lock.withLock {
-            when (linkChange.state.status) {
+            when (linkChange.status) {
                 LinkStatus.LINK_UP_ACTIVE -> {
                     if (!channels.containsKey(linkChange.linkId)) {
                         resetLinkInfo(linkChange.linkId)
                         val channel = SecureChannelStateMachine(linkChange.linkId,
                                 networkAddress.id,
-                                linkChange.state.route.to,
+                                linkChange.route.to,
                                 true,
                                 keyService,
                                 networkService)
@@ -103,7 +103,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                         resetLinkInfo(linkChange.linkId)
                         val channel = SecureChannelStateMachine(linkChange.linkId,
                                 networkAddress.id,
-                                linkChange.state.route.to,
+                                linkChange.route.to,
                                 false,
                                 keyService,
                                 networkService)
@@ -129,7 +129,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     if (linkId != null) {
                         val linkInfo = links[linkId]
                         if (linkInfo != null) {
-                            if (linkInfo.state.status.active()) {
+                            if (linkInfo.status.active()) {
                                 return linkId
                             }
                         }
@@ -146,7 +146,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     val localLink = networkService.addresses[neighbourAddress]
                     if (localLink != null) {
                         val linkInfo = networkService.links[localLink]
-                        if (linkInfo != null && linkInfo.state.status.active()) {
+                        if (linkInfo != null && linkInfo.status.active()) {
                             return localLink
                         }
                     }
@@ -187,14 +187,14 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     errored += channel
                 } else if (channel.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE) {
                     val linkInfo = links[channel.linkId]
-                    if ((linkInfo == null) || (linkInfo.state.status == LinkStatus.LINK_DOWN)) {
+                    if ((linkInfo == null) || (linkInfo.status == LinkStatus.LINK_DOWN)) {
                         val remoteAddress = SphinxAddress(channel.remoteID!!.identity)
                         val status = if (channel.initiator) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
                         val oldLink = neighbourToLink.remove(remoteAddress)
                         if (oldLink != null) {
                             links.remove(oldLink)
                         }
-                        val newLink = LinkInfo(channel.linkId, RouteState(Route(networkAddress, remoteAddress), status))
+                        val newLink = LinkInfo(channel.linkId, Route(networkAddress, remoteAddress), status)
                         links[channel.linkId] = newLink
                         neighbourToLink[remoteAddress] = channel.linkId
                         _onLinkStatusChange.onNext(newLink)
