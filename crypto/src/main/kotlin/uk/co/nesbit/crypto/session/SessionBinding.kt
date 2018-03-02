@@ -13,10 +13,10 @@ import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import java.security.PublicKey
 import java.util.*
 
-class SessionBinding(val otherPartyNonce: ByteArray,
-                     val ownNonce: ByteArray,
-                     val ownDHPublicKey: PublicKey,
-                     val identityInfo: VersionedIdentity) : AvroConvertible {
+class SessionBinding(private val otherPartyNonce: ByteArray,
+                     private val ownNonce: ByteArray,
+                     private val ownDHPublicKey: PublicKey,
+                     private val identityInfo: VersionedIdentity) : AvroConvertible {
     constructor(sessionBindingRecord: GenericRecord) :
             this(sessionBindingRecord.getTyped("otherPartyNonce"),
                     sessionBindingRecord.getTyped("ownNonce"),

@@ -20,7 +20,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
                     signatureRecord.getTyped<String?>("publicAddress"))
 
     companion object {
-        val ID_HASH_ALGORITHM = "SHA-256"
+        const val ID_HASH_ALGORITHM = "SHA-256"
         val sphinxIdentitySchema: Schema = Schema.Parser()
                 .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
                         SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))

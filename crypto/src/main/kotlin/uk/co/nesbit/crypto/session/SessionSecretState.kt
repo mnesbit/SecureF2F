@@ -1,15 +1,15 @@
 package uk.co.nesbit.crypto.session
 
-import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.ChaCha20Poly1305
-import uk.co.nesbit.crypto.concatByteArrays
-import uk.co.nesbit.crypto.getSharedDHSecret
-import uk.co.nesbit.crypto.splitByteArrays
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.ChaCha20Poly1305
+import uk.co.nesbit.crypto.concatByteArrays
+import uk.co.nesbit.crypto.getSharedDHSecret
+import uk.co.nesbit.crypto.splitByteArrays
 import java.security.KeyPair
 
 class SessionSecretState(initiatorInit: InitiatorSessionParams,
@@ -18,14 +18,14 @@ class SessionSecretState(initiatorInit: InitiatorSessionParams,
     companion object {
         const val NONCE_SIZE = 16
         val HKDF_SALT = "LinkProto".toByteArray(Charsets.UTF_8)
-        val REQUEST_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
-        val REQUEST_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
-        val REQUEST_MAC_KEY_BYTES = 32
-        val RESPONSE_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
-        val RESPONSE_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
-        val RESPONSE_MAC_KEY_BYTES = 32
-        val SESSION_KEY_BYTES = 32
-        val TOTAL_KEY_BYTES = REQUEST_KEY_BYTES +
+        const val REQUEST_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
+        const val REQUEST_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
+        const val REQUEST_MAC_KEY_BYTES = 32
+        const val RESPONSE_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
+        const val RESPONSE_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
+        const val RESPONSE_MAC_KEY_BYTES = 32
+        const val SESSION_KEY_BYTES = 32
+        const val TOTAL_KEY_BYTES = REQUEST_KEY_BYTES +
                 REQUEST_IV_BYTES +
                 REQUEST_MAC_KEY_BYTES +
                 RESPONSE_KEY_BYTES +
@@ -34,7 +34,7 @@ class SessionSecretState(initiatorInit: InitiatorSessionParams,
                 SESSION_KEY_BYTES
     }
 
-    val dhSharedValue: ByteArray
+    private val dhSharedValue: ByteArray
     val requestEncParams: ParametersWithIV
     val requestMACKey: ByteArray
     val responseEncParams: ParametersWithIV

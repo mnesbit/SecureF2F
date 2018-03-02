@@ -43,8 +43,8 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     private val cache = mutableMapOf(targetHash to 0)
 
     companion object {
-        val CHAIN_HASH_ID = "HmacSHA256"
-        val MAX_CHAIN_LENGTH = 65536
+        const val CHAIN_HASH_ID = "HmacSHA256"
+        const val MAX_CHAIN_LENGTH = 65536
         val hashChainSchema: Schema = Schema.Parser()
                 .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
                 .parse(HashChainPublic::class.java.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))

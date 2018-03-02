@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto
 
+import org.junit.Assert.assertArrayEquals
+import org.junit.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.ratchet.RatchetException
 import uk.co.nesbit.crypto.ratchet.RatchetHeader
 import uk.co.nesbit.crypto.ratchet.RatchetMessage
 import uk.co.nesbit.crypto.ratchet.RatchetState
-import org.junit.Assert.assertArrayEquals
-import org.junit.Test
 import kotlin.experimental.xor
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -63,7 +63,7 @@ class RatchetTest {
         for (i in 0 until 100) {
             val aliceSends = 1 + secureRandom.nextInt(10)
             for (j in 0 until aliceSends) {
-                val msg = "from alice ${msgCount}".toByteArray(Charsets.UTF_8)
+                val msg = "from alice $msgCount".toByteArray(Charsets.UTF_8)
                 val aad = ByteArray(1) { msgCount.toByte() }
                 ++msgCount
                 val aliceMessage = ratchetAlice.encryptMessage(msg, aad)
@@ -72,7 +72,7 @@ class RatchetTest {
             }
             val bobSends = 1 + secureRandom.nextInt(10)
             for (j in 0 until bobSends) {
-                val msg = "from bob ${msgCount}".toByteArray(Charsets.UTF_8)
+                val msg = "from bob $msgCount".toByteArray(Charsets.UTF_8)
                 val aad = ByteArray(1) { msgCount.toByte() }
                 ++msgCount
                 val bobMessage = ratchetBob.encryptMessage(msg, aad)
@@ -152,7 +152,7 @@ class RatchetTest {
         for (i in 0 until 10) {
             val aliceMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
             for (j in 0 until ratchetBob.maxSkip) {
-                val msg = "from alice ${msgCount}".toByteArray(Charsets.UTF_8)
+                val msg = "from alice $msgCount".toByteArray(Charsets.UTF_8)
                 ++msgCount
                 aliceMessages += Pair(msg, ratchetAlice.encryptMessage(msg, null))
             }
@@ -163,7 +163,7 @@ class RatchetTest {
             }
             val bobMessages = mutableListOf<Pair<ByteArray, ByteArray>>()
             for (j in 0 until ratchetAlice.maxSkip) {
-                val msg = "from bob ${msgCount}".toByteArray(Charsets.UTF_8)
+                val msg = "from bob $msgCount".toByteArray(Charsets.UTF_8)
                 ++msgCount
                 bobMessages += Pair(msg, ratchetBob.encryptMessage(msg, null))
             }

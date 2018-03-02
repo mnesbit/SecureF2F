@@ -20,19 +20,13 @@ import java.util.*
 
 // First packet in IKEv2 type handshake as described in: 'SIGMA: the `SIGn-and-MAc' Approach to Authenticated Diffie-Hellman and its Use in the IKE Protocols'
 // See http://webee.technion.ac.il/~hugo/sigma-pdf.pdf 'Full Fledge' Protocol
-class InitiatorSessionParams private constructor(val schemaId: SecureHash,
+class InitiatorSessionParams private constructor(private val schemaId: SecureHash,
                                                  val initiatorNonce: ByteArray,
                                                  val initiatorDHPublicKey: PublicKey) : AvroConvertible {
     constructor(initiatorSessionParams: GenericRecord) :
             this(SecureHash("SHA-256", initiatorSessionParams.getTyped("schemaFingerprint")),
                     initiatorSessionParams.getTyped("initiatorNonce"),
                     initiatorSessionParams.getTyped("initiatorDHPublicKey"))
-
-    constructor(initiatorNonce: ByteArray,
-                initiatorDHPublicKey: PublicKey) : this(SecureHash("SHA-256", schemaFingerprint),
-            initiatorNonce,
-            initiatorDHPublicKey)
-
     init {
         require(initiatorNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))

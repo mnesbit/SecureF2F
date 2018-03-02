@@ -1,11 +1,11 @@
 package uk.co.nesbit.crypto.sphinx
 
-import uk.co.nesbit.crypto.*
 import djb.Curve25519
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import uk.co.nesbit.crypto.*
 import java.nio.ByteBuffer
 import java.security.PrivateKey
 import java.security.PublicKey
@@ -214,6 +214,15 @@ class Sphinx(
         val nodeId = nodeKeys.id
         val dhFunction = { x: PublicKey -> getSharedDHSecret(nodeKeys.diffieHellmanKeys, x) }
         return processMessage(msg, nodeId, dhFunction)
+    }
+
+    fun processMessage(msg: ByteArray, nodeId: SecureHash, dhFunction: (remotePublicKey: PublicKey) -> ByteArray): MessageProcessingResult {
+        if ((msg.size < ID_HASH_SIZE + betaLength + GCM_TAG_LENGTH)
+                || ((msg.size - ID_HASH_SIZE - betaLength - GCM_TAG_LENGTH).rem(payloadRoundingSize) != 0)) {
+            return MessageProcessingResult(false, null, null, null)
+        }
+        val unpacked = UnpackedSphinxMessage(betaLength, msg)
+        return processMessage(unpacked, nodeId, dhFunction)
     }
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeId: SecureHash, dhFunction: (remotePublicKey: PublicKey) -> ByteArray): MessageProcessingResult {
