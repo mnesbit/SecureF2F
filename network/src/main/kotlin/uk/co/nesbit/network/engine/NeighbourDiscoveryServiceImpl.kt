@@ -151,14 +151,6 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                         }
                     }
                 }
-                is HashAddress -> {
-                    val channel = channels.values
-                            .filter { it.state == SecureChannelStateMachine.ChannelState.SESSION_ACTIVE }
-                            .firstOrNull { it.remoteID!!.id == neighbourAddress.id }
-                    if (channel != null) {
-                        return channel.linkId
-                    }
-                }
             }
             return null
         }

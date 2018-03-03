@@ -4,9 +4,9 @@ import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.network.api.Address
-import uk.co.nesbit.network.api.HashAddress
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.routing.RouteTable
 import uk.co.nesbit.network.api.routing.Routes
@@ -17,10 +17,13 @@ import kotlin.concurrent.withLock
 class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: NeighbourDiscoveryService, private val keyService: KeyService) : RouteDiscoveryService, AutoCloseable {
     private val sphinxEncoder = Sphinx(keyService.random)
     private val receiveSubscription: Disposable
+    private val linkChangeSubscription: Disposable
     private val knownRoutes = mutableListOf<Routes>()
     private val adjacencyGraph = mutableMapOf<Address, List<Address>>()
     private val lock = ReentrantLock()
     override val knownAddresses = mutableSetOf<Address>()
+    private val knownIds = mutableMapOf<SecureHash, SphinxAddress>()
+    private var neighbourIndex: Int = 0
 
     private val _onReceive = PublishSubject.create<RouteReceivedMessage>()
     override val onReceive: Observable<RouteReceivedMessage>
@@ -28,9 +31,12 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
 
     init {
         receiveSubscription = neighbourDiscoveryService.onReceive.subscribe { processReceivedMessage(it) }
+        linkChangeSubscription = neighbourDiscoveryService.onLinkStatusChange.subscribe { processLinkStatusChange() }
     }
 
+
     override fun close() {
+        linkChangeSubscription.dispose()
         receiveSubscription.dispose()
     }
 
@@ -49,36 +55,80 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         neighbourDiscoveryService.send(firstLink!!, sendableMessage.messageBytes)
     }
 
+    private fun processLinkStatusChange() {
+        lock.withLock {
+            refreshLocalRoutes()
+            recalculateGraph()
+        }
+    }
+
     private fun processReceivedMessage(msg: NeighbourReceivedMessage) {
         val messageResult = sphinxEncoder.processMessage(msg.msg,
                 neighbourDiscoveryService.networkAddress.id,
                 { remotePubKey -> keyService.getSharedDHSecret(neighbourDiscoveryService.networkAddress.id, remotePubKey) })
         if (messageResult.valid) {
             if (messageResult.finalPayload != null) {
-                //_onReceive.onNext(RouteReceivedMessage())
-                try {
-                    val routes = RouteTable.deserialize(messageResult.finalPayload!!)
-                    for (route in routes.allRoutes) {
-                        route.verify()
-                    }
+                val routes = try {
+                    RouteTable.deserialize(messageResult.finalPayload!!)
                 } catch (ex: Exception) {
-
+                    null
+                }
+                if (routes != null) {
+                    lock.withLock {
+                        mergeRouteTable(routes)
+                        recalculateGraph()
+                        if (routes.replyTo != null && knownIds.containsKey(routes.replyTo)) {
+                            val replyAddress = knownIds[routes.replyTo]!!
+                            val replyPath = findRandomRouteTo(replyAddress)
+                            if (replyPath != null) {
+                                val routeTable = RouteTable(knownRoutes, null)
+                                send(replyPath, routeTable.serialize())
+                            } else {
+                                println("${neighbourDiscoveryService.networkAddress.id} can't send to ${replyAddress.id}")
+                            }
+                        }
+                    }
+                } else {
+                    //_onReceive.onNext(RouteReceivedMessage())
                 }
             } else if (messageResult.forwardMessage != null) {
-                val link = neighbourDiscoveryService.findLinkTo(HashAddress(messageResult.nextNode!!))
-                if (link == null) {
-                    println("Dropping packet! Don't know next address ${messageResult.nextNode}")
-                } else {
-                    neighbourDiscoveryService.send(link, messageResult.forwardMessage!!.messageBytes)
+                val replyAddress = knownIds[messageResult.nextNode!!]
+                if (replyAddress != null) {
+                    val link = neighbourDiscoveryService.findLinkTo(replyAddress)
+                    if (link != null) {
+                        neighbourDiscoveryService.send(link, messageResult.forwardMessage!!.messageBytes)
+                        return
+                    }
                 }
+                println("Dropping packet! Don't know next address ${messageResult.nextNode}")
             }
         } else {
             println("Bad message received")
         }
     }
 
+    private fun mergeRouteTable(routes: RouteTable) {
+        for (route in routes.allRoutes) {
+            val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
+            if (existingRouteIndex == -1) {
+                knownRoutes += route
+            } else {
+                val existingRoute = knownRoutes[existingRouteIndex]
+                if (existingRoute.from.currentVersion.version < route.from.currentVersion.version) {
+                    knownRoutes[existingRouteIndex] = route
+                } else if (existingRoute.from.currentVersion.version == route.from.currentVersion.version
+                        && (existingRoute.entries.size <= route.entries.size)) {
+                    knownRoutes[existingRouteIndex] = route
+                } else {
+                    println("Hmmm!!!")
+                }
+            }
+        }
+    }
+
     override fun findRandomRouteTo(destination: Address): List<Address>? {
-        fun findPathR(start: Address, target: Address, depth: Int): List<Address>? {
+        fun findPathR(prefix: List<Address>, target: Address, depth: Int): List<Address>? {
+            val start = prefix.last()
             if (start == target) return listOf(target)
             if (depth == 0) return null
             val adjList = adjacencyGraph[start] ?: return null
@@ -90,54 +140,67 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 val sample = scrambled[swapIndex]
                 scrambled[swapIndex] = scrambled[i]
                 scrambled[i] = sample
-                val route = findPathR(sample, target, depth - 1)
-                if (route != null) {
-                    return listOf(start) + route
+                if (sample !in prefix) { // don't go back to ourselves
+                    val route = findPathR(prefix + sample, target, depth - 1)
+                    if (route != null) {
+                        return listOf(start) + route
+                    }
                 }
             }
             return null
         }
         return lock.withLock {
-            findPathR(neighbourDiscoveryService.networkAddress, destination, sphinxEncoder.maxRouteLength)?.drop(1) // discard starting element
+            findPathR(listOf(neighbourDiscoveryService.networkAddress), destination, sphinxEncoder.maxRouteLength)?.drop(1) // discard starting element
         }
     }
 
     override fun runStateMachine() {
-        val randomTarget = lock.withLock {
-            // Update our local info
-            knownRoutes.removeIf { it.from.id == neighbourDiscoveryService.networkAddress.id }
-            val localRoutes = neighbourDiscoveryService.routes
-            if (localRoutes != null) {
-                knownRoutes += localRoutes
-            }
-            // Clear and rebuild graph info
-            knownAddresses.clear()
-            adjacencyGraph.clear()
-            for (routes in knownRoutes) {
-                val fromAddress = SphinxAddress(routes.from.identity)
-                knownAddresses += fromAddress
-                val adjacencyList = mutableListOf<Address>()
-                adjacencyGraph[fromAddress] = adjacencyList
-                for (entry in routes.entries) {
-                    val toAddress = SphinxAddress(entry.to.identity)
-                    knownAddresses += toAddress
-                    adjacencyList += toAddress
-                }
-            }
-            // don't include self in knownAddresses
-            knownAddresses.remove(neighbourDiscoveryService.networkAddress)
-            if (knownAddresses.isNotEmpty()) {
-                // identify gossip target
-                val addressList = knownAddresses.toList()
-                addressList[keyService.random.nextInt(addressList.size)]
-            } else null
+        lock.withLock {
+            refreshLocalRoutes()
+            recalculateGraph()
         }
-        if (randomTarget != null) {
-            val path = findRandomRouteTo(randomTarget)
-            if (path != null) {
+        val neighbors = neighbourDiscoveryService.knownNeighbours.toList()
+        if (neighbors.isNotEmpty()) {
+            neighbourIndex = neighbourIndex.rem(neighbors.size)
+            val target = neighbors[neighbourIndex]
+            println("${neighbourDiscoveryService.networkAddress.id} -> $neighbourIndex ${target}")
+            ++neighbourIndex
+            if (target in knownAddresses) {
+                val path = listOf(target)
                 val routeTable = RouteTable(knownRoutes, neighbourDiscoveryService.networkAddress.id)
                 send(path, routeTable.serialize())
             }
         }
+    }
+
+    private fun refreshLocalRoutes() {
+        // Update our local info
+        knownRoutes.removeIf { it.from.id == neighbourDiscoveryService.networkAddress.id }
+        val localRoutes = neighbourDiscoveryService.routes
+        if (localRoutes != null) {
+            knownRoutes += localRoutes
+        }
+    }
+
+    private fun recalculateGraph() {
+        // Clear and rebuild graph info
+        knownAddresses.clear()
+        adjacencyGraph.clear()
+        knownIds.clear()
+        for (routes in knownRoutes) {
+            val fromAddress = SphinxAddress(routes.from.identity)
+            knownAddresses += fromAddress
+            knownIds[fromAddress.id] = fromAddress
+            val adjacencyList = mutableListOf<Address>()
+            adjacencyGraph[fromAddress] = adjacencyList
+            for (entry in routes.entries) {
+                val toAddress = SphinxAddress(entry.to.identity)
+                knownAddresses += toAddress
+                knownIds[toAddress.id] = toAddress
+                adjacencyList += toAddress
+            }
+        }
+        // don't include self in knownAddresses
+        knownAddresses.remove(neighbourDiscoveryService.networkAddress)
     }
 }

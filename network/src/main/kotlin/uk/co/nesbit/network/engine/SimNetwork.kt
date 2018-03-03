@@ -79,11 +79,11 @@ class SimNetwork {
             if (!linkInfo.status.active()) {
                 throw IOException("Link Unavailable $linkId")
             }
+            ++parent._messageCount
             parent.messageQueue.offer(Packet(Route(networkId, linkToAddress[linkId]!!), linkId, msg))
         }
 
         fun deliver(msg: LinkReceivedMessage) {
-            ++parent._messageCount
             _onReceive.onNext(msg)
         }
     }

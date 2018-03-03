@@ -12,15 +12,7 @@ class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : AvroCo
                     routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash))
 
     init {
-        val uniqueIds = mutableSetOf<SecureHash>()
-        for (route in allRoutes) {
-            route.verify()
-            uniqueIds += route.from.id
-        }
-        require(uniqueIds.size == allRoutes.size) { "All Routes must be from distinct sources" }
-        if (replyTo != null) {
-            require(replyTo in uniqueIds) { "RouteTable doesn't include self links" }
-        }
+        verify()
     }
 
     companion object {
@@ -33,6 +25,20 @@ class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : AvroCo
             val routeTableRecord = routeTableSchema.deserialize(bytes)
             return RouteTable(routeTableRecord)
         }
+    }
+
+    fun verify(): List<VersionedRoute> {
+        val versionedRoutes = mutableListOf<VersionedRoute>()
+        val uniqueIds = mutableSetOf<SecureHash>()
+        for (route in allRoutes) {
+            versionedRoutes.addAll(route.verify())
+            uniqueIds += route.from.id
+        }
+        require(uniqueIds.size == allRoutes.size) { "All Routes must be from distinct sources" }
+        if (replyTo != null) {
+            require(replyTo in uniqueIds) { "RouteTable doesn't include self links" }
+        }
+        return versionedRoutes
     }
 
     override fun toGenericRecord(): GenericRecord {

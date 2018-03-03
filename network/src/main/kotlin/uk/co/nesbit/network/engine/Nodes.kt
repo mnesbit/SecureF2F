@@ -1,5 +1,6 @@
 package uk.co.nesbit.network.engine
 
+import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
@@ -17,6 +18,7 @@ class Layer1Node(networkService: NetworkService) {
 }
 
 class Layer2Node(networkService: NetworkService) {
+    val networkId: Address = networkService.networkId
     val keyService: KeyService = KeyServiceImpl()
     val neighbourDiscoveryService: NeighbourDiscoveryService = NeighbourDiscoveryServiceImpl(networkService, keyService)
     val routeDiscoveryService: RouteDiscoveryService = RouteDiscoveryServiceImpl(neighbourDiscoveryService, keyService)
