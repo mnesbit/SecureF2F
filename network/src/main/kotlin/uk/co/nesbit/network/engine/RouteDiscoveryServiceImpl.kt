@@ -7,10 +7,15 @@ import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.network.api.Address
+import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.routing.RouteTable
+import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.routing.Routes
-import uk.co.nesbit.network.api.services.*
+import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
+import uk.co.nesbit.network.api.services.NeighbourReceivedMessage
+import uk.co.nesbit.network.api.services.RouteDiscoveryService
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -25,8 +30,8 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
     private val knownIds = mutableMapOf<SecureHash, SphinxAddress>()
     private var neighbourIndex: Int = 0
 
-    private val _onReceive = PublishSubject.create<RouteReceivedMessage>()
-    override val onReceive: Observable<RouteReceivedMessage>
+    private val _onReceive = PublishSubject.create<RoutedMessage>()
+    override val onReceive: Observable<RoutedMessage>
         get() = _onReceive
 
     init {
@@ -40,18 +45,19 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         receiveSubscription.dispose()
     }
 
-    override fun send(route: List<Address>, msg: ByteArray) {
+    override fun send(route: List<Address>, msg: Message) {
         require(route.all { it is SphinxAddress }) { "Only able to route Sphinx addresses" }
         require(route.all { it in knownAddresses }) { "Only able to route to known Sphinx addresses" }
+        val wrappedMessage = RoutedMessage.createRoutedMessage(neighbourDiscoveryService.networkAddress, msg)
         val target = (route.last() as SphinxAddress)
         if (target.id == neighbourDiscoveryService.networkAddress.id) { // reflect self addressed message
-            _onReceive.onNext(RouteReceivedMessage(target, msg))
+            _onReceive.onNext(wrappedMessage)
             return
         }
         val addressPath = route.map { (it as SphinxAddress).identity }.toList()
         val firstLink = neighbourDiscoveryService.findLinkTo(route.first())
         require(firstLink != null) { "Don't know link to first target" }
-        val sendableMessage = sphinxEncoder.makeMessage(addressPath, msg)
+        val sendableMessage = sphinxEncoder.makeMessage(addressPath, wrappedMessage.serialize())
         neighbourDiscoveryService.send(firstLink!!, sendableMessage.messageBytes)
     }
 
@@ -68,28 +74,16 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 { remotePubKey -> keyService.getSharedDHSecret(neighbourDiscoveryService.networkAddress.id, remotePubKey) })
         if (messageResult.valid) {
             if (messageResult.finalPayload != null) {
-                val routes = try {
-                    RouteTable.deserialize(messageResult.finalPayload!!)
+                val routedMessage = try {
+                    RoutedMessage.deserialize(messageResult.finalPayload!!)
                 } catch (ex: Exception) {
-                    null
+                    println("Bad message")
+                    return
                 }
-                if (routes != null) {
-                    lock.withLock {
-                        mergeRouteTable(routes)
-                        recalculateGraph()
-                        if (routes.replyTo != null && knownIds.containsKey(routes.replyTo)) {
-                            val replyAddress = knownIds[routes.replyTo]!!
-                            val replyPath = findRandomRouteTo(replyAddress)
-                            if (replyPath != null) {
-                                val routeTable = RouteTable(knownRoutes, null)
-                                send(replyPath, routeTable.serialize())
-                            } else {
-                                println("${neighbourDiscoveryService.networkAddress.id} can't send to ${replyAddress.id}")
-                            }
-                        }
-                    }
+                if (routedMessage.payloadSchemaId == SecureHash("SHA-256", RouteTable.schemaFingerprint)) {
+                    processRouteTableMessage(routedMessage)
                 } else {
-                    //_onReceive.onNext(RouteReceivedMessage())
+                    _onReceive.onNext(routedMessage)
                 }
             } else if (messageResult.forwardMessage != null) {
                 val replyAddress = knownIds[messageResult.nextNode!!]
@@ -107,6 +101,27 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         }
     }
 
+    private fun processRouteTableMessage(routedMessage: RoutedMessage) {
+        val routes = try {
+            RouteTable.deserialize(routedMessage.payload)
+        } catch (ex: Exception) {
+            println("Bad RouteTable")
+            return
+        }
+        lock.withLock {
+            mergeRouteTable(routes)
+            recalculateGraph()
+            if (routes.replyTo != null && knownIds.containsKey(routes.replyTo)) {
+                val replyAddress = knownIds[routes.replyTo]!!
+                val replyPath = findRandomRouteTo(replyAddress)
+                if (replyPath != null) {
+                    val routeTable = RouteTable(knownRoutes, null)
+                    send(replyPath, routeTable)
+                }
+            }
+        }
+    }
+
     private fun mergeRouteTable(routes: RouteTable) {
         for (route in routes.allRoutes) {
             val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
@@ -119,8 +134,6 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 } else if (existingRoute.from.currentVersion.version == route.from.currentVersion.version
                         && (existingRoute.entries.size <= route.entries.size)) {
                     knownRoutes[existingRouteIndex] = route
-                } else {
-                    println("Hmmm!!!")
                 }
             }
         }
@@ -163,12 +176,11 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         if (neighbors.isNotEmpty()) {
             neighbourIndex = neighbourIndex.rem(neighbors.size)
             val target = neighbors[neighbourIndex]
-            println("${neighbourDiscoveryService.networkAddress.id} -> $neighbourIndex ${target}")
             ++neighbourIndex
             if (target in knownAddresses) {
                 val path = listOf(target)
                 val routeTable = RouteTable(knownRoutes, neighbourDiscoveryService.networkAddress.id)
-                send(path, routeTable.serialize())
+                send(path, routeTable)
             }
         }
     }

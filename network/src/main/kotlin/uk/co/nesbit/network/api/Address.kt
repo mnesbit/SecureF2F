@@ -17,7 +17,7 @@ data class PublicAddress(val host: String, val port: Int) : Address {
 data class SphinxAddress(val identity: SphinxPublicIdentity) : Address {
     val id: SecureHash get() = identity.id
 
-    override fun toString(): String = "Sphinx[$id]"
+    override fun toString(): String = if (identity.publicAddress == null) "Sphinx[$id]" else "Sphinx[${identity.publicAddress}]"
 }
 
 data class OverlayAddress(val identity: PublicKey) : Address {

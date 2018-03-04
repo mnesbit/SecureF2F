@@ -16,8 +16,8 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : Ke
     private val networkKeys = mutableMapOf<SecureHash, SphinxIdentityKeyPair>()
     private val overlayKeys = mutableMapOf<SecureHash, KeyPair>()
 
-    override fun generateNetworkID(): SecureHash {
-        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random)
+    override fun generateNetworkID(publicAddress: String?): SecureHash {
+        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random, publicAddress = publicAddress)
         networkKeys[newNetworkKeys.id] = newNetworkKeys
         return newNetworkKeys.id
     }

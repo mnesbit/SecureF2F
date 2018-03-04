@@ -80,6 +80,7 @@ class SimNetwork {
                 throw IOException("Link Unavailable $linkId")
             }
             ++parent._messageCount
+            parent._bytesSent += msg.size.toLong()
             parent.messageQueue.offer(Packet(Route(networkId, linkToAddress[linkId]!!), linkId, msg))
         }
 
@@ -90,6 +91,9 @@ class SimNetwork {
 
     private var _messageCount = 0L
     val messageCount: Long get() = _messageCount
+
+    private var _bytesSent = 0L
+    val bytesSent: Long get() = _bytesSent
 
     fun getNetworkService(id: Address): NetworkService {
         return networkNodes.getOrPut(id) { NetworkServiceImpl(this, id) }

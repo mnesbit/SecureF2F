@@ -26,7 +26,6 @@ class RoutingTests {
         assertTrue(node2.neighbourDiscoveryService.networkAddress in node1.routeDiscoveryService.knownAddresses)
         assertEquals(1, node2.routeDiscoveryService.knownAddresses.size)
         assertTrue(node1.neighbourDiscoveryService.networkAddress in node2.routeDiscoveryService.knownAddresses)
-        assertEquals(7, network.messageCount) // Basic session initiation of 4 messages, 1 ratchet kickoff heartbeat, 1 reply heartbeat, 1 routing message
         println(network.messageCount)
     }
 
@@ -92,7 +91,7 @@ class RoutingTests {
     fun `n nodes in a line`() {
         val network = SimNetwork()
         val networks = mutableListOf<NetworkService>()
-        val n = 10
+        val n = 20
         for (i in 1..n) {
             networks += network.getNetworkService(NetworkAddress(i))
         }
@@ -105,6 +104,7 @@ class RoutingTests {
         }
         for (i in 0 until n + 3) {
             nodes.forEach { it.runStateMachine() }
+            network.shuffleMessages()
             network.deliverTillEmpty()
             for (node in nodes) {
                 println("${node.networkId} ${node.routeDiscoveryService.knownAddresses.size}")
@@ -119,5 +119,6 @@ class RoutingTests {
             }
         }
         println(network.messageCount)
+        println(network.bytesSent)
     }
 }

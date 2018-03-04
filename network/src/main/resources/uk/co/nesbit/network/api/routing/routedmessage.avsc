@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "RoutedMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "from",
+      "type": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
+    },
+    {
+      "name": "payloadSchemaId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    }
+  ]
+}

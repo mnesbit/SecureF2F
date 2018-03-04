@@ -254,6 +254,10 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 responderSessionParams!!,
                 sessionInitKeys!!,
                 keyService.random)
+        heartbeatReceiveNonce = SecureHash.secureHash(concatByteArrays(initiatorSessionParams!!.serialize(),
+                responderSessionParams!!.serialize(),
+                initiatorHelloRequest!!.serialize(),
+                responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
         state = ChannelState.WAIT_RATCHET_SYNC
         timeout = TIMEOUT_TICKS
     }
@@ -278,12 +282,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                 initiatorHelloRequest!!.serialize(),
                 responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
         sendHeartbeat()
-        initiatorSessionParams = null
-        sessionInitKeys = null
-        responderSessionParams = null
-        initiatorHelloRequest = null
-        responderHelloResponse = null
-        state = ChannelState.SESSION_ACTIVE
+        state = ChannelState.WAIT_RATCHET_SYNC
         timeout = TIMEOUT_TICKS
     }
 
@@ -298,14 +297,11 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             return
         }
         val firstMessage = encryptedChannel!!.decryptMessage(msg.msg, null)
-        heartbeatReceiveNonce = SecureHash.secureHash(concatByteArrays(initiatorSessionParams!!.serialize(),
-                responderSessionParams!!.serialize(),
-                initiatorHelloRequest!!.serialize(),
-                responderSessionParams!!.serialize())).bytes.copyOf(NONCE_SIZE)
         if (!processHeartbeat(firstMessage)) {
             earlyMessages += firstMessage // re-ordering might put a message ahead of the heartbeat
             return
         }
+        sendHeartbeat()
         initiatorSessionParams = null
         sessionInitKeys = null
         responderSessionParams = null

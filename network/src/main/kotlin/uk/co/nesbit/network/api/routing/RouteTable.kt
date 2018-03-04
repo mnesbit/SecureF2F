@@ -1,12 +1,14 @@
 package uk.co.nesbit.network.api.routing
 
 import org.apache.avro.Schema
+import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.network.api.Message
 
-class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : AvroConvertible {
+class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : Message {
     constructor(routeTable: GenericRecord) :
             this(routeTable.getObjectArray("allRoutes", ::Routes),
                     routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash))
@@ -20,6 +22,8 @@ class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : AvroCo
                 .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema,
                         SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
                 .parse(RouteTable::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
+
+        val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", routeTableSchema)
 
         fun deserialize(bytes: ByteArray): RouteTable {
             val routeTableRecord = routeTableSchema.deserialize(bytes)

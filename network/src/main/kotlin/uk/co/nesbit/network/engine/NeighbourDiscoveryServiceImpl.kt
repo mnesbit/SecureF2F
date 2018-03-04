@@ -17,7 +17,7 @@ import kotlin.concurrent.withLock
 
 class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                                     private val keyService: KeyService) : NeighbourDiscoveryService, AutoCloseable {
-    override val networkAddress: SphinxAddress by lazy { SphinxAddress(keyService.getVersion(keyService.generateNetworkID()).identity) }
+    override val networkAddress: SphinxAddress by lazy { SphinxAddress(keyService.getVersion(keyService.generateNetworkID(networkService.networkId.toString())).identity) }
 
     override val links = ConcurrentHashMap<LinkId, LinkInfo>()
     private val neighbourToLink = ConcurrentHashMap<Address, LinkId>()
