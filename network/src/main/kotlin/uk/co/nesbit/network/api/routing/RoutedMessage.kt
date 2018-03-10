@@ -1,7 +1,6 @@
 package uk.co.nesbit.network.api.routing
 
 import org.apache.avro.Schema
-import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
@@ -11,19 +10,25 @@ import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.SphinxAddress
 import java.util.*
 
-class RoutedMessage private constructor(val from: SphinxAddress,
-                                        val payloadSchemaId: SecureHash,
+class RoutedMessage private constructor(val replyTo: SphinxAddress,
+                                        val payloadSchemaId: ByteArray,
                                         val payload: ByteArray) : AvroConvertible {
     constructor(routedMessageRecord: GenericRecord) :
-            this(SphinxAddress(routedMessageRecord.getTyped("from", ::SphinxPublicIdentity)),
-                    routedMessageRecord.getTyped("payloadSchemaId", ::SecureHash),
+            this(SphinxAddress(routedMessageRecord.getTyped("replyTo", ::SphinxPublicIdentity)),
+                    routedMessageRecord.getTyped("payloadSchemaId"),
                     routedMessageRecord.getTyped("payload"))
+
+    init {
+        require(payloadSchemaId.size == 32) { "Invalid payloadSchemaId" }
+    }
 
     companion object {
         val routedMessageSchema: Schema = Schema.Parser()
                 .addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
                         SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
                 .parse(RoutedMessage::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routedmessage.avsc"))
+
+        val knownSchemas = SchemaRegistry()
 
         fun deserialize(bytes: ByteArray): RoutedMessage {
             val routedMessageRecord = routedMessageSchema.deserialize(bytes)
@@ -32,14 +37,14 @@ class RoutedMessage private constructor(val from: SphinxAddress,
 
         fun createRoutedMessage(from: SphinxAddress, message: Message): RoutedMessage {
             val record = message.toGenericRecord()
-            val schemaId = SchemaNormalization.parsingFingerprint("SHA-256", record.schema)
-            return RoutedMessage(from, SecureHash("SHA-256", schemaId), record.serialize())
+            val schemaId = knownSchemas.getFingeprint(record.schema)
+            return RoutedMessage(from, schemaId, record.serialize())
         }
     }
 
     override fun toGenericRecord(): GenericRecord {
         val routedMessageRecord = GenericData.Record(routedMessageSchema)
-        routedMessageRecord.putTyped("from", from.identity)
+        routedMessageRecord.putTyped("replyTo", replyTo.identity)
         routedMessageRecord.putTyped("payloadSchemaId", payloadSchemaId)
         routedMessageRecord.putTyped("payload", payload)
         return routedMessageRecord
@@ -51,14 +56,14 @@ class RoutedMessage private constructor(val from: SphinxAddress,
 
         other as RoutedMessage
 
-        if (from != other.from) return false
+        if (replyTo != other.replyTo) return false
         if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(payload, other.payload)) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = from.hashCode()
+        var result = replyTo.hashCode()
         result = 31 * result + Arrays.hashCode(payload)
         return result
     }

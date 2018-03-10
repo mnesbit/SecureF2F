@@ -4,12 +4,16 @@
   "type": "record",
   "fields": [
     {
-      "name": "from",
+      "name": "replyTo",
       "type": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
     },
     {
       "name": "payloadSchemaId",
-      "type": "uk.co.nesbit.crypto.SecureHash"
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
     },
     {
       "name": "payload",

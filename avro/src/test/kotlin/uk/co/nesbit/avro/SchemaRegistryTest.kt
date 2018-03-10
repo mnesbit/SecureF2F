@@ -16,7 +16,7 @@ class SchemaRegistryTest {
     private val schema2 = SchemaBuilder.record("test2").fields().requiredInt("intField").endRecord()
     private val schema3 = SchemaBuilder.record("test1").fields().requiredInt("intField2").endRecord()
 
-    data class SchemaTest1(private val intField: Int) : AvroConvertible {
+    private data class SchemaTest1(private val intField: Int) : AvroConvertible {
         constructor(testRecord: GenericRecord) : this(testRecord.getTyped<Int>("intField"))
 
         companion object {
@@ -30,7 +30,7 @@ class SchemaRegistryTest {
         }
     }
 
-    data class SchemaTest2(private val intField2: Int) : AvroConvertible {
+    private data class SchemaTest2(private val intField2: Int) : AvroConvertible {
         constructor(testRecord: GenericRecord) : this(testRecord.getTyped<Int>("intField2"))
 
         companion object {

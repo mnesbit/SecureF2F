@@ -3,11 +3,11 @@ package uk.co.nesbit.network.engine
 import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
+import org.bouncycastle.util.Arrays
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.network.api.Address
-import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.api.routing.RouteTable
 import uk.co.nesbit.network.api.routing.RoutedMessage
@@ -45,19 +45,18 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         receiveSubscription.dispose()
     }
 
-    override fun send(route: List<Address>, msg: Message) {
+    override fun send(route: List<Address>, msg: RoutedMessage) {
         require(route.all { it is SphinxAddress }) { "Only able to route Sphinx addresses" }
         require(route.all { it in knownAddresses }) { "Only able to route to known Sphinx addresses" }
-        val wrappedMessage = RoutedMessage.createRoutedMessage(neighbourDiscoveryService.networkAddress, msg)
         val target = (route.last() as SphinxAddress)
         if (target.id == neighbourDiscoveryService.networkAddress.id) { // reflect self addressed message
-            _onReceive.onNext(wrappedMessage)
+            _onReceive.onNext(msg)
             return
         }
         val addressPath = route.map { (it as SphinxAddress).identity }.toList()
         val firstLink = neighbourDiscoveryService.findLinkTo(route.first())
         require(firstLink != null) { "Don't know link to first target" }
-        val sendableMessage = sphinxEncoder.makeMessage(addressPath, wrappedMessage.serialize())
+        val sendableMessage = sphinxEncoder.makeMessage(addressPath, msg.serialize())
         neighbourDiscoveryService.send(firstLink!!, sendableMessage.messageBytes)
     }
 
@@ -80,7 +79,7 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                     println("Bad message")
                     return
                 }
-                if (routedMessage.payloadSchemaId == SecureHash("SHA-256", RouteTable.schemaFingerprint)) {
+                if (Arrays.constantTimeAreEqual(routedMessage.payloadSchemaId, RouteTable.schemaFingerprint)) {
                     processRouteTableMessage(routedMessage)
                 } else {
                     _onReceive.onNext(routedMessage)
@@ -116,7 +115,7 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 val replyPath = findRandomRouteTo(replyAddress)
                 if (replyPath != null) {
                     val routeTable = RouteTable(knownRoutes, null)
-                    send(replyPath, routeTable)
+                    send(replyPath, RoutedMessage.createRoutedMessage(neighbourDiscoveryService.networkAddress, routeTable))
                 }
             }
         }
@@ -180,7 +179,7 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
             if (target in knownAddresses) {
                 val path = listOf(target)
                 val routeTable = RouteTable(knownRoutes, neighbourDiscoveryService.networkAddress.id)
-                send(path, routeTable)
+                send(path, RoutedMessage.createRoutedMessage(neighbourDiscoveryService.networkAddress, routeTable))
             }
         }
     }
