@@ -49,12 +49,6 @@ fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
     return types
 }
 
-interface AvroConvertible {
-    fun toGenericRecord(): GenericRecord
-}
-
-fun AvroConvertible.serialize(): ByteArray = this.toGenericRecord().serialize()
-
 fun GenericRecord.serialize(): ByteArray {
     val datumWriter = GenericDatumWriter<GenericRecord>(this.schema)
     val byteStream = ByteArrayOutputStream()
