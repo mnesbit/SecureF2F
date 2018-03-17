@@ -160,6 +160,51 @@ class RoutingTests {
     }
 
     @Test
+    fun `link drop test`() {
+        val network = SimNetwork()
+        val net1 = network.getNetworkService(NetworkAddress(1))
+        val net2 = network.getNetworkService(NetworkAddress(2))
+        val net3 = network.getNetworkService(NetworkAddress(3))
+        val node1 = Layer2Node(net1)
+        val node2 = Layer2Node(net2)
+        val node3 = Layer2Node(net3)
+        net1.openLink(net2.networkId)
+        net3.openLink(net2.networkId)
+        for (i in 0 until 3) {
+            node1.runStateMachine()
+            node2.runStateMachine()
+            node3.runStateMachine()
+            network.deliverTillEmpty()
+        }
+
+        val link2to1Id = node2.neighbourDiscoveryService.findLinkTo(node1.networkId)
+        net2.closeLink(link2to1Id!!)
+        val link3to2Id = node3.neighbourDiscoveryService.findLinkTo(node2.networkId)
+        net3.closeLink(link3to2Id!!)
+        for (i in 0 until 3) {
+            node1.runStateMachine()
+            node2.runStateMachine()
+            node3.runStateMachine()
+            network.deliverTillEmpty()
+        }
+
+        val receivedOn3 = node3.routeDiscoveryService.onReceive.blockingIterable().iterator()
+        val msg1 = TestMessage(1)
+        val test1 = RoutedMessage.createRoutedMessage(node1.neighbourDiscoveryService.networkAddress, msg1)
+        val route1to3 = node1.routeDiscoveryService.findRandomRouteTo(node3.neighbourDiscoveryService.networkAddress)!!
+        assertEquals(listOf(node2.neighbourDiscoveryService.networkAddress, node3.neighbourDiscoveryService.networkAddress), route1to3)
+        node1.routeDiscoveryService.send(route1to3, test1)
+        for (i in 0 until 1) {
+            node1.runStateMachine()
+            node2.runStateMachine()
+            node3.runStateMachine()
+            network.deliverTillEmpty()
+        }
+        val routed = receivedOn3.next()
+        assertEquals(test1, routed)
+    }
+
+    @Test
     fun `n nodes in a line`() {
         val network = SimNetwork()
         val networks = mutableListOf<NetworkService>()
@@ -203,6 +248,7 @@ class RoutingTests {
         val network = SimNetwork()
         val networks = mutableListOf<NetworkService>()
         val n = 5
+        val m = 10
         for (i in 1..n) {
             networks += network.getNetworkService(NetworkAddress(i))
         }
@@ -236,7 +282,7 @@ class RoutingTests {
                         println("$i ${it.replyTo} $received")
                         assertEquals(id, received.intField / 100)
                     }
-                    while (sentCount < 10) {
+                    while (sentCount < m) {
                         node.runStateMachine()
                         Thread.sleep(250)
                         if (node.routeDiscoveryService.knownAddresses.contains(target)) {
@@ -247,7 +293,7 @@ class RoutingTests {
                             node.routeDiscoveryService.send(route1toN, test1)
                         }
                     }
-                    while (receivedCount.get() < 10) {
+                    while (receivedCount.get() < m) {
                         node.runStateMachine()
                         Thread.sleep(250)
                     }
@@ -262,7 +308,7 @@ class RoutingTests {
                         val test1 = RoutedMessage.createRoutedMessage(it.replyTo, received)
                         node.routeDiscoveryService.send(path!!, test1)
                     }
-                    while (receivedCount.get() < 10 * (n - 1)) {
+                    while (receivedCount.get() < m * (n - 1)) {
                         node.runStateMachine()
                         Thread.sleep(250)
                     }

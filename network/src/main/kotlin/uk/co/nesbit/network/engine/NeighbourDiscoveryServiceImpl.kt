@@ -94,10 +94,10 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                                 networkAddress.id,
                                 linkChange.route.to,
                                 true,
+                                _onReceive,
                                 keyService,
                                 networkService)
                         channels[linkChange.linkId] = channel
-                        channel.onReceive.subscribe(_onReceive)
                     }
                 }
                 LinkStatus.LINK_UP_PASSIVE -> {
@@ -108,10 +108,10 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                                 networkAddress.id,
                                 linkChange.route.to,
                                 false,
+                                _onReceive,
                                 keyService,
                                 networkService)
                         channels[linkChange.linkId] = channel
-                        channel.onReceive.subscribe(_onReceive)
                     }
                 }
                 LinkStatus.LINK_DOWN -> {

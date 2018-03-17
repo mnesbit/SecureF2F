@@ -29,6 +29,8 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         val adjacencyGraph = mutableMapOf<Address, List<Address>>()
         val knownAddresses = mutableSetOf<Address>()
         val knownIds = mutableMapOf<SecureHash, SphinxAddress>()
+        var validRoutes: Boolean = false
+        var modified: Boolean = true
         var neighbourIndex: Int = 0
     }
 
@@ -116,13 +118,12 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         recalculateGraph()
 
         val (path, routes) = state.locked {
-            if (routeTable.replyTo != null && knownIds.containsKey(routeTable.replyTo)) {
-                val replyAddress = knownIds[routeTable.replyTo]!!
-                val replyPath = findRandomRouteTo(replyAddress)
-                if (replyPath != null) {
-                    Pair(replyPath, ArrayList(knownRoutes))
-                } else Pair(null, null)
-            } else Pair(null, null)
+            if (routeTable.replyTo == null || !validRoutes) {
+                return@locked Pair(null, null)
+            }
+            val replyAddress = knownIds[routeTable.replyTo] ?: return@locked Pair(null, null)
+            val replyPath = findRandomRouteTo(replyAddress) ?: return@locked Pair(null, null)
+            Pair(replyPath, ArrayList(knownRoutes))
         }
         if (path != null) {
             val routeReplyTable = RouteTable(routes!!, null)
@@ -136,13 +137,16 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
                 if (existingRouteIndex == -1) {
                     knownRoutes += route
+                    modified = true
                 } else {
                     val existingRoute = knownRoutes[existingRouteIndex]
                     if (existingRoute.from.currentVersion.version < route.from.currentVersion.version) {
                         knownRoutes[existingRouteIndex] = route
+                        modified = true
                     } else if (existingRoute.from.currentVersion.version == route.from.currentVersion.version
                             && (existingRoute.entries.size < route.entries.size)) {
                         knownRoutes[existingRouteIndex] = route
+                        modified = true
                     }
                 }
             }
@@ -183,14 +187,27 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
 
         val neighbors = neighbourDiscoveryService.knownNeighbours.toList()
         val (path, routes) = state.locked {
-            if (neighbors.isNotEmpty()) {
-                neighbourIndex = neighbourIndex.rem(neighbors.size)
-                val target = neighbors[neighbourIndex]
-                ++neighbourIndex
-                if (target in knownAddresses) {
-                    Pair(listOf(target), ArrayList(knownRoutes))
-                } else Pair(null, null)
-            } else Pair(null, null)
+            if (!validRoutes || neighbors.isEmpty()) {
+                return@locked Pair(null, null)
+            }
+            neighbourIndex = neighbourIndex.rem(neighbors.size)
+            if (neighbourIndex == 0) {
+                if (!modified) {
+                    val allAddresses = knownAddresses.toList()
+                    val randomTarget = allAddresses[keyService.random.nextInt(allAddresses.size)]
+                    val randomPath = findRandomRouteTo(randomTarget)
+                    if (randomPath != null) {
+                        return@locked Pair(randomPath, ArrayList(knownRoutes))
+                    }
+                }
+                modified = false
+            }
+            val target = neighbors[neighbourIndex]
+            ++neighbourIndex
+            if (target !in knownAddresses) {
+                return@locked Pair(null, null)
+            }
+            Pair(listOf(target), ArrayList(knownRoutes))
         }
         if (path != null) {
             val routeTable = RouteTable(routes!!, networkAddress.id)
@@ -201,10 +218,12 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
     private fun recalculateGraph() {
         val localRoutes = neighbourDiscoveryService.routes
         state.locked {
+            validRoutes = false
             // Update our local info
             knownRoutes.removeIf { it.from.id == networkAddress.id }
             if (localRoutes != null) {
                 knownRoutes += localRoutes
+                validRoutes = true
             }
             // Clear and rebuild graph info
             knownAddresses.clear()

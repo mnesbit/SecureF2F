@@ -1,6 +1,7 @@
 package uk.co.nesbit.network.engine
 
 import io.reactivex.Observable
+import io.reactivex.Observer
 import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import uk.co.nesbit.avro.serialize
@@ -31,6 +32,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
                                          private val fromId: SecureHash,
                                          val networkTarget: Address,
                                          val initiator: Boolean,
+                                         receiver: Observer<NeighbourReceivedMessage>,
                                          private val keyService: KeyService,
                                          private val networkService: NetworkService) : AutoCloseable {
     companion object {
@@ -72,11 +74,13 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private val earlyMessages = mutableListOf<ByteArray>()
 
     private val _onReceive = PublishSubject.create<NeighbourReceivedMessage>()
+    private val wrapper: Disposable
     val onReceive: Observable<NeighbourReceivedMessage>
         get() = _onReceive
 
     init {
         receiveSubscription = networkService.onReceive.filter { it.linkId == linkId }.subscribe({ onReceived(it) }, { setError() })
+        wrapper = _onReceive.subscribe({ receiver.onNext(it) })
     }
 
     override fun close() {
@@ -85,6 +89,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             receiveSubscription?.dispose()
             receiveSubscription = null
             _onReceive.onComplete()
+            wrapper.dispose()
             earlyMessages.clear()
             sessionInitKeys = null
             initiatorSessionParams = null
