@@ -71,23 +71,25 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
             return Routes.createRoutes(routes, keyService, networkAddress.id)
         }
 
-    private fun resetLinkInfo(linkId: LinkId): Boolean {
+    private fun resetLinkInfo(linkId: LinkId): Pair<Boolean, LinkInfo?> {
         val linkInfo = links[linkId]
         if (linkInfo != null) {
             val linkDown = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = linkDown
             _onLinkStatusChange.onNext(linkDown)
-            return linkInfo.status.active()
+            return Pair(linkInfo.status.active(), linkDown)
         }
-        return false
+        return Pair(false, null)
     }
 
     private fun onLinkChange(linkChange: LinkInfo) {
+        var update: LinkInfo? = null
         lock.withLock {
             when (linkChange.status) {
                 LinkStatus.LINK_UP_ACTIVE -> {
                     if (!channels.containsKey(linkChange.linkId)) {
-                        resetLinkInfo(linkChange.linkId)
+                        val (_, newInfo) = resetLinkInfo(linkChange.linkId)
+                        update = newInfo
                         val channel = SecureChannelStateMachine(linkChange.linkId,
                                 networkAddress.id,
                                 linkChange.route.to,
@@ -100,7 +102,8 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 }
                 LinkStatus.LINK_UP_PASSIVE -> {
                     if (!channels.containsKey(linkChange.linkId)) {
-                        resetLinkInfo(linkChange.linkId)
+                        val (_, newInfo) = resetLinkInfo(linkChange.linkId)
+                        update = newInfo
                         val channel = SecureChannelStateMachine(linkChange.linkId,
                                 networkAddress.id,
                                 linkChange.route.to,
@@ -113,11 +116,16 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                 }
                 LinkStatus.LINK_DOWN -> {
                     channels[linkChange.linkId]?.close()
-                    if (resetLinkInfo(linkChange.linkId)) {
+                    val (changed, newInfo) = resetLinkInfo(linkChange.linkId)
+                    update = newInfo
+                    if (changed) {
                         keyService.incrementAndGetVersion(networkAddress.id)
                     }
                 }
             }
+        }
+        if (update != null) {
+            _onLinkStatusChange.onNext(update!!)
         }
     }
 
@@ -168,8 +176,10 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
     }
 
     override fun runStateMachine() {
+        val dropped = mutableListOf<LinkInfo>()
+        val opened = mutableListOf<LinkInfo>()
+        val errored = mutableListOf<SecureChannelStateMachine>()
         lock.withLock {
-            val errored = mutableListOf<SecureChannelStateMachine>()
             val channelsItr = channels.values.iterator()
             while (channelsItr.hasNext()) {
                 val channel = channelsItr.next()
@@ -189,28 +199,38 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                         val newLink = LinkInfo(channel.linkId, Route(networkAddress, remoteAddress), status)
                         links[channel.linkId] = newLink
                         neighbourToLink[remoteAddress] = channel.linkId
-                        _onLinkStatusChange.onNext(newLink)
+                        opened += newLink
                     }
                 }
             }
-            var versionUpdate = false
-            for (channel in errored) {
-                if (resetLinkInfo(channel.linkId)) {
-                    versionUpdate = true
-                }
-                val networkLink = networkService.links[channel.linkId]
-                if (networkLink != null) {
-                    networkService.closeLink(networkLink.linkId)
-                }
+        }
+        var versionUpdate = false
+        for (channel in errored) {
+            val (changed, newInfo) = resetLinkInfo(channel.linkId)
+            if (newInfo != null) {
+                dropped += newInfo
             }
-            if (versionUpdate) {
-                keyService.incrementAndGetVersion(networkAddress.id)
+            if (changed) {
+                versionUpdate = true
             }
-            for (channel in errored) {
-                if (channel.initiator) {
-                    networkService.openLink(channel.networkTarget)
-                }
+            val networkLink = networkService.links[channel.linkId]
+            if (networkLink != null) {
+                networkService.closeLink(networkLink.linkId)
             }
+        }
+        if (versionUpdate) {
+            keyService.incrementAndGetVersion(networkAddress.id)
+        }
+        for (info in dropped) {
+            _onLinkStatusChange.onNext(info)
+        }
+        for (channel in errored) {
+            if (channel.initiator) {
+                networkService.openLink(channel.networkTarget)
+            }
+        }
+        for (info in opened) {
+            _onLinkStatusChange.onNext(info)
         }
     }
 }

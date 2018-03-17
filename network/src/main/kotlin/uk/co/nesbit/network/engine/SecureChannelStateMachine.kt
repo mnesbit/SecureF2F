@@ -389,19 +389,19 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     }
 
     fun send(msg: ByteArray) {
-        lock.withLock {
+        val encryptedMsg = lock.withLock {
             if ((encryptedChannel == null)
                     || (remoteID == null)) {
                 setError()
                 return
             }
-            val encryptedMsg = encryptedChannel!!.encryptMessage(msg, null)
-            try {
-                networkService.send(linkId, encryptedMsg)
-            } catch (ex: Exception) {
-                setError()
-                return
-            }
+            encryptedChannel!!.encryptMessage(msg, null)
+        }
+        try {
+            networkService.send(linkId, encryptedMsg)
+        } catch (ex: Exception) {
+            setError()
+            return
         }
     }
 }

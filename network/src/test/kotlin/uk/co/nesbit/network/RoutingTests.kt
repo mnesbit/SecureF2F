@@ -5,6 +5,7 @@ import org.apache.avro.SchemaBuilder
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import org.junit.Test
+import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.network.api.Message
@@ -13,11 +14,14 @@ import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.services.NetworkService
 import uk.co.nesbit.network.engine.Layer2Node
 import uk.co.nesbit.network.engine.SimNetwork
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RoutingTests {
-    private data class TestMessage(private val intField: Int) : Message {
+    private data class TestMessage(val intField: Int) : Message {
         constructor(testRecord: GenericRecord) : this(testRecord.getTyped<Int>("intField"))
 
         companion object {
@@ -192,4 +196,85 @@ class RoutingTests {
         println(network.messageCount)
         println(network.bytesSent)
     }
+
+
+    @Test
+    fun `async routing`() {
+        val network = SimNetwork()
+        val networks = mutableListOf<NetworkService>()
+        val n = 5
+        for (i in 1..n) {
+            networks += network.getNetworkService(NetworkAddress(i))
+        }
+        val nodes = mutableListOf<Layer2Node>()
+        for (i in 0 until n) {
+            nodes += Layer2Node(networks[i])
+        }
+        for (i in 0 until n - 1) {
+            networks[i].openLink((networks[i + 1]).networkId)
+        }
+        var stopping = false
+        val networkThread = thread {
+            while (!stopping) {
+                network.shuffleMessages()
+                network.deliverTillEmpty()
+                Thread.sleep(15)
+            }
+            network.deliverTillEmpty()
+        }
+        val threads = Array(n) {
+            thread(name = "node $it") {
+                val id = it + 1
+                val node = nodes[it]
+                val target = nodes[n - 1].neighbourDiscoveryService.networkAddress
+                var sentCount = 0
+                val receivedCount = AtomicInteger(0)
+                if (id != n) {
+                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe {
+                        val i = receivedCount.incrementAndGet()
+                        val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
+                        println("$i ${it.replyTo} $received")
+                        assertEquals(id, received.intField / 100)
+                    }
+                    while (sentCount < 10) {
+                        node.runStateMachine()
+                        Thread.sleep(250)
+                        if (node.routeDiscoveryService.knownAddresses.contains(target)) {
+                            val route1toN = node.routeDiscoveryService.findRandomRouteTo(target)!!
+                            val msg1 = TestMessage(100 * id + sentCount)
+                            ++sentCount
+                            val test1 = RoutedMessage.createRoutedMessage(node.neighbourDiscoveryService.networkAddress, msg1)
+                            node.routeDiscoveryService.send(route1toN, test1)
+                        }
+                    }
+                    while (receivedCount.get() < 10) {
+                        node.runStateMachine()
+                        Thread.sleep(250)
+                    }
+                    receiveSubs.dispose()
+                } else {
+                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe {
+                        val i = receivedCount.incrementAndGet()
+                        val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
+                        println("$i ${it.replyTo} $received")
+                        val path = node.routeDiscoveryService.findRandomRouteTo(it.replyTo)
+                        assertNotNull(path)
+                        val test1 = RoutedMessage.createRoutedMessage(it.replyTo, received)
+                        node.routeDiscoveryService.send(path!!, test1)
+                    }
+                    while (receivedCount.get() < 10 * (n - 1)) {
+                        node.runStateMachine()
+                        Thread.sleep(250)
+                    }
+                    receiveSubs.dispose()
+                }
+            }
+        }
+        for (thread in threads) {
+            thread.join()
+        }
+        stopping = true
+        networkThread.join()
+    }
+
 }
