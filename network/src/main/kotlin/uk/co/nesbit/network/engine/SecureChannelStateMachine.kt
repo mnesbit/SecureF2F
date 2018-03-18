@@ -74,7 +74,7 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
     private val earlyMessages = mutableListOf<ByteArray>()
 
     private val _onReceive = PublishSubject.create<NeighbourReceivedMessage>()
-    private val wrapper: Disposable
+    private var wrapper: Disposable? = null
     val onReceive: Observable<NeighbourReceivedMessage>
         get() = _onReceive
 
@@ -89,7 +89,8 @@ internal class SecureChannelStateMachine(val linkId: LinkId,
             receiveSubscription?.dispose()
             receiveSubscription = null
             _onReceive.onComplete()
-            wrapper.dispose()
+            wrapper?.dispose()
+            wrapper = null
             earlyMessages.clear()
             sessionInitKeys = null
             initiatorSessionParams = null
