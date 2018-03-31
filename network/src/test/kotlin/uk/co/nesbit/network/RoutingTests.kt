@@ -323,4 +323,96 @@ class RoutingTests {
         networkThread.join()
     }
 
+    @Test
+    fun `multi-threaded sending`() {
+        val network = SimNetwork()
+        val net1 = network.getNetworkService(NetworkAddress(1))
+        val net2 = network.getNetworkService(NetworkAddress(2))
+        val net3 = network.getNetworkService(NetworkAddress(3))
+        val node1 = Layer2Node(net1)
+        val node2 = Layer2Node(net2)
+        val node3 = Layer2Node(net3)
+        net1.openLink(net2.networkId)
+        net3.openLink(net2.networkId)
+        val doneCount = AtomicInteger(0)
+        node1.routeDiscoveryService.onReceive.subscribe {
+            val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
+            if (doneCount.get() < 2 && received.intField != -1) {
+                val path = node1.routeDiscoveryService.findRandomRouteTo(it.replyTo)
+                if (path != null) {
+                    node1.routeDiscoveryService.send(path, RoutedMessage.createRoutedMessage(node1.neighbourDiscoveryService.networkAddress, TestMessage(-1)))
+                }
+            }
+        }
+        node3.routeDiscoveryService.onReceive.subscribe {
+            val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
+            if (doneCount.get() < 2 && received.intField != -1) {
+                val path = node3.routeDiscoveryService.findRandomRouteTo(it.replyTo)
+                if (path != null) {
+                    node3.routeDiscoveryService.send(path, RoutedMessage.createRoutedMessage(node3.neighbourDiscoveryService.networkAddress, TestMessage(-1)))
+                }
+            }
+        }
+        val networkThread = thread {
+            while (doneCount.get() < 2) {
+                network.shuffleMessages()
+                network.deliverTillEmpty()
+                Thread.sleep(15)
+            }
+            network.deliverTillEmpty()
+        }
+        val node1Thread = thread {
+            var sendId = 0
+            while (sendId < 100) {
+                node1.runStateMachine()
+                val path = node1.routeDiscoveryService.findRandomRouteTo(node3.neighbourDiscoveryService.networkAddress)
+                if (path != null) {
+                    node1.routeDiscoveryService.send(path, RoutedMessage.createRoutedMessage(node1.neighbourDiscoveryService.networkAddress, TestMessage(sendId++)))
+                }
+                val path2 = node3.routeDiscoveryService.findRandomRouteTo(node1.neighbourDiscoveryService.networkAddress)
+                if (path2 != null) {
+                    node3.routeDiscoveryService.send(path2, RoutedMessage.createRoutedMessage(node3.neighbourDiscoveryService.networkAddress, TestMessage(sendId++)))
+                }
+                Thread.sleep(200)
+            }
+            node1.runStateMachine()
+            doneCount.incrementAndGet()
+            while (doneCount.get() < 2) {
+                node1.runStateMachine()
+                Thread.sleep(200)
+            }
+        }
+        val node2Thread = thread {
+            while (doneCount.get() < 2) {
+                node2.runStateMachine()
+                Thread.sleep(200)
+            }
+        }
+        val node3Thread = thread {
+            var sendId = 0
+            while (sendId < 100) {
+                node3.runStateMachine()
+                val path = node3.routeDiscoveryService.findRandomRouteTo(node1.neighbourDiscoveryService.networkAddress)
+                if (path != null) {
+                    node3.routeDiscoveryService.send(path, RoutedMessage.createRoutedMessage(node3.neighbourDiscoveryService.networkAddress, TestMessage(sendId++)))
+                }
+                val path2 = node1.routeDiscoveryService.findRandomRouteTo(node3.neighbourDiscoveryService.networkAddress)
+                if (path2 != null) {
+                    node1.routeDiscoveryService.send(path2, RoutedMessage.createRoutedMessage(node1.neighbourDiscoveryService.networkAddress, TestMessage(sendId++)))
+                }
+                Thread.sleep(200)
+            }
+            doneCount.incrementAndGet()
+            while (doneCount.get() < 2) {
+                node3.runStateMachine()
+                Thread.sleep(200)
+            }
+        }
+
+        node1Thread.join()
+        node3Thread.join()
+        node2Thread.join()
+        networkThread.join()
+    }
+
 }
