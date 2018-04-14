@@ -51,6 +51,7 @@ allprojects {
 
 dependencies {
     compile project(':crypto')
+    compile project(':network')
 }
 
 mainClassName = "uk.co.nesbit.Main"
