@@ -1,6 +1,6 @@
 buildscript {
     ext{
-        kotlin_version = '1.2.30'
+        kotlin_version = '1.2.41'
         rx_version = '2.1.9'
         sl4j_version = '1.7.25'
         log4j2_version = '2.9.1'
@@ -42,9 +42,13 @@ allprojects {
 
     compileKotlin {
         kotlinOptions.jvmTarget = "1.8"
+        kotlinOptions.apiVersion = "1.2"
+        kotlinOptions.languageVersion = "1.2"
     }
     compileTestKotlin {
         kotlinOptions.jvmTarget = "1.8"
+        kotlinOptions.apiVersion = "1.2"
+        kotlinOptions.languageVersion = "1.2"
     }
 }
 
