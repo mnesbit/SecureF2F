@@ -6,6 +6,7 @@ import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import uk.co.nesbit.crypto.*
+import uk.co.nesbit.utils.printHexBinary
 import java.nio.ByteBuffer
 import java.security.PrivateKey
 import java.security.PublicKey
@@ -173,7 +174,7 @@ class Sphinx(
             require(tag.size == GCM_TAG_LENGTH)
         }
 
-        override fun toString(): String = "header: ${header.printHex()}\npayload: ${payload.printHex()}\ntag: ${tag.printHex()}"
+        override fun toString(): String = "header: ${header.printHexBinary()}\npayload: ${payload.printHexBinary()}\ntag: ${tag.printHexBinary()}"
 
         val messageBytes: ByteArray get() = concatByteArrays(header, payload, tag)
     }
