@@ -7,6 +7,7 @@ import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
+import uk.co.nesbit.utils.printHexBinary
 import java.security.MessageDigest
 import java.util.*
 
@@ -50,7 +51,7 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
         return Arrays.hashCode(bytes) + 31 * algorithm.hashCode()
     }
 
-    override fun toString(): String = "$algorithm[${bytes.printHex()}]"
+    override fun toString(): String = "$algorithm[${bytes.printHexBinary()}]"
 
     override fun compareTo(other: SecureHash): Int {
         var i = 0

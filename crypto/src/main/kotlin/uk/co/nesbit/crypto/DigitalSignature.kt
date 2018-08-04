@@ -8,6 +8,7 @@ import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
+import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
 import java.security.PublicKey
 import java.security.Signature
@@ -104,5 +105,5 @@ class DigitalSignature(val signatureAlgorithm: String,
         return result
     }
 
-    override fun toString(): String = "$signatureAlgorithm[${signature.printHex()}]"
+    override fun toString(): String = "$signatureAlgorithm[${signature.printHexBinary()}]"
 }

@@ -38,6 +38,4 @@ fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
     return output
 }
 
-fun ByteArray.printHex(): String = javax.xml.bind.DatatypeConverter.printHexBinary(this)
-
 fun byteArrayFromInts(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }

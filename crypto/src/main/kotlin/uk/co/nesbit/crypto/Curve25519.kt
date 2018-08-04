@@ -1,6 +1,7 @@
 package uk.co.nesbit.crypto
 
 import djb.Curve25519
+import uk.co.nesbit.utils.printHexBinary
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.util.*
@@ -12,7 +13,7 @@ class Curve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
         }
     }
 
-    override fun toString(): String = "PUB25519:${keyBytes.printHex()}"
+    override fun toString(): String = "PUB25519:${keyBytes.printHexBinary()}"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -44,7 +45,7 @@ class Curve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
         Curve25519.clamp(keyBytes) // ensure it is a valid private key
     }
 
-    override fun toString(): String = "PRV25519:${keyBytes.printHex()}"
+    override fun toString(): String = "PRV25519:${keyBytes.printHexBinary()}"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

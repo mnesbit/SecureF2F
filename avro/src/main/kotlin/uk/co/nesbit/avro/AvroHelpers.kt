@@ -6,6 +6,7 @@ import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.*
 import org.apache.avro.io.EncoderFactory
 import org.apache.avro.util.Utf8
+import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.math.BigDecimal
@@ -28,7 +29,7 @@ fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
                 for (typePair in parser.types) {
                     if (!types.containsKey(typePair.key)) {
                         val hash = SchemaNormalization.parsingFingerprint("SHA-256", typePair.value)
-                        val sig = "hashed.H" + javax.xml.bind.DatatypeConverter.printHexBinary(hash)
+                        val sig = "hashed.H" + hash.printHexBinary()
                         typePair.value.addAlias(sig)
                         types[typePair.key] = typePair.value
                     }
@@ -133,7 +134,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                     }
                     "timestamp-micros" -> {
                         val micros = get(fieldName) as Long
-                        Instant.ofEpochMilli(micros / 1000L).plusNanos(micros % 1000L) as T
+                        Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)) as T
                     }
                     else -> {
                         Instant.ofEpochMilli(get(fieldName) as Long) as T
@@ -155,7 +156,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                     }
                     "timestamp-micros" -> {
                         val micros = get(fieldName) as Long
-                        LocalDateTime.ofInstant(Instant.ofEpochMilli(micros / 1000L).plusNanos(micros % 1000L), ZoneOffset.UTC) as T
+                        LocalDateTime.ofInstant(Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)), ZoneOffset.UTC) as T
                     }
                     else -> {
                         LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC) as T
@@ -178,7 +179,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                     }
                     "timestamp-micros" -> {
                         val micros = get(fieldName) as Long
-                        val instant = Instant.ofEpochMilli(micros / 1000L).plusNanos((micros % 1000L) * 1000L)
+                        val instant = Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L))
                         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate() as T
                     }
                     else -> {

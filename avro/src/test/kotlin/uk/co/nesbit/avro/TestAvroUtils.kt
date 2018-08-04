@@ -1,6 +1,5 @@
 package uk.co.nesbit.avro
 
-import uk.co.nesbit.utils.readTextAndClose
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericArray
 import org.apache.avro.generic.GenericData
@@ -8,6 +7,7 @@ import org.apache.avro.generic.GenericEnumSymbol
 import org.apache.avro.generic.GenericRecord
 import org.junit.Assert.assertArrayEquals
 import org.junit.Test
+import uk.co.nesbit.utils.readTextAndClose
 import java.math.BigDecimal
 import java.time.*
 import java.time.temporal.ChronoUnit
@@ -154,18 +154,18 @@ class TestAvroUtils {
         val outTime13 = deser.getTyped<LocalDateTime>("date")
 
         val outDate = deser.getTyped<LocalDate>("date")
-        assertEquals(time, outTime1)
-        assertEquals(time, outTime2)
-        assertEquals(time, outTime3)
+        assertEquals(time.truncatedTo(ChronoUnit.MILLIS), outTime1)
+        assertEquals(time.truncatedTo(ChronoUnit.MICROS), outTime2)
+        assertEquals(time.truncatedTo(ChronoUnit.MILLIS), outTime3)
         assertEquals(time.truncatedTo(ChronoUnit.DAYS), outTime4)
-        assertEquals(localDateTime.toLocalTime(), outTime5)
-        assertEquals(localDateTime.toLocalTime(), outTime6)
+        assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS), outTime5)
+        assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MICROS), outTime6)
         assertEquals(localDateTime.toLocalDate(), outTime7)
         assertEquals(localDateTime.toLocalDate(), outTime8)
         assertEquals(localDateTime.toLocalDate(), outTime9)
-        assertEquals(localDateTime, outTime10)
-        assertEquals(localDateTime, outTime11)
-        assertEquals(localDateTime, outTime12)
+        assertEquals(localDateTime.truncatedTo(ChronoUnit.MILLIS), outTime10)
+        assertEquals(localDateTime.truncatedTo(ChronoUnit.MICROS), outTime11)
+        assertEquals(localDateTime.truncatedTo(ChronoUnit.MILLIS), outTime12)
         assertEquals(localDateTime.truncatedTo(ChronoUnit.DAYS), outTime13)
         assertEquals(date, outDate)
     }
@@ -190,16 +190,16 @@ class TestAvroUtils {
         val outDate = deser.getTyped<LocalDate>("date")
         assertEquals(date, LocalDateTime.ofInstant(outTime1, ZoneOffset.UTC).toLocalDate())
         assertEquals(date, LocalDateTime.ofInstant(outTime2, ZoneOffset.UTC).toLocalDate())
-        assertEquals(time, LocalDateTime.ofInstant(outTime3, ZoneOffset.UTC).toLocalTime())
+        assertEquals(time.truncatedTo(ChronoUnit.MILLIS), LocalDateTime.ofInstant(outTime3, ZoneOffset.UTC).toLocalTime())
         assertEquals(date, LocalDateTime.ofInstant(outTime4, ZoneOffset.UTC).toLocalDate())
-        assertEquals(localDateTime.toLocalTime(), outTime5)
-        assertEquals(localDateTime.toLocalTime(), outTime6)
+        assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS), outTime5)
+        assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MICROS), outTime6)
         assertEquals(localDateTime.toLocalDate(), outTime7)
         assertEquals(localDateTime.toLocalDate(), outTime8)
         assertEquals(localDateTime.toLocalDate(), outTime9)
         assertEquals(localDateTime.truncatedTo(ChronoUnit.DAYS), outTime10)
         assertEquals(localDateTime.truncatedTo(ChronoUnit.DAYS), outTime11)
-        assertEquals(localDateTime, outTime12)
+        assertEquals(localDateTime.truncatedTo(ChronoUnit.MILLIS), outTime12)
         assertEquals(localDateTime.truncatedTo(ChronoUnit.DAYS), outTime13)
         assertEquals(date, outDate)
     }
@@ -443,7 +443,11 @@ class TestAvroUtils {
             }
 
             override fun timeVisitor(value: LocalTime, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
-                assertEquals(nowDateTime.toLocalTime(), value)
+                val pathStr = path.toStringPath()
+                assertEquals(nowDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS), value.truncatedTo(ChronoUnit.MILLIS))
+                if (pathStr == "timestampMicroField") {
+                    assertEquals(nowDateTime.toLocalTime().truncatedTo(ChronoUnit.MICROS), value)
+                }
             }
 
             override fun timestampVisitor(value: Instant, schema: Schema, path: List<PathComponent>, root: GenericRecord) {

@@ -1,10 +1,10 @@
 buildscript {
     ext{
-        kotlin_version = '1.2.41'
-        rx_version = '2.1.9'
+        kotlin_version = '1.2.60'
+        rx_version = '2.2.0'
         sl4j_version = '1.7.25'
-        log4j2_version = '2.9.1'
-		bouncycastle_version = '1.58'
+        log4j2_version = '2.11.1'
+		bouncycastle_version = '1.60'
         eddsa_version = '0.3.0'
         avro_version = '1.8.2'
     }
@@ -44,11 +44,13 @@ allprojects {
         kotlinOptions.jvmTarget = "1.8"
         kotlinOptions.apiVersion = "1.2"
         kotlinOptions.languageVersion = "1.2"
+        kotlinOptions.javaParameters = true
     }
     compileTestKotlin {
         kotlinOptions.jvmTarget = "1.8"
         kotlinOptions.apiVersion = "1.2"
         kotlinOptions.languageVersion = "1.2"
+        kotlinOptions.javaParameters = true
     }
 }
 
