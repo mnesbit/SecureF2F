@@ -5,6 +5,7 @@ import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
+import java.nio.ByteBuffer
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
@@ -18,9 +19,24 @@ object PublicKeyHelper {
     val publicKeySchema: Schema = Schema.Parser()
             .parse(PublicKeyHelper::class.java.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
+    // Primitive LRU cache to reduce expensive creation of EdDSA objects
+    private const val MAX_CACHE = 100
+    private val keyCache = object : LinkedHashMap<ByteBuffer, PublicKey>(MAX_CACHE) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ByteBuffer, PublicKey>?): Boolean {
+            return (size > MAX_CACHE)
+        }
+    }
+
     fun deserialize(bytes: ByteArray): PublicKey {
+        val cacheKey = ByteBuffer.wrap(bytes)
+        if (cacheKey in keyCache) {
+            return keyCache[cacheKey]!!
+        }
         val keyRecord = publicKeySchema.deserialize(bytes)
-        return fromGenericRecord(keyRecord)
+        val bufCopy = bytes.copyOf()
+        val publicKey = fromGenericRecord(keyRecord)
+        keyCache[ByteBuffer.wrap(bufCopy)] = publicKey
+        return publicKey
     }
 
     fun fromGenericRecord(genericRecord: GenericRecord): PublicKey {

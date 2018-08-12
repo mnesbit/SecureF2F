@@ -133,7 +133,10 @@ class RoutingDataTest {
         val record2 = routeTable2.toGenericRecord()
         val deserialized4 = RouteTable(record2)
         assertEquals(routeTable2, deserialized4)
-        assertFailsWith<IllegalArgumentException> { RouteTable(listOf(routes1, routes2), idTo1) }
+        val badTable = RouteTable(listOf(routes1, routes2), idTo1)
+        assertFailsWith<IllegalArgumentException> {
+            badTable.verify()
+        }
     }
 
     @Test

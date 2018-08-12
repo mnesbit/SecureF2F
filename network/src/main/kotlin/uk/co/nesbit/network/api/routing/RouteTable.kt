@@ -13,10 +13,6 @@ class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : Messag
             this(routeTable.getObjectArray("allRoutes", ::Routes),
                     routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash))
 
-    init {
-        verify()
-    }
-
     companion object {
         val routeTableSchema: Schema = Schema.Parser()
                 .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema,

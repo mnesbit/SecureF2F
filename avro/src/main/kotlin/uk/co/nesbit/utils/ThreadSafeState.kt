@@ -1,4 +1,4 @@
-package uk.co.nesbit.network.util
+package uk.co.nesbit.utils
 
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock

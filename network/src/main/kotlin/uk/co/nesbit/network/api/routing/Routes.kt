@@ -44,7 +44,7 @@ class Routes(val from: VersionedIdentity,
             val signatures = mutableListOf<DigitalSignature>()
             val versionedRoutes = GenericData.Array<GenericRecord>(routes.size, fromSigningSchema)
             for ((entry, signature) in routes) {
-                val route = entry.verify(from, signature)
+                val route = entry.toVersionedRoute(from)
                 versionedRoutes.add(route.toGenericRecord())
                 entries += entry
                 signatures += signature

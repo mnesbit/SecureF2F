@@ -16,7 +16,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
 import uk.co.nesbit.network.api.services.NeighbourReceivedMessage
 import uk.co.nesbit.network.api.services.RouteDiscoveryService
-import uk.co.nesbit.network.util.ThreadSafeState
+import uk.co.nesbit.utils.ThreadSafeState
 
 class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: NeighbourDiscoveryService, private val keyService: KeyService) : RouteDiscoveryService, AutoCloseable {
     private val sphinxEncoder = Sphinx(keyService.random)
@@ -108,7 +108,9 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
 
     private fun processRouteTableMessage(routedMessage: RoutedMessage) {
         val routeTable = try {
-            RouteTable.deserialize(routedMessage.payload)
+            val msg = RouteTable.deserialize(routedMessage.payload)
+            msg.verify()
+            msg
         } catch (ex: Exception) {
             println("Bad RouteTable")
             return
