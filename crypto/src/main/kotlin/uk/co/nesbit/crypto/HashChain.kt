@@ -10,10 +10,11 @@ import uk.co.nesbit.avro.putTyped
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
-data class SecureVersion(val version: Int, val chainHash: SecureHash) : AvroConvertible {
+data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVersion: Int) : AvroConvertible {
     constructor(versionRecord: GenericRecord) :
             this(versionRecord.getTyped("version"),
-                    versionRecord.getTyped("chainHash", ::SecureHash))
+                    versionRecord.getTyped("chainHash", ::SecureHash),
+                    versionRecord.getTyped("maxVersion"))
 
     companion object {
         val secureVersionSchema: Schema = Schema.Parser()
@@ -30,15 +31,17 @@ data class SecureVersion(val version: Int, val chainHash: SecureHash) : AvroConv
         val secureVersionRecord = GenericData.Record(secureVersionSchema)
         secureVersionRecord.putTyped("version", version)
         secureVersionRecord.putTyped("chainHash", chainHash)
+        secureVersionRecord.putTyped("maxVersion", maxVersion)
         return secureVersionRecord
     }
 }
 
-class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash) : AvroConvertible {
-    constructor(keyMaterial: ByteArray, targetHash: SecureHash) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash)
+class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash, val maxChainLength: Int) : AvroConvertible {
+    constructor(keyMaterial: ByteArray, targetHash: SecureHash, maxChainLength: Int) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash, maxChainLength)
     constructor(chainRecord: GenericRecord) :
             this(chainRecord.getTyped<ByteArray>("chainKey"),
-                    chainRecord.getTyped("targetHash", ::SecureHash))
+                    chainRecord.getTyped("targetHash", ::SecureHash),
+                    chainRecord.getTyped("maxChainLength"))
 
     private val cache = mutableMapOf(targetHash to 0)
 
@@ -59,25 +62,35 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
         val hashChainRecord = GenericData.Record(hashChainSchema)
         hashChainRecord.putTyped("chainKey", chainKey.encoded)
         hashChainRecord.putTyped("targetHash", targetHash)
+        hashChainRecord.putTyped("maxChainLength", maxChainLength)
         return hashChainRecord
     }
 
-    fun verifyChainValue(version: SecureVersion): Boolean = verifyChainValue(version.chainHash, version.version)
+    fun verifyChainValue(version: SecureVersion): Boolean = verifyChainValue(version.chainHash, version.version, version.maxVersion)
 
-    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean {
+    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int, maxVersion: Int): Boolean {
         require(hash.algorithm == CHAIN_HASH_ID)
+        if (maxVersion != maxChainLength) {
+            return false
+        }
         if (cache[hash] == stepsFromEnd) {
             return true
         }
-        if (verifyChainValue(hash.bytes, stepsFromEnd)) {
+        if (verifyChainValue(hash.bytes, stepsFromEnd, maxVersion)) {
             cache[hash] = stepsFromEnd
             return true
         }
         return false
     }
 
-    fun verifyChainValue(hashBytes: ByteArray, stepsFromEnd: Int): Boolean {
-        if (stepsFromEnd > MAX_CHAIN_LENGTH) {
+    fun verifyChainValue(hashBytes: ByteArray, stepsFromEnd: Int, maxVersion: Int): Boolean {
+        if (maxVersion != maxChainLength) {
+            return false
+        }
+        if (stepsFromEnd > maxChainLength) {
+            return false
+        }
+        if (stepsFromEnd > maxChainLength) {
             return false
         }
         val hmac = Mac.getInstance(CHAIN_HASH_ID)
@@ -98,6 +111,7 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
 
         if (chainKey != other.chainKey) return false
         if (targetHash != other.targetHash) return false
+        if (maxChainLength != other.maxChainLength) return false
 
         return true
     }
@@ -105,13 +119,16 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     override fun hashCode(): Int {
         var result = chainKey.hashCode()
         result = 31 * result + targetHash.hashCode()
+        result = 31 * result + maxChainLength
         return result
     }
+
 }
 
 interface HashChainPrivate {
     val targetHash: SecureHash
     val version: Int
+    val maxChainLength: Int
     val secureVersion: SecureVersion
     val public: HashChainPublic
     fun getChainValue(stepsFromEnd: Int): SecureHash

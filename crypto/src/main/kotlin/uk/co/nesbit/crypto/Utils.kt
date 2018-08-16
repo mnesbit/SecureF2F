@@ -39,3 +39,7 @@ fun xorByteArrays(array1: ByteArray, array2: ByteArray): ByteArray {
 }
 
 fun byteArrayFromInts(vararg values: Int): ByteArray = ByteArray(values.size) { values[it].toByte() }
+
+fun Int.toByteArray(): ByteArray {
+    return byteArrayOf((this shr 24).toByte(), (this shr 16).toByte(), (this shr 8).toByte(), this.toByte())
+}

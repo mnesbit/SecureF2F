@@ -4,6 +4,7 @@ import org.apache.avro.Schema
 import org.apache.avro.SchemaBuilder
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import org.junit.Ignore
 import org.junit.Test
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
@@ -14,6 +15,7 @@ import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.services.NetworkService
 import uk.co.nesbit.network.engine.Layer2Node
 import uk.co.nesbit.network.engine.SimNetwork
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.test.assertEquals
@@ -220,6 +222,52 @@ class RoutingTests {
             networks[i].openLink((networks[i + 1]).networkId)
         }
         for (i in 0 until 4 * n) { // worst case bounds
+            println("round $i")
+            nodes.forEach { it.runStateMachine() }
+            network.deliverTillEmpty()
+            var allDone = true
+            for (node in nodes) {
+                if (node.routeDiscoveryService.knownAddresses.size < n - 1) allDone = false
+                println("${node.networkId} ${node.routeDiscoveryService.knownAddresses.size}")
+            }
+            if (allDone) break // exit early if we can
+        }
+        for (node in nodes) {
+            assertEquals(n - 1, node.routeDiscoveryService.knownAddresses.size)
+            for (node2 in nodes) {
+                if (node !== node2) {
+                    assertTrue(node2.neighbourDiscoveryService.networkAddress in node.routeDiscoveryService.knownAddresses)
+                }
+            }
+        }
+        println(network.messageCount)
+        println(network.bytesSent)
+    }
+
+    @Ignore
+    @Test
+    fun `large random small worlds graph`() {
+        val network = SimNetwork()
+        val networks = mutableListOf<NetworkService>()
+        val n = 100
+        val rand = Random()
+        for (i in 1..n) {
+            networks += network.getNetworkService(NetworkAddress(i))
+        }
+        val nodes = mutableListOf<Layer2Node>()
+        for (i in 0 until n) {
+            nodes += Layer2Node(networks[i])
+        }
+        for (i in 0 until n) {
+            if (i > 0) {
+                networks[i].openLink(networks[i - 1].networkId)
+            }
+            if (i < n - 1) {
+                networks[i].openLink(networks[i + 1].networkId)
+            }
+            networks[i].openLink(networks[rand.nextInt(n)].networkId)
+        }
+        for (i in 0 until 100) { // worst case bounds
             println("round $i")
             nodes.forEach { it.runStateMachine() }
             network.deliverTillEmpty()

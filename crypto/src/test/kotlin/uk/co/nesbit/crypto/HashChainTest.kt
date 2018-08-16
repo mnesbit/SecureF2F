@@ -19,11 +19,13 @@ class HashChainTest {
         val chainValue1 = id1.getVersionedId(0)
         Assert.assertEquals(id1.hashChain.targetHash, chainValue1.currentVersion.chainHash)
         Assert.assertEquals(0, chainValue1.currentVersion.version)
+        Assert.assertEquals(HashChainPublic.MAX_CHAIN_LENGTH, chainValue1.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue1.identity)
         val chainValue2a = id1.getVersionedId(100)
         val chainValue2b = id1.getVersionedId(100)
         Assert.assertEquals(chainValue2a, chainValue2b)
         Assert.assertEquals(100, chainValue2a.currentVersion.version)
+        Assert.assertEquals(HashChainPublic.MAX_CHAIN_LENGTH, chainValue2a.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue2a.identity)
         Assert.assertTrue(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
         Assert.assertFalse(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 99))
@@ -35,9 +37,47 @@ class HashChainTest {
         }
         val chainValue3 = id1.getVersionedId(101)
         Assert.assertEquals(101, chainValue3.currentVersion.version)
+        Assert.assertEquals(HashChainPublic.MAX_CHAIN_LENGTH, chainValue3.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue3.identity)
         Assert.assertTrue(id1.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
         Assert.assertFalse(id2.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
+    }
+
+    @Test
+    fun `short version chain test`() {
+        val rand = newSecureRandom()
+        val maxVersion = 128
+        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice", maxVersion)
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob", maxVersion)
+        val chainValue1 = id1.getVersionedId(0)
+        Assert.assertEquals(id1.hashChain.targetHash, chainValue1.currentVersion.chainHash)
+        Assert.assertEquals(0, chainValue1.currentVersion.version)
+        Assert.assertEquals(maxVersion, chainValue1.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue1.identity)
+        val chainValue2a = id1.getVersionedId(100)
+        val chainValue2b = id1.getVersionedId(100)
+        Assert.assertEquals(chainValue2a, chainValue2b)
+        Assert.assertEquals(100, chainValue2a.currentVersion.version)
+        Assert.assertEquals(maxVersion, chainValue2a.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue2a.identity)
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
+        Assert.assertFalse(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 99))
+        Assert.assertFalse(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 101))
+        Assert.assertFalse(id2.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
+        assertFailsWith<IllegalArgumentException> {
+            // Check version ratchet
+            id1.getVersionedId(99)
+        }
+        val chainValue3 = id1.getVersionedId(101)
+        Assert.assertEquals(101, chainValue3.currentVersion.version)
+        Assert.assertEquals(maxVersion, chainValue3.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue3.identity)
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
+        Assert.assertFalse(id2.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
+        assertFailsWith<IllegalArgumentException> {
+            // Check version ratchet
+            id1.getVersionedId(maxVersion + 1)
+        }
     }
 
     @Test
@@ -51,8 +91,8 @@ class HashChainTest {
         val deserializedChain2 = HashChainPublic(serializedChainRecord)
         assertEquals(publicChain, deserializedChain2)
         val id1 = chain.getSecureVersion(100)
-        assertTrue(deserializedChain.verifyChainValue(id1.chainHash, 100))
-        assertFalse(deserializedChain.verifyChainValue(id1.chainHash, 99))
+        assertTrue(deserializedChain.verifyChainValue(id1.chainHash, 100, id1.maxVersion))
+        assertFalse(deserializedChain.verifyChainValue(id1.chainHash, 99, id1.maxVersion))
     }
 
     @Test
