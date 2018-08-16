@@ -17,14 +17,19 @@ class Layer1Node(networkService: NetworkService) {
     }
 }
 
-class Layer2Node(networkService: NetworkService) {
+class Layer2Node(networkService: NetworkService,
+                 val routeGossipInterval: Int = 4) {
     val networkId: Address = networkService.networkId
     val keyService: KeyService = KeyServiceImpl()
     val neighbourDiscoveryService: NeighbourDiscoveryService = NeighbourDiscoveryServiceImpl(networkService, keyService)
     val routeDiscoveryService: RouteDiscoveryService = RouteDiscoveryServiceImpl(neighbourDiscoveryService, keyService)
+    var divider: Int = 0
 
     fun runStateMachine() {
         neighbourDiscoveryService.runStateMachine()
-        routeDiscoveryService.runStateMachine()
+        if (divider % routeGossipInterval == 0) {
+            routeDiscoveryService.runStateMachine()
+        }
+        divider++
     }
 }

@@ -60,9 +60,9 @@ class RoutingTests {
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
         val net3 = network.getNetworkService(NetworkAddress(3))
-        val node1 = Layer2Node(net1)
-        val node2 = Layer2Node(net2)
-        val node3 = Layer2Node(net3)
+        val node1 = Layer2Node(net1, 1)
+        val node2 = Layer2Node(net2, 1)
+        val node3 = Layer2Node(net3, 1)
         net1.openLink(net2.networkId)
         net3.openLink(net2.networkId)
         for (i in 0 until 3) {
@@ -89,9 +89,9 @@ class RoutingTests {
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
         val net3 = network.getNetworkService(NetworkAddress(3))
-        val node1 = Layer2Node(net1)
-        val node2 = Layer2Node(net2)
-        val node3 = Layer2Node(net3)
+        val node1 = Layer2Node(net1, 1)
+        val node2 = Layer2Node(net2, 1)
+        val node3 = Layer2Node(net3, 1)
         net2.openLink(net1.networkId)
         net2.openLink(net3.networkId)
         for (i in 0 until 3) {
@@ -118,9 +118,9 @@ class RoutingTests {
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
         val net3 = network.getNetworkService(NetworkAddress(3))
-        val node1 = Layer2Node(net1)
-        val node2 = Layer2Node(net2)
-        val node3 = Layer2Node(net3)
+        val node1 = Layer2Node(net1, 1)
+        val node2 = Layer2Node(net2, 1)
+        val node3 = Layer2Node(net3, 1)
         net1.openLink(net2.networkId)
         net3.openLink(net2.networkId)
         for (i in 0 until 3) {
@@ -165,9 +165,9 @@ class RoutingTests {
         val net1 = network.getNetworkService(NetworkAddress(1))
         val net2 = network.getNetworkService(NetworkAddress(2))
         val net3 = network.getNetworkService(NetworkAddress(3))
-        val node1 = Layer2Node(net1)
-        val node2 = Layer2Node(net2)
-        val node3 = Layer2Node(net3)
+        val node1 = Layer2Node(net1, 1)
+        val node2 = Layer2Node(net2, 1)
+        val node3 = Layer2Node(net3, 1)
         net1.openLink(net2.networkId)
         net3.openLink(net2.networkId)
         for (i in 0 until 3) {
@@ -219,7 +219,7 @@ class RoutingTests {
         for (i in 0 until n - 1) {
             networks[i].openLink((networks[i + 1]).networkId)
         }
-        for (i in 0 until 2 * n) { // worst case bounds
+        for (i in 0 until 4 * n) { // worst case bounds
             println("round $i")
             nodes.forEach { it.runStateMachine() }
             network.deliverTillEmpty()
@@ -276,11 +276,15 @@ class RoutingTests {
                 var sentCount = 0
                 val receivedCount = AtomicInteger(0)
                 if (id != n) {
-                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe {
+                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe { msg ->
                         val i = receivedCount.incrementAndGet()
-                        val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
-                        println("$i ${it.replyTo} $received")
+                        val received = TestMessage(TestMessage.testSchema.deserialize(msg.payload))
+                        println("$i ${msg.replyTo} $received")
                         assertEquals(id, received.intField / 100)
+                    }
+                    for (i in 0 until 4 * n) { // let routing settle
+                        node.runStateMachine()
+                        Thread.sleep(250)
                     }
                     while (sentCount < m) {
                         node.runStateMachine()
@@ -299,13 +303,13 @@ class RoutingTests {
                     }
                     receiveSubs.dispose()
                 } else {
-                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe {
+                    val receiveSubs = node.routeDiscoveryService.onReceive.subscribe { msg ->
                         val i = receivedCount.incrementAndGet()
-                        val received = TestMessage(TestMessage.testSchema.deserialize(it.payload))
-                        println("$i ${it.replyTo} $received")
-                        val path = node.routeDiscoveryService.findRandomRouteTo(it.replyTo)
+                        val received = TestMessage(TestMessage.testSchema.deserialize(msg.payload))
+                        println("$i ${msg.replyTo} $received")
+                        val path = node.routeDiscoveryService.findRandomRouteTo(msg.replyTo)
                         assertNotNull(path)
-                        val test1 = RoutedMessage.createRoutedMessage(it.replyTo, received)
+                        val test1 = RoutedMessage.createRoutedMessage(msg.replyTo, received)
                         node.routeDiscoveryService.send(path!!, test1)
                     }
                     while (receivedCount.get() < m * (n - 1)) {

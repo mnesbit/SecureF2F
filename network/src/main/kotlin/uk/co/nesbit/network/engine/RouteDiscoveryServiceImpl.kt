@@ -30,7 +30,6 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         val knownAddresses = mutableSetOf<Address>()
         val knownIds = mutableMapOf<SecureHash, SphinxAddress>()
         var validRoutes: Boolean = false
-        var modified: Boolean = true
         var neighbourIndex: Int = 0
     }
 
@@ -139,16 +138,13 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
                 if (existingRouteIndex == -1) {
                     knownRoutes += route
-                    modified = true
                 } else {
                     val existingRoute = knownRoutes[existingRouteIndex]
                     if (existingRoute.from.currentVersion.version < route.from.currentVersion.version) {
                         knownRoutes[existingRouteIndex] = route
-                        modified = true
                     } else if (existingRoute.from.currentVersion.version == route.from.currentVersion.version
                             && (existingRoute.entries.size < route.entries.size)) {
                         knownRoutes[existingRouteIndex] = route
-                        modified = true
                     }
                 }
             }
@@ -192,18 +188,13 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
             if (!validRoutes || neighbors.isEmpty()) {
                 return@locked Pair(null, null)
             }
-            neighbourIndex = neighbourIndex.rem(neighbors.size)
-            if (neighbourIndex == 0) {
-                if (!modified) {
-                    val allAddresses = knownAddresses.toList()
-                    val randomTarget = allAddresses[keyService.random.nextInt(allAddresses.size)]
-                    val randomPath = findRandomRouteTo(randomTarget)
-                    if (randomPath != null) {
-                        return@locked Pair(randomPath, ArrayList(knownRoutes))
-                    }
-                }
-                modified = false
+            val allAddresses = knownAddresses.toList()
+            val randomTarget = allAddresses[keyService.random.nextInt(allAddresses.size)]
+            val randomPath = findRandomRouteTo(randomTarget)
+            if (randomPath != null) {
+                return@locked Pair(randomPath, ArrayList(knownRoutes))
             }
+            neighbourIndex = neighbourIndex.rem(neighbors.size)
             val target = neighbors[neighbourIndex]
             ++neighbourIndex
             if (target !in knownAddresses) {
