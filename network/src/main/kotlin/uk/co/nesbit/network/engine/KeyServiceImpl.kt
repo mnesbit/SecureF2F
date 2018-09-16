@@ -11,13 +11,14 @@ import java.security.SecureRandom
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-class KeyServiceImpl(override val random: SecureRandom = newSecureRandom()) : KeyService {
+class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
+                     val maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH) : KeyService {
     private val lock = ReentrantLock()
     private val networkKeys = mutableMapOf<SecureHash, SphinxIdentityKeyPair>()
     private val overlayKeys = mutableMapOf<SecureHash, KeyPair>()
 
     override fun generateNetworkID(publicAddress: String?): SecureHash {
-        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random, publicAddress = publicAddress)
+        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random, maxVersion = maxVersion, publicAddress = publicAddress)
         networkKeys[newNetworkKeys.id] = newNetworkKeys
         return newNetworkKeys.id
     }

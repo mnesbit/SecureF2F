@@ -16,6 +16,10 @@
       "type": "uk.co.nesbit.crypto.SecureHash"
     },
     {
+      "name": "maxVersion",
+      "type": "int"
+    },
+    {
       "name": "publicAddress",
       "type": [
         "null",

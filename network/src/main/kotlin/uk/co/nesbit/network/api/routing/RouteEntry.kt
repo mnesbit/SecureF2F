@@ -38,6 +38,10 @@ class RouteEntry(val nonce: ByteArray,
         return versionedRoute
     }
 
+    fun toVersionedRoute(from: VersionedIdentity): VersionedRoute {
+        return VersionedRoute(nonce, from, to)
+    }
+
     override fun toGenericRecord(): GenericRecord {
         val routeEntryRecord = GenericData.Record(routeEntrySchema)
         routeEntryRecord.putTyped("nonce", nonce)

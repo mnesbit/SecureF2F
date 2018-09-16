@@ -44,6 +44,9 @@ class SimNetwork {
         }
 
         override fun openLink(remoteAddress: Address): Boolean {
+            if (remoteAddress == networkId) {
+                return false
+            }
             if (addresses.containsKey(remoteAddress)) {
                 return false
             }

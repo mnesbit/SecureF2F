@@ -12,11 +12,13 @@ import java.security.SecureRandom
 class SphinxPublicIdentity(val signingPublicKey: PublicKey,
                            val diffieHellmanPublicKey: PublicKey,
                            val targetHash: SecureHash,
+                           val maxVersion: Int,
                            val publicAddress: String?) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
             this(signatureRecord.getTyped("signingPublicKey"),
                     signatureRecord.getTyped("diffieHellmanPublicKey"),
                     signatureRecord.getTyped("targetHash", ::SecureHash),
+                    signatureRecord.getTyped("maxVersion"),
                     signatureRecord.getTyped<String?>("publicAddress"))
 
     companion object {
@@ -33,7 +35,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     }
 
-    private val hashChain = HashChainPublic(concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded), targetHash)
+    private val hashChain = HashChainPublic(concatByteArrays(signingPublicKey.encoded, diffieHellmanPublicKey.encoded, maxVersion.toByteArray()), targetHash, maxVersion)
 
     init {
         require(diffieHellmanPublicKey.algorithm == "Curve25519")
@@ -44,6 +46,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
         hashChainRecord.putTyped("signingPublicKey", signingPublicKey)
         hashChainRecord.putTyped("diffieHellmanPublicKey", diffieHellmanPublicKey)
         hashChainRecord.putTyped("targetHash", targetHash)
+        hashChainRecord.putTyped("maxVersion", maxVersion)
         hashChainRecord.putTyped("publicAddress", publicAddress)
         return hashChainRecord
     }
@@ -55,7 +58,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     fun verifyChainValue(version: SecureVersion): Boolean = hashChain.verifyChainValue(version)
 
-    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean = hashChain.verifyChainValue(hash, stepsFromEnd)
+    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean = hashChain.verifyChainValue(hash, stepsFromEnd, maxVersion)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -75,10 +78,12 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
 class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: KeyPair, val hashChain: HashChainPrivate, val publicAddress: String? = null) {
     companion object {
-        fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom(), publicAddress: String? = null): SphinxIdentityKeyPair {
+        fun generateKeyPair(secureRandom: SecureRandom = newSecureRandom(),
+                            publicAddress: String? = null,
+                            maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH): SphinxIdentityKeyPair {
             val signingKeys = generateEdDSAKeyPair(secureRandom)
             val dhKeys = generateCurve25519DHKeyPair(secureRandom)
-            val hashChain = PebbledHashChain.generateChain(concatByteArrays(signingKeys.public.encoded, dhKeys.public.encoded), secureRandom)
+            val hashChain = PebbledHashChain.generateChain(concatByteArrays(signingKeys.public.encoded, dhKeys.public.encoded, maxVersion.toByteArray()), secureRandom, maxVersion)
             return SphinxIdentityKeyPair(signingKeys, dhKeys, hashChain, publicAddress)
         }
     }
@@ -89,7 +94,7 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))
 
-    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.targetHash, publicAddress) }
+    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.targetHash, hashChain.maxChainLength, publicAddress) }
 
     val id: SecureHash get() = public.id
 }

@@ -16,7 +16,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.services.NeighbourDiscoveryService
 import uk.co.nesbit.network.api.services.NeighbourReceivedMessage
 import uk.co.nesbit.network.api.services.RouteDiscoveryService
-import uk.co.nesbit.network.util.ThreadSafeState
+import uk.co.nesbit.utils.ThreadSafeState
 
 class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: NeighbourDiscoveryService, private val keyService: KeyService) : RouteDiscoveryService, AutoCloseable {
     private val sphinxEncoder = Sphinx(keyService.random)
@@ -30,7 +30,6 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         val knownAddresses = mutableSetOf<Address>()
         val knownIds = mutableMapOf<SecureHash, SphinxAddress>()
         var validRoutes: Boolean = false
-        var modified: Boolean = true
         var neighbourIndex: Int = 0
     }
 
@@ -108,7 +107,9 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
 
     private fun processRouteTableMessage(routedMessage: RoutedMessage) {
         val routeTable = try {
-            RouteTable.deserialize(routedMessage.payload)
+            val msg = RouteTable.deserialize(routedMessage.payload)
+            msg.verify()
+            msg
         } catch (ex: Exception) {
             println("Bad RouteTable")
             return
@@ -137,16 +138,13 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
                 val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
                 if (existingRouteIndex == -1) {
                     knownRoutes += route
-                    modified = true
                 } else {
                     val existingRoute = knownRoutes[existingRouteIndex]
                     if (existingRoute.from.currentVersion.version < route.from.currentVersion.version) {
                         knownRoutes[existingRouteIndex] = route
-                        modified = true
                     } else if (existingRoute.from.currentVersion.version == route.from.currentVersion.version
                             && (existingRoute.entries.size < route.entries.size)) {
                         knownRoutes[existingRouteIndex] = route
-                        modified = true
                     }
                 }
             }
@@ -190,18 +188,13 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
             if (!validRoutes || neighbors.isEmpty()) {
                 return@locked Pair(null, null)
             }
-            neighbourIndex = neighbourIndex.rem(neighbors.size)
-            if (neighbourIndex == 0) {
-                if (!modified) {
-                    val allAddresses = knownAddresses.toList()
-                    val randomTarget = allAddresses[keyService.random.nextInt(allAddresses.size)]
-                    val randomPath = findRandomRouteTo(randomTarget)
-                    if (randomPath != null) {
-                        return@locked Pair(randomPath, ArrayList(knownRoutes))
-                    }
-                }
-                modified = false
+            val allAddresses = knownAddresses.toList()
+            val randomTarget = allAddresses[keyService.random.nextInt(allAddresses.size)]
+            val randomPath = findRandomRouteTo(randomTarget)
+            if (randomPath != null) {
+                return@locked Pair(randomPath, ArrayList(knownRoutes))
             }
+            neighbourIndex = neighbourIndex.rem(neighbors.size)
             val target = neighbors[neighbourIndex]
             ++neighbourIndex
             if (target !in knownAddresses) {

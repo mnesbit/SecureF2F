@@ -1,7 +1,6 @@
 package uk.co.nesbit.crypto
 
 import uk.co.nesbit.crypto.HashChainPublic.Companion.CHAIN_HASH_ID
-import uk.co.nesbit.crypto.HashChainPublic.Companion.MAX_CHAIN_LENGTH
 import java.util.*
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -12,9 +11,13 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
                                            override val targetHash: SecureHash,
                                            private val seedHash: SecureHash,
                                            private val intermediateHashes: MutableList<SecureHash>,
-                                           override var version: Int) : HashChainPrivate {
+                                           override var version: Int,
+                                           override val maxChainLength: Int) : HashChainPrivate {
     companion object {
-        fun generateChain(keyMaterial: ByteArray, secureRandom: Random = newSecureRandom()): HashChainPrivate {
+        fun generateChain(keyMaterial: ByteArray, secureRandom: Random = newSecureRandom(), maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH): HashChainPrivate {
+            require(maxChainLength and (maxChainLength - 1) == 0) {
+                "Maximum chain length must be a power of 2"
+            }
             val seed = ByteArray(32)
             secureRandom.nextBytes(seed)
             val startHash = SecureHash(CHAIN_HASH_ID, seed)
@@ -23,7 +26,7 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
             val endHash = seed.copyOf()
             hmac.init(hmacKey)
             val intermediateHashes = mutableListOf<SecureHash>()
-            for (i in MAX_CHAIN_LENGTH - 1 downTo 0) {
+            for (i in maxChainLength - 1 downTo 0) {
                 hmac.update(endHash)
                 hmac.doFinal(endHash, 0)
                 val j = i + 2
@@ -32,7 +35,7 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
                 }
             }
             intermediateHashes.reverse()
-            return PebbledHashChain(hmacKey, SecureHash(CHAIN_HASH_ID, endHash), startHash, intermediateHashes, 0)
+            return PebbledHashChain(hmacKey, SecureHash(CHAIN_HASH_ID, endHash), startHash, intermediateHashes, 0, maxChainLength)
         }
     }
 
@@ -40,23 +43,23 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
 
     private val pebbles = mutableListOf<Pebble>()
 
-    override val public: HashChainPublic by lazy { HashChainPublic(chainKey, targetHash) }
+    override val public: HashChainPublic by lazy { HashChainPublic(chainKey, targetHash, maxChainLength) }
 
     override fun getChainValue(stepsFromEnd: Int): SecureHash = getSecureVersion(stepsFromEnd).chainHash
 
     override val secureVersion: SecureVersion
         get() {
-            if (version == MAX_CHAIN_LENGTH - 1) {
-                return SecureVersion(version, chain(seedHash))
+            if (version == maxChainLength - 1) {
+                return SecureVersion(version, chain(seedHash), maxChainLength)
             }
-            if (version == MAX_CHAIN_LENGTH) {
-                return SecureVersion(version, seedHash)
+            if (version == maxChainLength) {
+                return SecureVersion(version, seedHash, maxChainLength)
             }
-            return SecureVersion(version, intermediateHashes[0])
+            return SecureVersion(version, intermediateHashes[0], maxChainLength)
         }
 
     override fun getSecureVersion(stepsFromEnd: Int): SecureVersion {
-        require(stepsFromEnd <= MAX_CHAIN_LENGTH)
+        require(stepsFromEnd <= maxChainLength)
         require(stepsFromEnd >= version) { "Version $stepsFromEnd already used. Current version $version" }
         while (version < stepsFromEnd) {
             incrementVersion()
@@ -72,14 +75,14 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
     }
 
     private fun incrementVersion() {
-        if (version == MAX_CHAIN_LENGTH) {
+        if (version == maxChainLength) {
             return
         }
         ++version
-        if (version == MAX_CHAIN_LENGTH) {
+        if (version == maxChainLength) {
             return
         }
-        val r = MAX_CHAIN_LENGTH - version
+        val r = maxChainLength - version
         var c = r
         var i = 0
         while ((c and 1) == 0) {
