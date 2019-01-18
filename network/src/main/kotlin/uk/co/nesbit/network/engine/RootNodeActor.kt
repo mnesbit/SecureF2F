@@ -17,6 +17,7 @@ class RootNodeActor(val overlayAddress: Address, networkConfig: NetworkConfigura
 
     val physicalNetworkActor =
         context.actorOf(PhysicalNetworkActor.getProps(networkConfig), networkConfig.networkId.id.toString())
+    val neighbourLinkActor = context.actorOf(NeighbourLinkActor.getProps(physicalNetworkActor), "neighbours")
 
     override fun preStart() {
         super.preStart()
