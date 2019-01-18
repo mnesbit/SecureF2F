@@ -1,0 +1,6 @@
+dependencies {
+    // RxJava: observable streams of events.
+    compile "io.reactivex.rxjava2:rxjava:$rx_version"
+    // Actor framework
+    compile "com.typesafe.akka:akka-actor_2.12:2.5.19"
+}

@@ -1,0 +1,3 @@
+rootProject.name = 'AkkaTest'
+include 'network'
+
