@@ -1,6 +1,7 @@
 package uk.co.nesbit.network.engine
 
 import akka.actor.AbstractLoggingActor
+import akka.actor.ActorRef
 import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.Address
@@ -15,28 +16,29 @@ class RootNodeActor(val overlayAddress: Address, networkConfig: NetworkConfigura
         }
     }
 
-    val physicalNetworkActor =
-        context.actorOf(PhysicalNetworkActor.getProps(networkConfig), networkConfig.networkId.id.toString())
-    val neighbourLinkActor = context.actorOf(NeighbourLinkActor.getProps(physicalNetworkActor), "neighbours")
+    private val physicalNetworkActor: ActorRef =
+        context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
+    private val neighbourLinkActor: ActorRef =
+        context.actorOf(NeighbourLinkActor.getProps(networkConfig, physicalNetworkActor), "neighbours")
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting Node Actor")
+        log().info("Starting RootNodeActor $overlayAddress")
     }
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped Node Actor")
+        log().info("Stopped RootNodeActor $overlayAddress")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart Node Actor")
+        log().info("Restart RootNodeActor $overlayAddress")
     }
 
-    override fun createReceive() =
+    override fun createReceive(): Receive =
         ReceiveBuilder()
-            .match(String::class.java, this::onMessage)
+            .match(String::class.java, ::onMessage)
             .build()
 
     private fun onMessage(message: String) {

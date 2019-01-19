@@ -5,13 +5,14 @@ import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Terminated
 import akka.japi.pf.ReceiveBuilder
+import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.NetworkAddress
 
 data class DnsRegistration(val networkId: NetworkAddress)
-data class DnsLookup(val networkId: NetworkAddress)
-data class DnsResponse(val networkId: NetworkAddress, val actorRef: ActorRef?)
+data class DnsLookup(val networkId: NetworkAddress, val linkId: LinkId)
+data class DnsResponse(val linkId: LinkId, val actorRef: ActorRef?)
 
-class DnsMockActor() : AbstractLoggingActor() {
+class DnsMockActor : AbstractLoggingActor() {
     companion object {
         @JvmStatic
         fun getProps(): Props {
@@ -20,29 +21,29 @@ class DnsMockActor() : AbstractLoggingActor() {
         }
     }
 
-    val knownAddresses = mutableMapOf<NetworkAddress, ActorRef>()
-    val knownActors = mutableMapOf<ActorRef, NetworkAddress>()
+    private val knownAddresses = mutableMapOf<NetworkAddress, ActorRef>()
+    private val knownActors = mutableMapOf<ActorRef, NetworkAddress>()
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting DnsMockActor Actor")
+        log().info("Starting DnsMockActor")
     }
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped DnsMockActor Actor")
+        log().info("Stopped DnsMockActor")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart DnsMockActor Actor")
+        log().info("Restart DnsMockActor")
     }
 
-    override fun createReceive() =
+    override fun createReceive(): Receive =
         ReceiveBuilder()
-            .match(DnsRegistration::class.java, this::onRegistration)
-            .match(Terminated::class.java, this::onDeath)
-            .match(DnsLookup::class.java, this::onLookup)
+            .match(DnsRegistration::class.java, ::onRegistration)
+            .match(Terminated::class.java, ::onDeath)
+            .match(DnsLookup::class.java, ::onLookup)
             .build()
 
     private fun onRegistration(registration: DnsRegistration) {
@@ -63,6 +64,6 @@ class DnsMockActor() : AbstractLoggingActor() {
     private fun onLookup(lookup: DnsLookup) {
         log().info("Received DNS request $lookup")
         val node = knownAddresses[lookup.networkId]
-        sender.tell(DnsResponse(lookup.networkId, node), self)
+        sender.tell(DnsResponse(lookup.linkId, node), self)
     }
 }
