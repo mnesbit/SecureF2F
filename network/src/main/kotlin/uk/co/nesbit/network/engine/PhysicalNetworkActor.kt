@@ -24,17 +24,17 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         val linkIdCounter = AtomicInteger(0)
     }
 
-    private data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
-    private data class ConnectResult(val linkId: LinkId, val opened: Boolean)
-    private data class ConnectionDrop(val initiatorLinkId: LinkId)
+    internal data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
+    internal data class ConnectResult(val linkId: LinkId, val opened: Boolean)
+    internal data class ConnectionDrop(val initiatorLinkId: LinkId)
 
-    private val networkId get() = networkConfig.networkId
-    private val owners = mutableSetOf<ActorRef>()
+    internal val networkId get() = networkConfig.networkId
+    internal val owners = mutableSetOf<ActorRef>()
 
-    private val links = mutableMapOf<LinkId, LinkInfo>()
-    private val targets = mutableMapOf<LinkId, ActorRef>()
-    private val foreignLinks = mutableMapOf<LinkId, LinkId>()
-    private val addresses = mutableMapOf<Address, LinkId>()
+    internal val links = mutableMapOf<LinkId, LinkInfo>()
+    internal val targets = mutableMapOf<LinkId, ActorRef>()
+    internal val foreignLinks = mutableMapOf<LinkId, LinkId>()
+    internal val addresses = mutableMapOf<Address, LinkId>()
 
     private val dnsSelector = context.actorSelection("/user/Dns")
 
@@ -116,6 +116,14 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             val newLinkInfo = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = newLinkInfo
             targets -= linkId
+            val foreignLinksItr = foreignLinks.iterator()
+            while (foreignLinksItr.hasNext()) {
+                val curr = foreignLinksItr.next()
+                if (curr.value == linkId) {
+                    foreignLinksItr.remove()
+                    break
+                }
+            }
             val currentLinkForAddress = addresses[newLinkInfo.route.to]
             if (currentLinkForAddress == linkId) {
                 addresses -= newLinkInfo.route.to
@@ -177,12 +185,12 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         if (request.sourceNetworkId in networkConfig.blackListedSources) {
             sender.tell(ConnectResult(request.linkId, false), ActorRef.noSender())
         } else {
+            sender.tell(ConnectResult(request.linkId, true), ActorRef.noSender())
             val linkId = createLink(request.sourceNetworkId)
             targets[linkId] = sender
             context.watch(sender)
             foreignLinks[request.linkId] = linkId
             enableLink(linkId, LinkStatus.LINK_UP_PASSIVE)
-            sender.tell(ConnectResult(request.linkId, true), ActorRef.noSender())
         }
     }
 
@@ -198,7 +206,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     private fun onConnectionDrop(drop: ConnectionDrop) {
         log().info("got ConnectionDrop $drop")
-        val activeLink = foreignLinks.remove(drop.initiatorLinkId) ?: drop.initiatorLinkId
+        val activeLink = foreignLinks[drop.initiatorLinkId] ?: drop.initiatorLinkId
         val existingConnection = links[activeLink]
         if (existingConnection != null) {
             log().info("Dropping $existingConnection")
