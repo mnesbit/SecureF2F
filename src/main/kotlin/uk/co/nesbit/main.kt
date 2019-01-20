@@ -11,7 +11,7 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 3
+    val degree = 5
     val N = 10
     val simNetwork = makeRandomNetwork(degree, N)
     val simNodes = mutableListOf<SimNode>()
@@ -47,7 +47,7 @@ fun main(args: Array<String>) {
 //            }
 //        }
 //        println("Done round $round messages ${simNetwork.messageCount}")
-    System.`in`.read()
+    while (System.`in`.read() != 'q'.toInt());
     actorSystem.terminate().value()
     //}
 
