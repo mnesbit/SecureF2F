@@ -6,8 +6,10 @@ import akka.testkit.TestActorRef
 import akka.testkit.TestActors
 import akka.testkit.TestKit
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Before
 import org.junit.Test
+import scala.collection.JavaConverters
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration.FiniteDuration
 import uk.co.nesbit.network.api.*
@@ -274,9 +276,12 @@ class NetworkTest {
                         mockNode
                     )
                     // should get back update of new LinkInfo
-                    expectMsgClass(PhysicalNetworkActor.ConnectResult::class.java)
-                    val initialLinkUpMsg = expectMsgClass(LinkInfo::class.java)
+                    val msgs = JavaConverters.asJavaIterable(receiveN(2))
+                    val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
+                    val connectResult =
+                        msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
+                    assertEquals(true, connectResult.opened)
                     // drop the link
                     physicalNetworkActor.tell(PhysicalNetworkActor.ConnectionDrop(newLinkId), ActorRef.noSender())
                     // Expect down event passed to watcher
@@ -319,9 +324,12 @@ class NetworkTest {
                         mockNode
                     )
                     // should get back update of new LinkInfo
-                    expectMsgClass(PhysicalNetworkActor.ConnectResult::class.java)
-                    val initialLinkUpMsg = expectMsgClass(LinkInfo::class.java)
+                    val msgs = JavaConverters.asJavaIterable(receiveN(2))
+                    val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
+                    val connectResult =
+                        msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
+                    assertEquals(true, connectResult.opened)
                     // drop the link via process death
                     actorSystem!!.stop(mockNode)
                     // Expect down event passed to watcher
@@ -341,4 +349,41 @@ class NetworkTest {
         }
     }
 
+    @Test
+    fun `Two network actors can communicate with each other two way`() {
+        object : TestKit(actorSystem) {
+            init {
+                within(5.seconds()) {
+                    // repoint /user/Dns to main test actor
+                    actorSystem!!.actorOf(DnsMockActor.getProps(), "Dns")
+                    val config1 = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config2 = NetworkConfiguration(NetworkAddress(2), false, setOf(), setOf())
+                    // Make the actor in test mode, where we can access the object state
+                    val physicalNetworkActor1 =
+                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config1))
+                    val physicalNetworkActor2 =
+                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config2))
+                    // Register for LookInfo updates
+                    physicalNetworkActor1.tell(WatchRequest(), testActor())
+                    physicalNetworkActor2.tell(WatchRequest(), testActor())
+                    // Open link from 1 to 2
+                    physicalNetworkActor1.tell(OpenRequest(config2.networkId), testActor())
+                    val linkUpdate2 = expectMsgClass(LinkInfo::class.java)
+                    assertEquals(LinkStatus.LINK_UP_PASSIVE, linkUpdate2.status)
+                    val linkUpdate1 = expectMsgClass(LinkInfo::class.java)
+                    assertEquals(LinkStatus.LINK_UP_ACTIVE, linkUpdate1.status)
+                    // Send message from 1 to 2
+                    physicalNetworkActor1.tell(SendMessage(linkUpdate1.linkId, "Hello1".toByteArray()), testActor())
+                    val msg1 = expectMsgClass(LinkReceivedMessage::class.java)
+                    assertEquals(linkUpdate2.linkId, msg1.linkId)
+                    assertArrayEquals("Hello1".toByteArray(), msg1.msg)
+                    // Send message from 2 to 1
+                    physicalNetworkActor2.tell(SendMessage(linkUpdate2.linkId, "Hello2".toByteArray()), testActor())
+                    val msg2 = expectMsgClass(LinkReceivedMessage::class.java)
+                    assertEquals(linkUpdate1.linkId, msg2.linkId)
+                    assertArrayEquals("Hello2".toByteArray(), msg2.msg)
+                }
+            }
+        }
+    }
 }

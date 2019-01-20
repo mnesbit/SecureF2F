@@ -33,8 +33,9 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     internal val links = mutableMapOf<LinkId, LinkInfo>()
     internal val targets = mutableMapOf<LinkId, ActorRef>()
-    internal val foreignLinks = mutableMapOf<LinkId, LinkId>()
-    internal val addresses = mutableMapOf<Address, LinkId>()
+    internal val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end
+    internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end
+    internal val addresses = mutableMapOf<Address, LinkId>() // prefers active over passive links
 
     private val dnsSelector = context.actorSelection("/user/Dns")
 
@@ -116,13 +117,9 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             val newLinkInfo = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = newLinkInfo
             targets -= linkId
-            val foreignLinksItr = foreignLinks.iterator()
-            while (foreignLinksItr.hasNext()) {
-                val curr = foreignLinksItr.next()
-                if (curr.value == linkId) {
-                    foreignLinksItr.remove()
-                    break
-                }
+            val reverseForeignLink = reverseForeignLinks.remove(linkId)
+            if (reverseForeignLink != null) {
+                foreignLinks -= reverseForeignLink
             }
             val currentLinkForAddress = addresses[newLinkInfo.route.to]
             if (currentLinkForAddress == linkId) {
@@ -190,6 +187,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             targets[linkId] = sender
             context.watch(sender)
             foreignLinks[request.linkId] = linkId
+            reverseForeignLinks[linkId] = request.linkId
             enableLink(linkId, LinkStatus.LINK_UP_PASSIVE)
         }
     }
@@ -234,7 +232,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     private fun onSendMessage(msg: SendMessage) {
         val target = targets[msg.linkId]
-        val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
+        val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
         val renumberedMessage = LinkReceivedMessage(activeLink, msg.msg)
         target?.tell(renumberedMessage, self)
     }
