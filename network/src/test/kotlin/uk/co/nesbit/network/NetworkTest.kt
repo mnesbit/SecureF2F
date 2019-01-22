@@ -10,14 +10,10 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Before
 import org.junit.Test
 import scala.collection.JavaConverters
-import scala.concurrent.duration.Duration
-import scala.concurrent.duration.FiniteDuration
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.engine.*
-import java.util.concurrent.TimeUnit
+import uk.co.nesbit.network.util.seconds
 import kotlin.test.assertEquals
-
-fun Int.seconds(): FiniteDuration = Duration.create(this.toLong(), TimeUnit.SECONDS)
 
 class NetworkTest {
     private var actorSystem: ActorSystem? = null

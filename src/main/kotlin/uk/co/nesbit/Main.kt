@@ -12,8 +12,8 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 5
-    val N = 10
+    val degree = 1
+    val N = 2
     val simNetwork = makeRandomNetwork(degree, N)
     val simNodes = mutableListOf<SimNode>()
     val actorSystem = ActorSystem.create("Akka")

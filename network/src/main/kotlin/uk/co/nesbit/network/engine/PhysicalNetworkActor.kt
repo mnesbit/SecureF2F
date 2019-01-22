@@ -105,7 +105,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             }
             if (linkInfo.status != newLinkInfo.status) {
                 for (owner in owners) {
-                    owner.tell(newLinkInfo, ActorRef.noSender())
+                    owner.tell(newLinkInfo, self)
                 }
             }
         }
@@ -133,7 +133,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             }
             if (linkInfo.status != newLinkInfo.status) {
                 for (owner in owners) {
-                    owner.tell(newLinkInfo, ActorRef.noSender())
+                    owner.tell(newLinkInfo, self)
                 }
             }
         }
@@ -226,7 +226,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         val renumberedMessage = LinkReceivedMessage(activeLink, msg.msg)
         for (owner in owners) {
-            owner.tell(renumberedMessage, ActorRef.noSender())
+            owner.tell(renumberedMessage, self)
         }
     }
 
