@@ -4,8 +4,8 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import uk.co.nesbit.network.api.LinkStatus
 import uk.co.nesbit.network.api.NetworkAddress
-import uk.co.nesbit.network.engine.Layer1Node
-import uk.co.nesbit.network.engine.SimNetwork
+import uk.co.nesbit.network.engineOld.Layer1Node
+import uk.co.nesbit.network.engineOld.SimNetwork
 import java.nio.ByteBuffer
 import java.time.Clock
 import java.util.concurrent.LinkedBlockingQueue

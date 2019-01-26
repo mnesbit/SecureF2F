@@ -12,8 +12,8 @@ import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.routing.RoutedMessage
-import uk.co.nesbit.network.engine.Layer2Node
-import uk.co.nesbit.network.engine.SimNetwork
+import uk.co.nesbit.network.engineOld.Layer2Node
+import uk.co.nesbit.network.engineOld.SimNetwork
 import kotlin.concurrent.thread
 
 data class TestMessage(val intField: Int) : Message {

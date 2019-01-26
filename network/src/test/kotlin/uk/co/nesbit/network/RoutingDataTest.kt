@@ -9,7 +9,7 @@ import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.network.api.routing.*
 import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
-import uk.co.nesbit.network.engine.KeyServiceImpl
+import uk.co.nesbit.network.engineOld.KeyServiceImpl
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull

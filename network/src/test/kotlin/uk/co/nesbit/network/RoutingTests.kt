@@ -13,8 +13,8 @@ import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.services.NetworkService
-import uk.co.nesbit.network.engine.Layer2Node
-import uk.co.nesbit.network.engine.SimNetwork
+import uk.co.nesbit.network.engineOld.Layer2Node
+import uk.co.nesbit.network.engineOld.SimNetwork
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
