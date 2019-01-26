@@ -77,7 +77,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
             val linkDown = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = linkDown
             _onLinkStatusChange.onNext(linkDown)
-            return Pair(linkInfo.status.active(), linkDown)
+            return Pair(linkInfo.status.active, linkDown)
         }
         return Pair(false, null)
     }
@@ -137,7 +137,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     if (linkId != null) {
                         val linkInfo = links[linkId]
                         if (linkInfo != null) {
-                            if (linkInfo.status.active()) {
+                            if (linkInfo.status.active) {
                                 return linkId
                             }
                         }
@@ -154,7 +154,7 @@ class NeighbourDiscoveryServiceImpl(private val networkService: NetworkService,
                     val localLink = networkService.addresses[neighbourAddress]
                     if (localLink != null) {
                         val linkInfo = networkService.links[localLink]
-                        if (linkInfo != null && linkInfo.status.active()) {
+                        if (linkInfo != null && linkInfo.status.active) {
                             return localLink
                         }
                     }

@@ -79,7 +79,7 @@ class SimNetwork {
 
         override fun send(linkId: LinkId, msg: ByteArray) {
             val linkInfo = links[linkId] ?: throw IOException("Invalid LinkId $linkId")
-            if (!linkInfo.status.active()) {
+            if (!linkInfo.status.active) {
                 throw IOException("Link Unavailable $linkId")
             }
             ++parent._messageCount
@@ -108,7 +108,7 @@ class SimNetwork {
             if (sourceNode != null) {
                 val status = sourceNode.links[packet.viaLinkId]
                 if (status != null) {
-                    if (status.status.active()) {
+                    if (status.status.active) {
                         return networkNodes[packet.route.to]
                     }
                 }
