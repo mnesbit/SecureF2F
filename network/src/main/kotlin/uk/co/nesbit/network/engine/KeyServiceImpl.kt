@@ -41,7 +41,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
             }
             val overlayKey = findById2(id)
             require(overlayKey != null) { "Key id $id not found" }
-            return overlayKey!!.sign(bytes)
+            return overlayKey.sign(bytes)
         }
     }
 
@@ -49,7 +49,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
         lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
-            return getSharedDHSecret(key!!.diffieHellmanKeys, remotePublicKey)
+            return getSharedDHSecret(key.diffieHellmanKeys, remotePublicKey)
         }
     }
 
@@ -57,7 +57,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
         lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
-            val version = key!!.hashChain.version
+            val version = key.hashChain.version
             return key.getVersionedId(version)
         }
     }
@@ -66,7 +66,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
         lock.withLock {
             val key = findById(id)
             require(key != null) { "Key id $id not found" }
-            val version = key!!.hashChain.version + 1
+            val version = key.hashChain.version + 1
             return key.getVersionedId(version)
         }
     }
@@ -75,7 +75,7 @@ class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
         lock.withLock {
             val keys = findById2(id)
             require(keys != null) { "Key id $id not found" }
-            return OverlayAddress(keys!!.public)
+            return OverlayAddress(keys.public)
         }
     }
 }

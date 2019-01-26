@@ -358,7 +358,7 @@ class RoutingTests {
                         val path = node.routeDiscoveryService.findRandomRouteTo(msg.replyTo)
                         assertNotNull(path)
                         val test1 = RoutedMessage.createRoutedMessage(msg.replyTo, received)
-                        node.routeDiscoveryService.send(path!!, test1)
+                        node.routeDiscoveryService.send(path, test1)
                     }
                     while (receivedCount.get() < m * (n - 1)) {
                         node.runStateMachine()

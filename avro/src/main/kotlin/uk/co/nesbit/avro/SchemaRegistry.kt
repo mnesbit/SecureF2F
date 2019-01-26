@@ -55,10 +55,10 @@ class SchemaRegistry {
             val schemaKey = ByteBuffer.wrap(schemaId)
             val schema = schemas[schemaKey]
             require(schema != null) { "Can't find matching schema" }
-            val genericRecord = schema!!.deserialize(data)
+            val genericRecord = schema.deserialize(data)
             val constructor = converters[schemaKey]
             require(constructor != null) { "No AvroConvertible registered to this schema fingerprint" }
-            return constructor!!.newInstance(genericRecord)
+            return constructor.newInstance(genericRecord)
         }
     }
 }

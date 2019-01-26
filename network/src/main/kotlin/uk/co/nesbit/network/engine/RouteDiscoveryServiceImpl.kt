@@ -65,7 +65,7 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
         val firstLink = neighbourDiscoveryService.findLinkTo(route.first())
         require(firstLink != null) { "Don't know link to first target" }
         val sendableMessage = sphinxEncoder.makeMessage(addressPath, msg.serialize())
-        neighbourDiscoveryService.send(firstLink!!, sendableMessage.messageBytes)
+        neighbourDiscoveryService.send(firstLink, sendableMessage.messageBytes)
     }
 
     private fun processLinkStatusChange() {

@@ -1,4 +1,4 @@
-rootProject.name = 'securep2p'
+rootProject.name = 'AkkaTest'
 include 'crypto'
 include 'avro'
 include 'network'

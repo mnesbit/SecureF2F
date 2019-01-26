@@ -93,11 +93,11 @@ class SafeDecoder(private val source: ByteArray) : Decoder() {
     @Throws(IOException::class)
     override fun readString(old: Utf8?): Utf8 {
         val length = readInt()
-        val result = old ?: Utf8()
-        result.byteLength = length
         if ((length < 0) || (length + index > source.size)) {
             throw IOException()
         }
+        val result = old ?: Utf8()
+        result.byteLength = length
         if (length > 0) {
             System.arraycopy(source, index, result.bytes, 0, length)
             index += length
