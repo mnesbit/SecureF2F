@@ -2,4 +2,6 @@ dependencies {
     // Actor framework
     compile "com.typesafe.akka:akka-actor_2.12:$akka_version"
     testCompile "com.typesafe.akka:akka-testkit_2.12:$akka_version"
+
+    compile project(':crypto')
 }

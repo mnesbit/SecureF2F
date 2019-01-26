@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "HashChainPublic",
+  "type": "record",
+  "fields": [
+    {
+      "name": "chainKey",
+      "type": "bytes"
+    },
+    {
+      "name": "targetHash",
+      "type": "SecureHash"
+    },
+    {
+      "name": "maxChainLength",
+      "type": "int"
+    }
+  ]
+}

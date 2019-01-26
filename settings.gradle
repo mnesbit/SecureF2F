@@ -1,3 +1,5 @@
 rootProject.name = 'AkkaTest'
+include 'crypto'
+include 'avro'
 include 'network'
 

@@ -1,6 +1,7 @@
 package uk.co.nesbit
 
 import akka.actor.ActorSystem
+import uk.co.nesbit.crypto.generateEdDSAKeyPair
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.OverlayAddress
@@ -21,7 +22,7 @@ fun main(args: Array<String>) {
         val networkAddress = NetworkAddress(nodeAddress)
         val links = simNetwork[networkAddress]!!
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
-        simNodes += SimNode(OverlayAddress(nodeAddress), actorSystem, config)
+        simNodes += SimNode(OverlayAddress(generateEdDSAKeyPair().public), actorSystem, config)
     }
 //        var stabilised = false
 //        var round = 0

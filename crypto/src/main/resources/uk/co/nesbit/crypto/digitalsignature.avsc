@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "DigitalSignature",
+  "type": "record",
+  "fields": [
+    {
+      "name": "signatureAlgorithm",
+      "type": "string"
+    },
+    {
+      "name": "signature",
+      "type": "bytes"
+    }
+  ]
+}

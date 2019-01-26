@@ -1,0 +1,21 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "RouteTable",
+  "type": "record",
+  "fields": [
+    {
+      "name": "allRoutes",
+      "type": {
+        "type": "array",
+        "items": "Routes"
+      }
+    },
+    {
+      "name": "replyTo",
+      "type": [
+        "null",
+        "uk.co.nesbit.crypto.SecureHash"
+      ]
+    }
+  ]
+}

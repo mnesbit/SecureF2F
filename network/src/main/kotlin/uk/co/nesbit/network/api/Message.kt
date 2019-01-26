@@ -1,5 +1,5 @@
 package uk.co.nesbit.network.api
 
-interface Message
+import uk.co.nesbit.avro.AvroConvertible
 
-data class RoutedMessage(val path: List<Address>, val payload: Message) : Message
+interface Message : AvroConvertible

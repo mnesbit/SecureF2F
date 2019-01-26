@@ -1,0 +1,29 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "Routes",
+  "type": "record",
+  "fields": [
+    {
+      "name": "from",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "entries",
+      "type": {
+        "type": "array",
+        "items": "RouteEntry"
+      }
+    },
+    {
+      "name": "toSignatures",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.DigitalSignature"
+      }
+    },
+    {
+      "name": "fromSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

@@ -8,5 +8,8 @@ import uk.co.nesbit.network.api.OverlayAddress
 
 class SimNode(address: Address, private val actorSystem: ActorSystem, networkConfig: NetworkConfiguration) {
     val rootNodeActor: ActorRef =
-        actorSystem.actorOf(RootNodeActor.getProps(address, networkConfig), (address as OverlayAddress).id.toString())
+        actorSystem.actorOf(
+            RootNodeActor.getProps(address, networkConfig),
+            (address as OverlayAddress).identity.toString()
+        )
 }

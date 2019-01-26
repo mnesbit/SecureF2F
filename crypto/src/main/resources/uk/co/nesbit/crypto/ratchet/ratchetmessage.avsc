@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.crypto.ratchet",
+  "name": "RatchetMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "encryptedHeader",
+      "type": "bytes"
+    },
+    {
+      "name": "encryptedPayload",
+      "type": "bytes"
+    }
+  ]
+}
