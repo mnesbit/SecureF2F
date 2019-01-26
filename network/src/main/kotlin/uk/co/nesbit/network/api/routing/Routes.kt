@@ -25,11 +25,16 @@ class Routes(val from: VersionedIdentity,
 
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val routesSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                        RouteEntry.routeEntrySchema.fullName to RouteEntry.routeEntrySchema,
-                        DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
-                .parse(Routes::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routes.avsc"))
+            .addTypes(
+                mapOf(
+                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                    RouteEntry.routeEntrySchema.fullName to RouteEntry.routeEntrySchema,
+                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/routes.avsc"))
 
         private val fromSigningSchema: Schema = Schema.createArray(VersionedRoute.versionedRouteSchema)
 

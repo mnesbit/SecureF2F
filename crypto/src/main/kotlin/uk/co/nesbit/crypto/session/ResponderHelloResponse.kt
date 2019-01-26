@@ -31,9 +31,10 @@ class ResponderHelloResponse private constructor(private val schemaId: SecureHas
     }
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val responderHelloResponseSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(ResponderHelloResponse::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/responderhelloresponse.avsc"))
+            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/responderhelloresponse.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", responderHelloResponseSchema)
 

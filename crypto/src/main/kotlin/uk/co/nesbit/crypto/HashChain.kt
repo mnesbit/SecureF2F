@@ -17,9 +17,10 @@ data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVer
                     versionRecord.getTyped("maxVersion"))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val secureVersionSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(SecureVersion::class.java.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
+            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
 
         fun deserialize(bytes: ByteArray): SecureVersion {
             val secureVersionRecord = secureVersionSchema.deserialize(bytes)
@@ -48,9 +49,11 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     companion object {
         const val CHAIN_HASH_ID = "HmacSHA256"
         const val MAX_CHAIN_LENGTH = 65536
+
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val hashChainSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(HashChainPublic::class.java.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
+            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
 
         fun deserialize(bytes: ByteArray): HashChainPublic {
             val hashChainRecord = hashChainSchema.deserialize(bytes)

@@ -20,11 +20,16 @@ data class SessionIdentityProof(val identityInfo: VersionedIdentity,
                     sessionIdentityProofRecord.getTyped("identityMAC", ::SecureHash))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val sessionIdentityProofSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                        DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema,
-                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(SessionIdentityProof::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionidentityproof.avsc"))
+            .addTypes(
+                mapOf(
+                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema,
+                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionidentityproof.avsc"))
 
         fun deserialize(bytes: ByteArray): SessionIdentityProof {
             val sessionIdentityProofRecord = sessionIdentityProofSchema.deserialize(bytes)

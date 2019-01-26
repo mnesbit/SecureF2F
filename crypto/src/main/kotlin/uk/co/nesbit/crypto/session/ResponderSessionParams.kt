@@ -44,9 +44,10 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
     }
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val responderSessionParamsSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
-                .parse(ResponderSessionParams::class.java.getResourceAsStream("/uk/co/nesbit/crypto/session/respondersessionparams.avsc"))
+            .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/respondersessionparams.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", responderSessionParamsSchema)
 

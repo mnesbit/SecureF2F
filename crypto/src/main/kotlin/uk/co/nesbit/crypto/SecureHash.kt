@@ -17,8 +17,9 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
                     hashRecord.getTyped("bytes"))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val secureHashSchema: Schema = Schema.Parser()
-                .parse(SecureHash::class.java.getResourceAsStream("securehash.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("securehash.avsc"))
 
         fun secureHash(bytes: ByteArray, algorithm: String = "SHA-256"): SecureHash = SecureHash(algorithm, MessageDigest.getInstance(algorithm).digest(bytes))
         fun secureHash(str: String, algorithm: String = "SHA-256") = secureHash(str.toByteArray(Charsets.UTF_8), algorithm)

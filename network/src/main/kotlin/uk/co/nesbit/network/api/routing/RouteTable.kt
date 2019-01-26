@@ -14,10 +14,15 @@ class RouteTable(val allRoutes: List<Routes>, val replyTo: SecureHash?) : Messag
                     routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val routeTableSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(Routes.routesSchema.fullName to Routes.routesSchema,
-                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(RouteTable::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
+            .addTypes(
+                mapOf(
+                    Routes.routesSchema.fullName to Routes.routesSchema,
+                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/routetable.avsc"))
 
         val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", routeTableSchema)
 

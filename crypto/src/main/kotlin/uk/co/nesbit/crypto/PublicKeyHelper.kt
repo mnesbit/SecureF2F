@@ -17,7 +17,7 @@ object PublicKeyHelper {
     }
 
     val publicKeySchema: Schema = Schema.Parser()
-            .parse(PublicKeyHelper::class.java.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
+        .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
     private const val MAX_CACHE = 100

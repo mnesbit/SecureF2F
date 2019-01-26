@@ -23,10 +23,15 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
 
     companion object {
         const val ID_HASH_ALGORITHM = "SHA-256"
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val sphinxIdentitySchema: Schema = Schema.Parser()
-                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
-                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(SphinxPublicIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
+            .addTypes(
+                mapOf(
+                    PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
+                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxPublicIdentity {
             val idRecord = sphinxIdentitySchema.deserialize(bytes)
@@ -111,10 +116,15 @@ data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVers
     val id: SecureHash get() = identity.id
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val versionedIdentitySchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
-                        SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema))
-                .parse(VersionedIdentity::class.java.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
+            .addTypes(
+                mapOf(
+                    SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
+                    SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): VersionedIdentity {
             val versionedIdentityRecord = versionedIdentitySchema.deserialize(bytes)
