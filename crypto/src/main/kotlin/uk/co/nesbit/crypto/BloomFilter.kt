@@ -25,9 +25,7 @@ class BloomFilter private constructor(
                 bloomFilterRecord.getTyped("falsePositiveRate"),
                 bloomFilterRecord.getTyped("hashSeed"),
                 BitSet.valueOf(bloomFilterRecord.getTyped<ByteArray>("filterBits"))
-            ) {
-        require(filterBits.size() >= bitCount && filterBits.size() < bitCount + 64) { "Incorrect filter bit set size" }
-    }
+            )
 
     constructor (
         expectedItemCount: Int,

@@ -4,11 +4,15 @@
   "type": "record",
   "fields": [
     {
-      "name": "allRoutes",
+      "name": "fullRoutes",
       "type": {
         "type": "array",
         "items": "Routes"
       }
+    },
+    {
+      "name": "knownSources",
+      "type": "uk.co.nesbit.crypto.BloomFilter"
     },
     {
       "name": "replyTo",

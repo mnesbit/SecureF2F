@@ -1,10 +1,8 @@
 package uk.co.nesbit
 
 import akka.actor.ActorSystem
-import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
-import uk.co.nesbit.network.api.SphinxAddress
 import uk.co.nesbit.network.engine.DnsMockActor
 import uk.co.nesbit.network.engine.SimNode
 import java.util.*
@@ -22,8 +20,7 @@ fun main(args: Array<String>) {
         val networkAddress = NetworkAddress(nodeAddress)
         val links = simNetwork[networkAddress]!!
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
-        val sphinxId = SphinxIdentityKeyPair.generateKeyPair(publicAddress = nodeAddress.toString())
-        simNodes += SimNode(SphinxAddress(sphinxId.public), actorSystem, config)
+        simNodes += SimNode(actorSystem, config)
     }
 //        var stabilised = false
 //        var round = 0

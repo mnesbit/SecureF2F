@@ -2,6 +2,7 @@ package uk.co.nesbit.network
 
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.BloomFilter
 import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.sign
@@ -119,21 +120,24 @@ class RoutingDataTest {
         val routeEntries2 = listOf(SignedEntry(versionedRoute3.entry, sig3))
         val routes2 = Routes.createRoutes(routeEntries2, sphinxIdentityKeyPairTo2, idTo2)
         routes2.verify()
-        val routeTable = RouteTable(listOf(routes1, routes2), null)
+        val bloomFilter = BloomFilter(10, 0.02, 11)
+        bloomFilter.add(versionedIDFrom.serialize())
+        val routeTable = RouteTable(listOf(routes1, routes2), bloomFilter, null)
         val serialized = routeTable.serialize()
         val deserialized = RouteTable.deserialize(serialized)
         assertEquals(routeTable, deserialized)
+        assertEquals(true, deserialized.knownSources.possiblyContains(versionedIDFrom.serialize()))
         val record = routeTable.toGenericRecord()
         val deserialized2 = RouteTable(record)
         assertEquals(routeTable, deserialized2)
-        val routeTable2 = RouteTable(listOf(routes1, routes2), fromId)
+        val routeTable2 = RouteTable(listOf(routes1, routes2), BloomFilter.EmptyFilter, fromId)
         val serialized3 = routeTable2.serialize()
         val deserialized3 = RouteTable.deserialize(serialized3)
         assertEquals(routeTable2, deserialized3)
         val record2 = routeTable2.toGenericRecord()
         val deserialized4 = RouteTable(record2)
         assertEquals(routeTable2, deserialized4)
-        val badTable = RouteTable(listOf(routes1, routes2), idTo1)
+        val badTable = RouteTable(listOf(routes1, routes2), BloomFilter.EmptyFilter, idTo1)
         assertFailsWith<IllegalArgumentException> {
             badTable.verify()
         }

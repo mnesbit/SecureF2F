@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger
 class WatchRequest
 data class OpenRequest(val remoteNetworkId: NetworkAddress)
 data class CloseRequest(val linkId: LinkId)
-data class SendMessage(val linkId: LinkId, val msg: ByteArray)
 
 class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
     companion object {
@@ -74,7 +73,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             .match(ConnectionDrop::class.java, ::onConnectionDrop)
             .match(Terminated::class.java, ::onDeath)
             .match(LinkReceivedMessage::class.java, ::onWireMessage)
-            .match(SendMessage::class.java, ::onSendMessage)
+            .match(LinkSendMessage::class.java, ::onLinkSendMessage)
             .build()
 
     private fun onWatchRequest() {
@@ -230,7 +229,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         }
     }
 
-    private fun onSendMessage(msg: SendMessage) {
+    private fun onLinkSendMessage(msg: LinkSendMessage) {
         val target = targets[msg.linkId]
         val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
         val renumberedMessage = LinkReceivedMessage(activeLink, msg.msg)
