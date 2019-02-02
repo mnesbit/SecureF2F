@@ -7,6 +7,8 @@ import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
 
+class WatchRequest
+
 class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
     companion object {
         @JvmStatic
@@ -20,6 +22,8 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
         context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
     private val neighbourLinkActor: ActorRef =
         context.actorOf(NeighbourLinkActor.getProps(keyService, networkConfig, physicalNetworkActor), "neighbours")
+    private val routeDiscoveryActor: ActorRef =
+        context.actorOf(RouteDiscoveryActor.getProps(neighbourLinkActor), "routes")
 
     override fun preStart() {
         super.preStart()

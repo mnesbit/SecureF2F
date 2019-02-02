@@ -6,3 +6,7 @@ import java.util.concurrent.TimeUnit
 
 fun Int.seconds(): FiniteDuration =
     Duration.create(this.toLong(), TimeUnit.SECONDS)
+
+
+fun Long.millis(): FiniteDuration =
+    Duration.create(this, TimeUnit.MILLISECONDS)

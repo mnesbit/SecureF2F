@@ -8,7 +8,6 @@ import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.*
 import java.util.concurrent.atomic.AtomicInteger
 
-class WatchRequest
 data class OpenRequest(val remoteNetworkId: NetworkAddress)
 data class CloseRequest(val linkId: LinkId)
 

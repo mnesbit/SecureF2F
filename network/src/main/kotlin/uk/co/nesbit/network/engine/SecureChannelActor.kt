@@ -22,30 +22,16 @@ import uk.co.nesbit.network.api.routing.Heartbeat
 import uk.co.nesbit.network.api.routing.RouteEntry
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.util.millis
 import java.security.KeyPair
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
 
-class NeighbourReceivedMessage(val linkId: LinkId, val sourceId: VersionedIdentity, val msg: ByteArray) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
+class NeighbourReceivedMessage(val linkId: LinkId, val sourceId: VersionedIdentity, val msg: ByteArray)
+class NeighbourSendMessage(val linkId: LinkId, val msg: ByteArray)
 
-        other as NeighbourReceivedMessage
-
-        if (linkId != other.linkId) return false
-        if (sourceId != other.sourceId) return false
-        if (!msg.contentEquals(other.msg)) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = linkId.hashCode()
-        result = 31 * result + sourceId.hashCode()
-        result = 31 * result + msg.contentHashCode()
-        return result
-    }
-}
-
+data class SecureChannelRouteUpdate(val linkId: LinkId, val routeEntry: SignedEntry)
 data class SecureChannelClose(val linkId: LinkId)
 
 class SecureChannelActor(
@@ -67,6 +53,9 @@ class SecureChannelActor(
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return Props.create(javaClass.enclosingClass, linkId, fromId, initiator, keyService, networkActor)
         }
+
+        const val HEARTBEAT_INTERVAL_MS = 2000L
+        const val HEARTBEAT_TIMEOUT_MS = 4L * HEARTBEAT_INTERVAL_MS
     }
 
     private class Tick
@@ -90,11 +79,11 @@ class SecureChannelActor(
     private var initiatorHelloRequest: InitiatorHelloRequest? = null
     private var responderHelloResponse: ResponderHelloResponse? = null
     private var encryptedChannel: RatchetState? = null
-    private val earlyMessages = mutableListOf<ByteArray>()
+    private var lastSendTime: Instant = Clock.systemUTC().instant()
     private var heartbeatSendNonce: ByteArray? = null
+    private var lastReceiveTime: Instant = Clock.systemUTC().instant()
     private var heartbeatReceiveNonce: ByteArray? = null
     private var remoteID: VersionedIdentity? = null
-    private var routeEntry: Pair<Int, SignedEntry>? = null
 
     override fun preStart() {
         super.preStart()
@@ -116,16 +105,29 @@ class SecureChannelActor(
 
     override fun createReceive(): Receive =
         ReceiveBuilder()
-            .match(LinkReceivedMessage::class.java, ::onMessage)
+            .match(LinkReceivedMessage::class.java, ::onReceiveMessage)
+            .match(NeighbourSendMessage::class.java, ::onSendMessage)
             .match(Tick::class.java) { onTick() }
             .build()
 
     private fun onTick() {
-        log().info("onTick")
+        val now = Clock.systemUTC().instant()
+        val receiveDelay = Duration.between(lastReceiveTime, now).toMillis()
+        if (receiveDelay > HEARTBEAT_TIMEOUT_MS) {
+            log().error("Heartbeat timeout after $receiveDelay msec")
+            setError()
+            return
+        }
+        if (heartbeatSendNonce != null) {
+            val sendDelay = Duration.between(lastSendTime, now).toMillis()
+            if (sendDelay > HEARTBEAT_INTERVAL_MS) {
+                sendHeartbeat()
+            }
+        }
     }
 
 
-    private fun onMessage(message: LinkReceivedMessage) {
+    private fun onReceiveMessage(message: LinkReceivedMessage) {
         require(message.linkId == linkId) { "Message received from wrong link $message" }
         val prevState = state
         try {
@@ -160,6 +162,7 @@ class SecureChannelActor(
             setError()
         }
         if (prevState != state) {
+            updateTimeout() // update handshake timer
             log().info("$initiator state $state")
         }
     }
@@ -191,6 +194,14 @@ class SecureChannelActor(
         } else {
             state = ChannelState.WAIT_FOR_INITIATOR_NONCE
         }
+        updateTimeout()
+        timer = context.system.scheduler.schedule(
+            HEARTBEAT_INTERVAL_MS.millis(),
+            HEARTBEAT_INTERVAL_MS.millis(),
+            self, Tick(),
+            context.dispatcher(),
+            self
+        )
     }
 
     private fun processInitiatorParams(msg: LinkReceivedMessage) {
@@ -318,7 +329,7 @@ class SecureChannelActor(
         }
         val firstMessage = encryptedChannel!!.decryptMessage(msg.msg, null)
         if (!processHeartbeat(firstMessage)) {
-            earlyMessages += firstMessage // re-ordering might put a message ahead of the heartbeat
+            setError()
             return
         }
         sendHeartbeat()
@@ -328,12 +339,6 @@ class SecureChannelActor(
         initiatorHelloRequest = null
         responderHelloResponse = null
         state = ChannelState.SESSION_ACTIVE
-        if (earlyMessages.isNotEmpty()) {
-            for (message in earlyMessages) {
-                context.parent.tell(NeighbourReceivedMessage(linkId, remoteID!!, message), self)
-            }
-            earlyMessages.clear()
-        }
     }
 
     private fun processSessionMessage(msg: LinkReceivedMessage) {
@@ -344,7 +349,10 @@ class SecureChannelActor(
             return
         }
         val decrypted = encryptedChannel!!.decryptMessage(msg.msg, null)
-        if (processHeartbeat(decrypted)) return
+        if (processHeartbeat(decrypted)) {
+            onTick() // check timers
+            return
+        }
         context.parent.tell(NeighbourReceivedMessage(linkId, remoteID!!, decrypted), self)
     }
 
@@ -362,6 +370,8 @@ class SecureChannelActor(
         heartbeatReceiveNonce = heartbeat.nextExpectedNonce
         heartbeatSendNonce = null
         val heartbeatMessage = encryptedChannel!!.encryptMessage(heartbeat.serialize(), null)
+        lastSendTime = Clock.systemUTC().instant()
+        log().info("Send heartbeat $lastSendTime")
         networkActor.tell(LinkSendMessage(linkId, heartbeatMessage), self)
     }
 
@@ -372,15 +382,15 @@ class SecureChannelActor(
                 val localIdentity = keyService.getVersion(fromId)
                 try {
                     remoteID = heartbeat.verify(heartbeatReceiveNonce!!, localIdentity, remoteID!!)
-                    routeEntry = Pair(
-                        localIdentity.currentVersion.version,
-                        SignedEntry(
+                    val signedEntry = SignedEntry(
                             RouteEntry(heartbeatReceiveNonce!!, remoteID!!),
-                            heartbeat.versionedRouteSignature
-                        )
+                        heartbeat.versionedRouteSignature
                     )
+                    updateTimeout()
+                    log().info("Receive heartbeat $lastReceiveTime")
                     heartbeatSendNonce = heartbeat.nextExpectedNonce
                     heartbeatReceiveNonce = null
+                    context.parent.tell(SecureChannelRouteUpdate(linkId, signedEntry), self)
                     return true
                 } catch (ex: Exception) {
                     // Pass along as message
@@ -389,6 +399,22 @@ class SecureChannelActor(
             }
         }
         return false
+    }
+
+    private fun updateTimeout() {
+        lastReceiveTime = Clock.systemUTC().instant()
+    }
+
+    private fun onSendMessage(msg: NeighbourSendMessage) {
+        if ((encryptedChannel == null)
+            || (remoteID == null)
+            || (linkId != msg.linkId)
+        ) {
+            setError()
+            return
+        }
+        val encryptedMsg = encryptedChannel!!.encryptMessage(msg.msg, null)
+        context.parent.tell(LinkSendMessage(linkId, encryptedMsg), self)
     }
 
 }
