@@ -5,14 +5,15 @@ import akka.actor.ActorRef
 import akka.actor.Cancellable
 import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
+import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.millis
 
-class LocalSendMessage(val networkAddress: SphinxAddress, val msg: ByteArray)
-class LocalReceivedMessage(val networkAddress: SphinxAddress, val msg: ByteArray)
+class NeighbourSendMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
+class NeighbourReceivedMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
 
 class NeighbourLinkActor(
     private val keyService: KeyService,
@@ -36,22 +37,22 @@ class NeighbourLinkActor(
 
     private class CheckStaticLinks
 
-    private val networkAddress: SphinxAddress by lazy {
+    private val networkAddress: SphinxPublicIdentity by lazy {
         val sphinxId = keyService.getVersion(keyService.generateNetworkID(networkConfig.networkId.toString()))
-        SphinxAddress(sphinxId.identity)
+        sphinxId.identity
     }
 
     private var timer: Cancellable? = null
     private val owners = mutableSetOf<ActorRef>()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
     private val channels = mutableMapOf<LinkId, ActorRef>()
-    private val links = mutableMapOf<LinkId, Address>()
-    private val addresses = mutableMapOf<Address, LinkId>()
+    private val links = mutableMapOf<LinkId, SphinxPublicIdentity>()
+    private val addresses = mutableMapOf<SphinxPublicIdentity, LinkId>()
     private val neighbours = mutableMapOf<LinkId, SignedEntry>()
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting NeighbourLinkActor")
+        //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
         timer = context.system.scheduler.schedule(
             0L.millis(),
@@ -64,14 +65,14 @@ class NeighbourLinkActor(
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped NeighbourLinkActor")
+        //log().info("Stopped NeighbourLinkActor")
         timer?.cancel()
         timer = null
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart NeighbourLinkActor")
+        //log().info("Restart NeighbourLinkActor")
     }
 
     override fun createReceive(): Receive =
@@ -80,14 +81,14 @@ class NeighbourLinkActor(
             .match(CheckStaticLinks::class.java) { onCheckStaticLinks() }
             .match(LinkInfo::class.java, ::onLinkStatusChange)
             .match(LinkReceivedMessage::class.java, ::onLinkReceivedMessage)
-            .match(SecureChannelClose::class.java, ::onChannelClose)
-            .match(SecureChannelRouteUpdate::class.java, ::onRouteUpdate)
-            .match(NeighbourReceivedMessage::class.java, ::onNeighbourReceivedMessage)
-            .match(LocalSendMessage::class.java, ::onLocalSendMessage)
+            .match(SecureChannelClose::class.java, ::onSecureChannelClose)
+            .match(SecureChannelRouteUpdate::class.java, ::onSecureChannelRouteUpdate)
+            .match(SecureChannelReceivedMessage::class.java, ::onSecureChannelReceivedMessage)
+            .match(NeighbourSendMessage::class.java, ::onNeigbourSendMessage)
             .build()
 
     private fun onWatchRequest() {
-        log().info("WatchRequest from $sender")
+        //log().info("WatchRequest from $sender")
         if (sender !in owners) {
             owners += sender
             context.watch(sender)
@@ -97,14 +98,14 @@ class NeighbourLinkActor(
     private fun onCheckStaticLinks() {
         for (expectedLink in networkConfig.staticRoutes) {
             if (!staticLinkStatus.containsKey(expectedLink)) {
-                log().info("open static link to $expectedLink")
+                //log().info("open static link to $expectedLink")
                 physicalNetworkActor.tell(OpenRequest(expectedLink), self)
             }
         }
     }
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
-        log().info(linkInfo.toString())
+        //log().info("onLinkStatusChange $linkInfo")
         if (linkInfo.status.active) {
             val networkService = sender
             val channelProps = SecureChannelActor.getProps(
@@ -129,6 +130,9 @@ class NeighbourLinkActor(
             staticLinkStatus.remove(linkInfo.route.to)
         }
         keyService.incrementAndGetVersion(networkAddress.id)
+        neighbours.clear()
+        links.clear()
+        addresses.clear()
         recalculateRoutes()
     }
 
@@ -154,15 +158,19 @@ class NeighbourLinkActor(
         }
     }
 
-    private fun onChannelClose(close: SecureChannelClose) {
-        log().info("onChannelClose $close")
+    private fun onSecureChannelClose(close: SecureChannelClose) {
+        //log().info("onSecureChannelClose $close")
         deleteLinkAddress(close.linkId)
         neighbours.remove(close.linkId)
     }
 
-    private fun onRouteUpdate(update: SecureChannelRouteUpdate) {
-        log().info("onRouteUpdate $update")
-        val address = SphinxAddress(update.routeEntry.routeEntry.to.identity)
+    private fun onSecureChannelRouteUpdate(update: SecureChannelRouteUpdate) {
+        val currentIdentity = keyService.getVersion(networkAddress.id)
+        if (currentIdentity != update.fromId) { // old version, so discard
+            return
+        }
+        //log().info("onSecureChannelRouteUpdate $update")
+        val address = update.routeEntry.routeEntry.to.identity
         links[update.linkId] = address
         if (!addresses.containsKey(address)) {
             addresses[address] = update.linkId
@@ -175,30 +183,31 @@ class NeighbourLinkActor(
         val routes = if (neighbours.isEmpty()) {
             null
         } else {
-            Routes.createRoutes(neighbours.values.toList(), keyService, networkAddress.id)
+            val entries = addresses.values.mapNotNull { neighbours[it] }
+            Routes.createRoutes(entries, keyService, networkAddress.id)
         }
         for (owner in owners) {
-            owner.tell(LocalRoutesUpdate(routes), self)
+            owner.tell(LocalRoutesUpdate(networkAddress, routes), self)
         }
     }
 
 
-    private fun onLocalSendMessage(msg: LocalSendMessage) {
-        log().info("onLocalSendMessage $msg")
+    private fun onNeigbourSendMessage(msg: NeighbourSendMessage) {
+        //log().info("onNeigbourSendMessage $msg")
         val link = addresses[msg.networkAddress]
         if (link != null) {
             val channel = channels[link]
             if (channel != null) {
-                channel.tell(NeighbourSendMessage(link, msg.msg), self)
+                channel.tell(SecureChannelSendMessage(link, msg.msg), self)
                 return
             }
         }
         log().info("Can't find link for $msg")
     }
 
-    private fun onNeighbourReceivedMessage(msg: NeighbourReceivedMessage) {
-        log().info("onNeighbourReceivedMessage $msg")
-        val forwardMessage = LocalReceivedMessage(SphinxAddress(msg.sourceId.identity), msg.msg)
+    private fun onSecureChannelReceivedMessage(msg: SecureChannelReceivedMessage) {
+        //log().info("onSecureChannelReceivedMessage $msg")
+        val forwardMessage = NeighbourReceivedMessage(msg.sourceId.identity, msg.msg)
         for (owner in owners) {
             owner.tell(forwardMessage, self)
         }

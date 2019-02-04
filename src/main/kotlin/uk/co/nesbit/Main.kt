@@ -10,9 +10,10 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 1
-    val N = 2
+    val degree = 3
+    val N = 100
     val simNetwork = makeRandomNetwork(degree, N)
+    //val simNetwork = makeLinearNetwork(N)
     val simNodes = mutableListOf<SimNode>()
     val actorSystem = ActorSystem.create("Akka")
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
@@ -50,6 +51,21 @@ fun main(args: Array<String>) {
     actorSystem.terminate().value()
     //}
 
+}
+
+private fun makeLinearNetwork(N: Int): MutableMap<NetworkAddress, Set<NetworkAddress>> {
+    val simNetwork = mutableMapOf<NetworkAddress, Set<NetworkAddress>>()
+    for (i in (1..N)) {
+        val links = mutableSetOf<NetworkAddress>()
+        if (i > 1) {
+            links += NetworkAddress(i - 1)
+        }
+        if (i < N) {
+            links += NetworkAddress(i + 1)
+        }
+        simNetwork[NetworkAddress(i)] = links
+    }
+    return simNetwork
 }
 
 private fun makeRandomNetwork(minDegree: Int, N: Int): Map<NetworkAddress, Set<NetworkAddress>> {

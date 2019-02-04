@@ -39,7 +39,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting PhysicalNetworkActor $networkId")
+        //log().info("Starting PhysicalNetworkActor $networkId")
         dnsSelector.tell(DnsRegistration(networkId), self)
     }
 
@@ -53,12 +53,12 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             }
         }
         super.postStop()
-        log().info("Stopped PhysicalNetworkActor $networkId")
+        //log().info("Stopped PhysicalNetworkActor $networkId")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart PhysicalNetworkActor $networkId")
+        //log().info("Restart PhysicalNetworkActor $networkId")
     }
 
     override fun createReceive(): Receive =
@@ -76,7 +76,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             .build()
 
     private fun onWatchRequest() {
-        log().info("WatchRequest from $sender")
+        //log().info("WatchRequest from $sender")
         if (sender !in owners) {
             owners += sender
             context.watch(sender)
@@ -138,7 +138,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onOpenRequest(request: OpenRequest) {
-        log().info("OpenRequest $request")
+        //log().info("OpenRequest $request")
         val existingLink = addresses[request.remoteNetworkId]
         if (existingLink != null) {
             val linkInfo = links[existingLink]
@@ -151,7 +151,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onDnsResponse(dnsResponse: DnsResponse) {
-        log().info("got Dns response $dnsResponse")
+        //log().info("got Dns response $dnsResponse")
         val linkInfo = links[dnsResponse.linkId]!!
         if (dnsResponse.actorRef == null) {
             log().error("Couldn't find Dns for ${linkInfo.route.to}")
@@ -165,7 +165,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onCloseRequest(request: CloseRequest) {
-        log().info("CloseRequest $request")
+        //log().info("CloseRequest $request")
         val existingConnection = links[request.linkId] ?: return
         if (existingConnection.status.active) {
             log().info("Closing $existingConnection")
@@ -176,7 +176,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onConnectRequest(request: ConnectRequest) {
-        log().info("got ConnectRequest $request")
+        //log().info("got ConnectRequest $request")
         if (request.sourceNetworkId in networkConfig.blackListedSources) {
             sender.tell(ConnectResult(request.linkId, false), ActorRef.noSender())
         } else {
@@ -191,7 +191,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onConnectResult(response: ConnectResult) {
-        log().info("got ConnectResult $response")
+        //log().info("got ConnectResult $response")
         val linkInfo = links[response.linkId]
         if (linkInfo != null) {
             if (response.opened) {
@@ -201,7 +201,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onConnectionDrop(drop: ConnectionDrop) {
-        log().info("got ConnectionDrop $drop")
+        //log().info("got ConnectionDrop $drop")
         val activeLink = foreignLinks[drop.initiatorLinkId] ?: drop.initiatorLinkId
         val existingConnection = links[activeLink]
         if (existingConnection != null) {
@@ -211,7 +211,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     }
 
     private fun onDeath(death: Terminated) {
-        log().info("got Terminated $death")
+        //log().info("got Terminated $death")
         owners -= death.actor
         val relevantLinks = targets.filter { it.value == death.actor }.map { it.key }
         for (link in relevantLinks) {

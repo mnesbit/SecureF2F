@@ -23,21 +23,21 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
     private val neighbourLinkActor: ActorRef =
         context.actorOf(NeighbourLinkActor.getProps(keyService, networkConfig, physicalNetworkActor), "neighbours")
     private val routeDiscoveryActor: ActorRef =
-        context.actorOf(RouteDiscoveryActor.getProps(neighbourLinkActor), "routes")
+        context.actorOf(RouteDiscoveryActor.getProps(keyService, neighbourLinkActor), "routes")
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting RootNodeActor ${networkConfig.networkId}")
+        //log().info("Starting RootNodeActor ${networkConfig.networkId}")
     }
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped RootNodeActor ${networkConfig.networkId}")
+        //log().info("Stopped RootNodeActor ${networkConfig.networkId}")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart RootNodeActor ${networkConfig.networkId}")
+        //log().info("Restart RootNodeActor ${networkConfig.networkId}")
     }
 
     override fun createReceive(): Receive =

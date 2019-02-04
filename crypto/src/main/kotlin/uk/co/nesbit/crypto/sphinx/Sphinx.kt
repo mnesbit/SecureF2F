@@ -180,7 +180,7 @@ class Sphinx(
     }
 
     fun makeMessage(route: List<SphinxPublicIdentity>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
-        require(route.size in 1..maxRouteLength) { "Invalid route length" }
+        require(route.size in 1..maxRouteLength) { "Invalid route length ${route.size}" }
         require(route.all { it.id.bytes.size == ID_HASH_SIZE }) { "ID Hash wrong size length" }// Ensure sizes align properly
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }
