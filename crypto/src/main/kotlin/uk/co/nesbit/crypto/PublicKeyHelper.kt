@@ -9,6 +9,7 @@ import java.nio.ByteBuffer
 import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
+import java.util.*
 
 
 object PublicKeyHelper {
@@ -20,23 +21,16 @@ object PublicKeyHelper {
         .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
-    private const val MAX_CACHE = 100
-    private val keyCache = object : LinkedHashMap<ByteBuffer, PublicKey>(MAX_CACHE) {
+    private const val MAX_CACHE = 10000
+    private val keyCache = Collections.synchronizedMap(object : LinkedHashMap<ByteBuffer, PublicKey>(MAX_CACHE) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ByteBuffer, PublicKey>?): Boolean {
             return (size > MAX_CACHE)
         }
-    }
+    })
 
     fun deserialize(bytes: ByteArray): PublicKey {
-        val cacheKey = ByteBuffer.wrap(bytes)
-        if (cacheKey in keyCache) {
-            return keyCache[cacheKey]!!
-        }
         val keyRecord = publicKeySchema.deserialize(bytes)
-        val bufCopy = bytes.copyOf()
-        val publicKey = fromGenericRecord(keyRecord)
-        keyCache[ByteBuffer.wrap(bufCopy)] = publicKey
-        return publicKey
+        return fromGenericRecord(keyRecord)
     }
 
     fun fromGenericRecord(genericRecord: GenericRecord): PublicKey {
@@ -47,14 +41,33 @@ object PublicKeyHelper {
         return when (keyAlgorithm) {
             "EdDSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
-                EdDSAPublicKey(keySpec)
+                val cacheKey = ByteBuffer.wrap(publicKeyBytes)
+                if (cacheKey in keyCache) {
+                    return keyCache[cacheKey]!!
+                }
+                val pk = EdDSAPublicKey(keySpec)
+                val bufCopy = publicKeyBytes.copyOf()
+                keyCache[ByteBuffer.wrap(bufCopy)] = pk
+                pk
             }
-            "EC", "RSA", "DH" -> {
+            "EC", "RSA" -> {
+                require(keyFormat == "X.509") { "Don't know how to deserialize" }
+                val cacheKey = ByteBuffer.wrap(publicKeyBytes)
+                if (cacheKey in keyCache) {
+                    return keyCache[cacheKey]!!
+                }
+                val keyFactory = KeyFactory.getInstance(keyAlgorithm)
+                val pk = keyFactory.generatePublic(keySpec)
+                val bufCopy = publicKeyBytes.copyOf()
+                keyCache[ByteBuffer.wrap(bufCopy)] = pk
+                pk
+            }
+            "DH" -> { // don't cache DH keys as they change a lot
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 val keyFactory = KeyFactory.getInstance(keyAlgorithm)
                 keyFactory.generatePublic(keySpec)
             }
-            "Curve25519" -> {
+            "Curve25519" -> {// don't cache DH keys as they change a lot
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 Curve25519PublicKey(publicKeyBytes)
             }

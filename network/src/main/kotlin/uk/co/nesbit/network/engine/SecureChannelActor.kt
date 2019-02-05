@@ -54,7 +54,7 @@ class SecureChannelActor(
             return Props.create(javaClass.enclosingClass, linkId, fromId, initiator, keyService, networkActor)
         }
 
-        const val HEARTBEAT_INTERVAL_MS = 2000L
+        const val HEARTBEAT_INTERVAL_MS = 20000L
         const val HEARTBEAT_TIMEOUT_MS = 4L * HEARTBEAT_INTERVAL_MS
     }
 
@@ -113,12 +113,12 @@ class SecureChannelActor(
 
     private fun onTick() {
         val now = Clock.systemUTC().instant()
-//        val receiveDelay = Duration.between(lastReceiveTime, now).toMillis()
-//        if (receiveDelay > HEARTBEAT_TIMEOUT_MS) {
-//            log().error("Heartbeat timeout after $receiveDelay msec")
-//            setError()
-//            return
-//        }
+        val receiveDelay = Duration.between(lastReceiveTime, now).toMillis()
+        if (receiveDelay > HEARTBEAT_TIMEOUT_MS) {
+            log().error("Heartbeat timeout after $receiveDelay msec")
+            setError()
+            return
+        }
         if (heartbeatSendNonce != null) {
             val sendDelay = Duration.between(lastSendTime, now).toMillis()
             if (sendDelay > HEARTBEAT_INTERVAL_MS) {
@@ -390,8 +390,8 @@ class SecureChannelActor(
                             RouteEntry(heartbeatReceiveNonce!!, remoteID!!),
                         heartbeat.versionedRouteSignature
                     )
-                    val receiveDelay = Duration.between(lastReceiveTime, Clock.systemUTC().instant()).toMillis()
-                    println("heartbeat delay $receiveDelay")
+                    //val receiveDelay = Duration.between(lastReceiveTime, Clock.systemUTC().instant()).toMillis()
+                    //println("heartbeat delay $receiveDelay")
                     updateTimeout()
                     //log().info("Receive heartbeat $lastReceiveTime")
                     heartbeatSendNonce = heartbeat.nextExpectedNonce

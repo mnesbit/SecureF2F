@@ -121,19 +121,17 @@ class NeighbourLinkActor(
                 staticLinkStatus[linkInfo.route.to] = linkInfo.linkId
             }
         } else {
-            deleteLinkAddress(linkInfo.linkId)
-            neighbours.remove(linkInfo.linkId)
             val deadChannel = channels.remove(linkInfo.linkId)
             if (deadChannel != null) {
                 context.stop(deadChannel)
             }
             staticLinkStatus.remove(linkInfo.route.to)
+            keyService.incrementAndGetVersion(networkAddress.id)
+            neighbours.clear()
+            links.clear()
+            addresses.clear()
+            recalculateRoutes()
         }
-        keyService.incrementAndGetVersion(networkAddress.id)
-        neighbours.clear()
-        links.clear()
-        addresses.clear()
-        recalculateRoutes()
     }
 
     private fun deleteLinkAddress(linkId: LinkId) {

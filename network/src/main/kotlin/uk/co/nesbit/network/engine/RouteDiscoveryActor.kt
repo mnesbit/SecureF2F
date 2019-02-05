@@ -36,6 +36,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
     private class Tick
 
     private var timer: Cancellable? = null
+    private var round = 0
     private val owners = mutableSetOf<ActorRef>()
     private val sphinxEncoder = Sphinx(keyService.random)
     private var networkAddress: SphinxPublicIdentity? = null
@@ -87,6 +88,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
 
     private fun onTick() {
         //log().info("onTick")
+        ++round
         if (knownAddresses.isNotEmpty()) {
             val randomTarget = findRandomTarget()
             if (randomTarget != null) {
@@ -107,7 +109,10 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                         selectedRoutes += route
                     } else {
                         val matchingRoute =
-                            respondTo.fullRoutes.firstOrNull { it.from.id == route.from.id && it.from.currentVersion.version < route.from.currentVersion.version }
+                            respondTo.fullRoutes.filter { it.from.id == route.from.id }.firstOrNull {
+                                (it.from.currentVersion.version < route.from.currentVersion.version)
+                                || (it.from.currentVersion.version < route.from.currentVersion.version && it.entries.size < route.entries.size)
+                            }
                         if (matchingRoute != null) {
                             selectedRoutes += route
                         }
@@ -121,8 +126,12 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                 }
             }
 
-            val replyAddress = if (respondTo == null) networkAddress?.id else respondTo.replyTo
-            val routeTable = RouteTable(selectedRoutes.toList(), knownAddresses, replyAddress)
+            val replyTo = if (respondTo?.replyTo != null) {
+                networkAddress?.id
+            } else {
+                if(keyService.random.nextInt(4) == 0) networkAddress?.id else null
+            }
+            val routeTable = RouteTable(selectedRoutes.toList(), knownAddresses, replyTo)
             try {
                 routeTable.verify()
             } catch (ex: Exception) {
@@ -157,7 +166,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                 knownIds[toAddress.id] = toAddress
             }
         }
-        log().info("knownAddresses ${knownAddresses.size}")
+        log().info("round $round knownAddresses ${knownAddresses.size}")
     }
 
     private fun onNeighbourReceivedMessage(msg: NeighbourReceivedMessage) {
