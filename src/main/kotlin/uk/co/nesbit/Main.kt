@@ -1,6 +1,7 @@
 package uk.co.nesbit
 
 import akka.actor.ActorSystem
+import com.typesafe.config.ConfigFactory
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.engine.DnsMockActor
@@ -10,12 +11,13 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 3
-    val N = 100
+    val degree = 5
+    val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     val simNodes = mutableListOf<SimNode>()
-    val actorSystem = ActorSystem.create("Akka")
+    val conf = ConfigFactory.load()
+    val actorSystem = ActorSystem.create("Akka", conf)
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
     for (nodeAddress in (1..N)) {
         val networkAddress = NetworkAddress(nodeAddress)

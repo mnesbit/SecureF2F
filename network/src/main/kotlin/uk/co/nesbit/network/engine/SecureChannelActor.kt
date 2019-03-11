@@ -1,8 +1,6 @@
 package uk.co.nesbit.network.engine
 
-import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
-import akka.actor.Cancellable
 import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.avro.serialize
@@ -22,6 +20,7 @@ import uk.co.nesbit.network.api.routing.Heartbeat
 import uk.co.nesbit.network.api.routing.RouteEntry
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.millis
 import java.security.KeyPair
 import java.time.Clock
@@ -40,7 +39,7 @@ class SecureChannelActor(
     private val initiator: Boolean,
     private val keyService: KeyService,
     private val networkActor: ActorRef
-) : AbstractLoggingActor() {
+) : AbstractActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -71,7 +70,6 @@ class SecureChannelActor(
         SESSION_ACTIVE
     }
 
-    private var timer: Cancellable? = null
     private var state: ChannelState = ChannelState.INIT
     private var sessionInitKeys: KeyPair? = null
     private var initiatorSessionParams: InitiatorSessionParams? = null
@@ -95,8 +93,6 @@ class SecureChannelActor(
     override fun postStop() {
         super.postStop()
         //log().info("Stopped SecureChannelActor $linkId")
-        timer?.cancel()
-        timer = null
     }
 
     override fun postRestart(reason: Throwable?) {
@@ -196,13 +192,7 @@ class SecureChannelActor(
             state = ChannelState.WAIT_FOR_INITIATOR_NONCE
         }
         updateTimeout()
-        timer = context.system.scheduler.schedule(
-            HEARTBEAT_INTERVAL_MS.millis(),
-            HEARTBEAT_INTERVAL_MS.millis(),
-            self, Tick(),
-            context.dispatcher(),
-            self
-        )
+        timers.startPeriodicTimer("linkHeartbeat", Tick(), HEARTBEAT_INTERVAL_MS.millis())
     }
 
     private fun processInitiatorParams(msg: LinkReceivedMessage) {
@@ -229,9 +219,14 @@ class SecureChannelActor(
             setError()
             return
         }
-        val responderSession = ResponderSessionParams.deserialize(msg.msg)
-        responderSession.verify(initiatorSessionParams!!)
-        responderSessionParams = responderSession
+        try {
+            val responderSession = ResponderSessionParams.deserialize(msg.msg)
+            responderSession.verify(initiatorSessionParams!!)
+            responderSessionParams = responderSession
+        } catch (ex: Exception) {
+            setError()
+            return
+        }
         val initiatorIdentity = keyService.getVersion(fromId)
         val initiatorHello = InitiatorHelloRequest.createHelloRequest(
             initiatorSessionParams!!,

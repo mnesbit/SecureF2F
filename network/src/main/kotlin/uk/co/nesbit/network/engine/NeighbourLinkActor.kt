@@ -1,8 +1,6 @@
 package uk.co.nesbit.network.engine
 
-import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
-import akka.actor.Cancellable
 import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
@@ -10,6 +8,7 @@ import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.millis
 
 class NeighbourSendMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
@@ -20,7 +19,7 @@ class NeighbourLinkActor(
     private val networkConfig: NetworkConfiguration,
     private val physicalNetworkActor: ActorRef
 ) :
-    AbstractLoggingActor() {
+    AbstractActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -42,7 +41,6 @@ class NeighbourLinkActor(
         sphinxId.identity
     }
 
-    private var timer: Cancellable? = null
     private val owners = mutableSetOf<ActorRef>()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
     private val channels = mutableMapOf<LinkId, ActorRef>()
@@ -54,20 +52,16 @@ class NeighbourLinkActor(
         super.preStart()
         //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
-        timer = context.system.scheduler.schedule(
-            0L.millis(),
-            LINK_CHECK_INTERVAL_MS.millis(),
-            self, CheckStaticLinks(),
-            context.dispatcher(),
-            self
+        timers.startPeriodicTimer(
+            "staticLinkPoller",
+            CheckStaticLinks(),
+            LINK_CHECK_INTERVAL_MS.millis()
         )
     }
 
     override fun postStop() {
         super.postStop()
         //log().info("Stopped NeighbourLinkActor")
-        timer?.cancel()
-        timer = null
     }
 
     override fun postRestart(reason: Throwable?) {
@@ -115,7 +109,7 @@ class NeighbourLinkActor(
                 keyService,
                 networkService
             )
-            val newChannel = context.actorOf(channelProps)
+            val newChannel = context.actorOf(channelProps.withDispatcher("akka.fixed-dispatcher"))
             channels[linkInfo.linkId] = newChannel
             if (linkInfo.route.to in networkConfig.staticRoutes) {
                 staticLinkStatus[linkInfo.route.to] = linkInfo.linkId

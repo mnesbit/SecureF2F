@@ -1,8 +1,6 @@
 package uk.co.nesbit.network.engine
 
-import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
-import akka.actor.Cancellable
 import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import org.bouncycastle.util.Arrays
@@ -17,12 +15,14 @@ import uk.co.nesbit.network.api.routing.RouteTable
 import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.millis
+import java.util.*
 
 class LocalRoutesUpdate(val localAddress: SphinxPublicIdentity, val routes: Routes?)
 
 class RouteDiscoveryActor(private val keyService: KeyService, private val neighbourLinkActor: ActorRef) :
-    AbstractLoggingActor() {
+    AbstractActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(keyService: KeyService, neighbourLinkActor: ActorRef): Props {
@@ -35,13 +35,12 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
 
     private class Tick
 
-    private var timer: Cancellable? = null
     private var round = 0
     private val owners = mutableSetOf<ActorRef>()
     private val sphinxEncoder = Sphinx(keyService.random)
     private var networkAddress: SphinxPublicIdentity? = null
     private var localRoutes: Routes? = null
-    private val routes = mutableMapOf<SphinxPublicIdentity, Routes>()
+    private val routes = mutableMapOf<SecureHash, Routes>()
     private val knownAddresses = mutableSetOf<SphinxPublicIdentity>()
     private val knownIds = mutableMapOf<SecureHash, SphinxPublicIdentity>()
 
@@ -49,20 +48,16 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         super.preStart()
         //log().info("Starting RouteDiscoveryActor")
         neighbourLinkActor.tell(WatchRequest(), self)
-        timer = context.system.scheduler.schedule(
-            ROUTE_DISCOVERY_INTERVAL_MS.millis(),
-            ROUTE_DISCOVERY_INTERVAL_MS.millis(),
-            self, Tick(),
-            context.dispatcher(),
-            self
+        timers.startPeriodicTimer(
+            "routeTick",
+            Tick(),
+            ROUTE_DISCOVERY_INTERVAL_MS.millis()
         )
     }
 
     override fun postStop() {
         super.postStop()
         //log().info("Stopped RouteDiscoveryActor")
-        timer?.cancel()
-        timer = null
     }
 
     override fun postRestart(reason: Throwable?) {
@@ -89,6 +84,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
     private fun onTick() {
         //log().info("onTick")
         ++round
+        log().info("round $round knownRoutes ${routes.size} knownAddresses ${knownAddresses.size}")
         if (knownAddresses.isNotEmpty()) {
             val randomTarget = findRandomTarget()
             if (randomTarget != null) {
@@ -102,41 +98,38 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         if (!path.isNullOrEmpty()) {
             val selectedRoutes = mutableSetOf<Routes>()
             val knownAddresses = BloomFilter(routes.size, 0.02, keyService.random.nextInt())
+            var clean = (respondTo != null)
+            selectedRoutes += routes[networkAddress!!.id]!!
+            for (step in path) {
+                if (routes.containsKey(step.id)) {
+                    selectedRoutes += routes[step.id]!!
+                }
+            }
             for (route in routes.values) {
                 knownAddresses.add(route.from.serialize())
                 if (respondTo != null) {
                     if (!respondTo.knownSources.possiblyContains(route.from.serialize())) {
                         selectedRoutes += route
-                    } else {
-                        val matchingRoute =
-                            respondTo.fullRoutes.filter { it.from.id == route.from.id }.firstOrNull {
-                                (it.from.currentVersion.version < route.from.currentVersion.version)
-                                || (it.from.currentVersion.version < route.from.currentVersion.version && it.entries.size < route.entries.size)
-                            }
-                        if (matchingRoute != null) {
-                            selectedRoutes += route
-                        }
+                        clean = false
                     }
                 }
             }
-            selectedRoutes += routes[networkAddress!!]!!
-            for (step in path) {
-                if (routes.containsKey(step)) {
-                    selectedRoutes += routes[step]!!
+            if (respondTo != null) {
+                for (externalRoute in respondTo.fullRoutes) {
+                    val knownRoute = routes[externalRoute.from.id]!!
+                    if ((externalRoute.from.currentVersion.version < knownRoute.from.currentVersion.version)
+                        || (externalRoute.from.currentVersion.version < knownRoute.from.currentVersion.version
+                                && externalRoute.entries.size < knownRoute.entries.size)
+                    ) {
+
+                        selectedRoutes += knownRoute
+                        clean = false
+                    }
                 }
             }
 
-            val replyTo = if (respondTo?.replyTo != null) {
-                networkAddress?.id
-            } else {
-                if(keyService.random.nextInt(4) == 0) networkAddress?.id else null
-            }
+            val replyTo = if (clean) null else networkAddress!!.id
             val routeTable = RouteTable(selectedRoutes.toList(), knownAddresses, replyTo)
-            try {
-                routeTable.verify()
-            } catch (ex: Exception) {
-                log().error(ex, "oops")
-            }
             send(path, RoutedMessage.createRoutedMessage(SphinxAddress(networkAddress!!), routeTable))
         }
     }
@@ -146,9 +139,9 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         networkAddress = routeUpdate.localAddress
         localRoutes = routeUpdate.routes
         if (routeUpdate.routes != null) {
-            routes[routeUpdate.localAddress] = routeUpdate.routes
+            routes[routeUpdate.localAddress.id] = routeUpdate.routes
         } else {
-            routes.remove(routeUpdate.localAddress)
+            routes.remove(routeUpdate.localAddress.id)
         }
         recalculateAddresses()
     }
@@ -166,7 +159,6 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                 knownIds[toAddress.id] = toAddress
             }
         }
-        log().info("round $round knownAddresses ${knownAddresses.size}")
     }
 
     private fun onNeighbourReceivedMessage(msg: NeighbourReceivedMessage) {
@@ -218,7 +210,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         }
 
         for (routeEntry in routeTable.fullRoutes) {
-            val fromAddress = routeEntry.from.identity
+            val fromAddress = routeEntry.from.identity.id
             val currentEntry = routes[fromAddress]
             if (currentEntry == null
                 || (currentEntry.from.currentVersion.version < routeEntry.from.currentVersion.version)
@@ -244,9 +236,10 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
     }
 
     private fun findRandomRouteTo(destination: SphinxPublicIdentity): List<SphinxPublicIdentity>? {
+        val rand = Random(keyService.random.nextLong())
         fun randomIterator(nextIndex: Int, scrambledSequence: IntArray): Int {
             // Randomising iterator
-            val swapIndex = nextIndex + keyService.random.nextInt(scrambledSequence.size - nextIndex)
+            val swapIndex = nextIndex + rand.nextInt(scrambledSequence.size - nextIndex)
             val currentIndex = scrambledSequence[swapIndex]
             scrambledSequence[swapIndex] = scrambledSequence[nextIndex]
             scrambledSequence[nextIndex] = currentIndex
@@ -261,10 +254,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         val iterationStack = IntArray(maxDepth)
         val randomStack = Array(maxDepth) { IntArray(0) }
         val path = Array(maxDepth) { emptyList<RouteEntry>() }
-        val neighbourRoutes = routes[networkAddress!!]
-        if (neighbourRoutes == null) {
-            return null
-        }
+        val neighbourRoutes = routes[networkAddress!!.id] ?: return null
         path[depth] = neighbourRoutes.entries
         if (path[depth].isEmpty()) {
             return null
@@ -282,7 +272,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                 }
                 return output
             }
-            val nextRoute = routes[nextNode]
+            val nextRoute = routes[nextNode.id]
             var inPrefix = false
             if (nextRoute != null) {
                 for (i in 0..depth) {

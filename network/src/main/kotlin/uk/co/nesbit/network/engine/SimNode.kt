@@ -7,7 +7,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engineOld.KeyServiceImpl
 
 class SimNode(private val actorSystem: ActorSystem, networkConfig: NetworkConfiguration) {
-    val keyService: KeyService = KeyServiceImpl()
+    val keyService: KeyService = KeyServiceImpl(maxVersion = 64)
     val rootNodeActor: ActorRef =
         actorSystem.actorOf(
             RootNodeActor.getProps(keyService, networkConfig),
