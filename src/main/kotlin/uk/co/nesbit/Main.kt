@@ -81,7 +81,9 @@ private fun makeRandomNetwork(minDegree: Int, N: Int): Map<NetworkAddress, Set<N
         while (currentLinks.size < minDegree) {
             val otherNode = NetworkAddress(1 + rand.nextInt(N))
             if (otherNode != currentNode) {
+                val otherLinks = simNetwork.getOrPut(otherNode) { mutableSetOf() }
                 currentLinks += otherNode
+                otherLinks += currentNode
             }
         }
     }
