@@ -6,7 +6,6 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import java.nio.ByteBuffer
-import java.security.KeyFactory
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
 import java.util.*
@@ -56,16 +55,18 @@ object PublicKeyHelper {
                 if (cacheKey in keyCache) {
                     return keyCache[cacheKey]!!
                 }
-                val keyFactory = KeyFactory.getInstance(keyAlgorithm)
-                val pk = keyFactory.generatePublic(keySpec)
+                val pk = ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
+                    generatePublic(keySpec)
+                }
                 val bufCopy = publicKeyBytes.copyOf()
                 keyCache[ByteBuffer.wrap(bufCopy)] = pk
                 pk
             }
             "DH" -> { // don't cache DH keys as they change a lot
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
-                val keyFactory = KeyFactory.getInstance(keyAlgorithm)
-                keyFactory.generatePublic(keySpec)
+                ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
+                    generatePublic(keySpec)
+                }
             }
             "Curve25519" -> {// don't cache DH keys as they change a lot
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }

@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto
 
 import djb.Curve25519
-import net.i2p.crypto.eddsa.EdDSAEngine
 import java.io.ByteArrayOutputStream
-import java.security.*
+import java.security.KeyPair
+import java.security.PrivateKey
+import java.security.PublicKey
+import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
-import javax.crypto.KeyAgreement
-import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 fun newSecureRandom(): SecureRandom {
@@ -24,29 +24,33 @@ fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
 }
 
 fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val keyGen = KeyPairGenerator.getInstance("EC")
-    val ecSpec = ECGenParameterSpec("secp256r1")
-    keyGen.initialize(ecSpec, secureRandom)
-    return keyGen.generateKeyPair()
+    return ProviderCache.withKeyPairGeneratorInstance("EC") {
+        val ecSpec = ECGenParameterSpec("secp256r1")
+        initialize(ecSpec, secureRandom)
+        generateKeyPair()
+    }
 }
 
 fun generateRSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val keyGen = KeyPairGenerator.getInstance("RSA")
-    keyGen.initialize(1024, secureRandom)
-    return keyGen.generateKeyPair()
+    return ProviderCache.withKeyPairGeneratorInstance("RSA") {
+        initialize(1024, secureRandom)
+        generateKeyPair()
+    }
 }
 
 fun generateECDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val keyGen = KeyPairGenerator.getInstance("EC")
-    val ecSpec = ECGenParameterSpec("secp256r1")
-    keyGen.initialize(ecSpec, secureRandom)
-    return keyGen.generateKeyPair()
+    return ProviderCache.withKeyPairGeneratorInstance("EC") {
+        val ecSpec = ECGenParameterSpec("secp256r1")
+        initialize(ecSpec, secureRandom)
+        generateKeyPair()
+    }
 }
 
 fun generateDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val keyGen = KeyPairGenerator.getInstance("DiffieHellman")
-    keyGen.initialize(1024, secureRandom)
-    return keyGen.generateKeyPair()
+    return ProviderCache.withKeyPairGeneratorInstance("DiffieHellman") {
+        initialize(1024, secureRandom)
+        generateKeyPair()
+    }
 }
 
 fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -60,25 +64,29 @@ fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()):
 fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
     when (this.private.algorithm) {
         "EC" -> {
-            val signer = Signature.getInstance("SHA256withECDSA")
-            signer.initSign(this.private)
-            signer.update(bytes)
-            val sig = signer.sign()
-            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
+            return ProviderCache.withSignatureInstance("SHA256withECDSA") {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
         }
         "RSA" -> {
-            val signer = Signature.getInstance("SHA256withRSA")
-            signer.initSign(this.private)
-            signer.update(bytes)
-            val sig = signer.sign()
-            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
+            return ProviderCache.withSignatureInstance("SHA256withRSA") {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
         }
         "EdDSA" -> {
-            val signer = EdDSAEngine()
-            signer.initSign(this.private)
-            signer.update(bytes)
-            val sig = signer.sign()
-            return DigitalSignatureAndKey(signer.algorithm, sig, this.public)
+              return ProviderCache.withEdDSAEngine {
+                  initSign(private)
+                  update(bytes)
+                  val sig = sign()
+                  DigitalSignatureAndKey(algorithm, sig, public)
+              }
+
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }
@@ -88,23 +96,25 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
     require(hash.algorithm == "SHA-256") { "Signing other than SHA-256 not implemented" }
     when (this.private.algorithm) {
         "EC" -> {
-            val signer = Signature.getInstance("NONEwithECDSA")
-            signer.initSign(this.private)
-            signer.update(hash.bytes)
-            val sig = signer.sign()
-            return DigitalSignatureAndKey("SHA256withECDSA", sig, this.public)
+            return ProviderCache.withSignatureInstance("NONEwithECDSA") {
+                initSign(private)
+                update(hash.bytes)
+                val sig = sign()
+                DigitalSignatureAndKey("SHA256withECDSA", sig, public)
+            }
         }
         "RSA" -> {
-            val signer = Signature.getInstance("NONEwithRSA", "SunJCE")
-            signer.initSign(this.private)
-            // Java wraps hash in DER encoded Digest structure before signing
-            val bytes = ByteArrayOutputStream()
-            bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
-            bytes.write(hash.bytes)
-            val digest = bytes.toByteArray()
-            signer.update(digest)
-            val sig = signer.sign()
-            return DigitalSignatureAndKey("SHA256withRSA", sig, this.public)
+            return ProviderCache.withSignatureInstance("NONEwithRSA", "SunJCE") {
+                initSign(private)
+                // Java wraps hash in DER encoded Digest structure before signing
+                val bytes = ByteArrayOutputStream()
+                bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
+                bytes.write(hash.bytes)
+                val digest = bytes.toByteArray()
+                update(digest)
+                val sig = sign()
+                DigitalSignatureAndKey("SHA256withRSA", sig, public)
+            }
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }
@@ -116,16 +126,18 @@ fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): 
     require(remotePublicKey.algorithm == localPrivateKey.algorithm) { "Keys must use the same algorithm" }
     val secret = when (localPrivateKey.algorithm) {
         "EC" -> {
-            val agree = KeyAgreement.getInstance("ECDH")
-            agree.init(localPrivateKey)
-            agree.doPhase(remotePublicKey, true)
-            agree.generateSecret()
+            ProviderCache.withKeyAgreementInstance("ECDH") {
+                init(localPrivateKey)
+                doPhase(remotePublicKey, true)
+                generateSecret()
+            }
         }
         "DH" -> {
-            val agree = KeyAgreement.getInstance("DH")
-            agree.init(localPrivateKey)
-            agree.doPhase(remotePublicKey, true)
-            agree.generateSecret()
+            ProviderCache.withKeyAgreementInstance("DH") {
+                init(localPrivateKey)
+                doPhase(remotePublicKey, true)
+                generateSecret()
+            }
         }
         "Curve25519" -> {
             val secret = ByteArray(Curve25519.KEY_SIZE)
@@ -139,9 +151,10 @@ fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): 
 }
 
 fun getHMAC(privateKey: ByteArray, data: ByteArray): SecureHash {
-    val hmac = Mac.getInstance("HmacSHA256")
-    val hmacKey = SecretKeySpec(privateKey, "HmacSHA256")
-    hmac.init(hmacKey)
-    hmac.update(data)
-    return SecureHash("HmacSHA256", hmac.doFinal())
+    return ProviderCache.withMacInstance("HmacSHA256") {
+        val hmacKey = SecretKeySpec(privateKey, "HmacSHA256")
+        init(hmacKey)
+        update(data)
+        SecureHash("HmacSHA256", doFinal())
+    }
 }

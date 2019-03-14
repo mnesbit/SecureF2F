@@ -2,7 +2,6 @@ package uk.co.nesbit.crypto
 
 import uk.co.nesbit.crypto.HashChainPublic.Companion.CHAIN_HASH_ID
 import java.util.*
-import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 // Based upon the pebbling algorithm in http://www.win.tue.nl/~berry/papers/eobp.pdf
@@ -22,20 +21,22 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
             secureRandom.nextBytes(seed)
             val startHash = SecureHash(CHAIN_HASH_ID, seed)
             val hmacKey = SecretKeySpec(keyMaterial, CHAIN_HASH_ID)
-            val hmac = Mac.getInstance(CHAIN_HASH_ID)
-            val endHash = seed.copyOf()
-            hmac.init(hmacKey)
             val intermediateHashes = mutableListOf<SecureHash>()
-            for (i in maxChainLength - 1 downTo 0) {
-                hmac.update(endHash)
-                hmac.doFinal(endHash, 0)
-                val j = i + 2
-                if ((j and (j - 1)) == 0) {
-                    intermediateHashes.add(SecureHash(CHAIN_HASH_ID, endHash.copyOf()))
+            val finalHash = ProviderCache.withMacInstance(CHAIN_HASH_ID) {
+                val endHash = seed.copyOf()
+                init(hmacKey)
+                for (i in maxChainLength - 1 downTo 0) {
+                    update(endHash)
+                    doFinal(endHash, 0)
+                    val j = i + 2
+                    if ((j and (j - 1)) == 0) {
+                        intermediateHashes.add(SecureHash(CHAIN_HASH_ID, endHash.copyOf()))
+                    }
                 }
+                endHash
             }
             intermediateHashes.reverse()
-            return PebbledHashChain(hmacKey, SecureHash(CHAIN_HASH_ID, endHash), startHash, intermediateHashes, 0, maxChainLength)
+            return PebbledHashChain(hmacKey, SecureHash(CHAIN_HASH_ID, finalHash), startHash, intermediateHashes, 0, maxChainLength)
         }
     }
 
@@ -68,10 +69,11 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
     }
 
     private fun chain(hash: SecureHash): SecureHash {
-        val hmac = Mac.getInstance(CHAIN_HASH_ID)
-        hmac.init(chainKey)
-        hmac.update(hash.bytes)
-        return SecureHash(CHAIN_HASH_ID, hmac.doFinal())
+        return ProviderCache.withMacInstance(CHAIN_HASH_ID) {
+            init(chainKey)
+            update(hash.bytes)
+            SecureHash(CHAIN_HASH_ID, doFinal())
+        }
     }
 
     private fun incrementVersion() {
