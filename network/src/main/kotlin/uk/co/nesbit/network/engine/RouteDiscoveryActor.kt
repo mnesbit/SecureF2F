@@ -118,7 +118,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
                 for (externalRoute in respondTo.fullRoutes) {
                     val knownRoute = routes[externalRoute.from.id]!!
                     if ((externalRoute.from.currentVersion.version < knownRoute.from.currentVersion.version)
-                        || (externalRoute.from.currentVersion.version < knownRoute.from.currentVersion.version
+                        || (externalRoute.from.currentVersion.version == knownRoute.from.currentVersion.version
                                 && externalRoute.entries.size < knownRoute.entries.size)
                     ) {
 

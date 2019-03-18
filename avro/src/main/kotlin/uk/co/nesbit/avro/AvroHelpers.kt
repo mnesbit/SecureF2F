@@ -102,11 +102,11 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     if (pluginHandlers != null) {
         return pluginHandlers.second(value as GenericRecord) as T
     }
-    when (T::class) {
-        String::class -> {
+    when (T::class.java) {
+        String::class.java -> {
             return value.toString() as T
         }
-        ByteArray::class -> {
+        ByteArray::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             return if (fieldSchema.type == Schema.Type.FIXED) {
                 (value as GenericData.Fixed).bytes().copyOf() as T
@@ -114,15 +114,15 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                 (value as ByteBuffer).array().copyOf() as T
             }
         }
-        BigDecimal::class -> {
+        BigDecimal::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             return Conversions.DecimalConversion().fromBytes(get(fieldName) as ByteBuffer, fieldSchema, fieldSchema.logicalType) as T
         }
-        UUID::class -> {
+        UUID::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             return Conversions.UUIDConversion().fromCharSequence(get(fieldName) as CharSequence, fieldSchema, fieldSchema.logicalType) as T
         }
-        Instant::class -> {
+        Instant::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
                 return when (fieldSchema.logicalType.name) {
@@ -144,7 +144,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                 return Instant.ofEpochMilli(get(fieldName) as Long) as T
             }
         }
-        LocalDateTime::class -> {
+        LocalDateTime::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
                 return when (fieldSchema.logicalType.name) {
@@ -166,7 +166,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                 return LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC) as T
             }
         }
-        LocalDate::class -> {
+        LocalDate::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
                 when (fieldSchema.logicalType.name) {
@@ -190,7 +190,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
                 return LocalDate.ofEpochDay((get(fieldName) as Int).toLong()) as T
             }
         }
-        LocalTime::class -> {
+        LocalTime::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             return if (fieldSchema.logicalType != null) {
                 when (fieldSchema.logicalType.name) {
@@ -249,11 +249,11 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
         put(fieldName, encoder(value))
         return
     }
-    when (T::class) {
-        String::class -> {
+    when (T::class.java) {
+        String::class.java -> {
             put(fieldName, Utf8(value as String))
         }
-        ByteArray::class -> {
+        ByteArray::class.java -> {
             val bytes = value as ByteArray
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.type == Schema.Type.FIXED) {
@@ -264,17 +264,17 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
                 put(fieldName, buffer)
             }
         }
-        BigDecimal::class -> {
+        BigDecimal::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             val bytes = Conversions.DecimalConversion().toBytes(value as BigDecimal, fieldSchema, fieldSchema.logicalType)
             put(fieldName, bytes)
         }
-        UUID::class -> {
+        UUID::class.java -> {
             val fieldSchema = schema.getField(fieldName).schema()
             val uuidString = Conversions.UUIDConversion().toCharSequence(value as UUID, fieldSchema, fieldSchema.logicalType)
             put(fieldName, uuidString)
         }
-        Instant::class -> {
+        Instant::class.java -> {
             val instant = value as Instant
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
@@ -306,7 +306,7 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
                 put(fieldName, instant.toEpochMilli())
             }
         }
-        LocalDate::class -> {
+        LocalDate::class.java -> {
             val date = value as LocalDate
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
@@ -328,7 +328,7 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
                 put(fieldName, date.toEpochDay().toInt())
             }
         }
-        LocalTime::class -> {
+        LocalTime::class.java -> {
             val time = value as LocalTime
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {
@@ -348,7 +348,7 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
                 put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
             }
         }
-        LocalDateTime::class -> {
+        LocalDateTime::class.java -> {
             val dateTime = value as LocalDateTime
             val fieldSchema = schema.getField(fieldName).schema()
             if (fieldSchema.logicalType != null) {

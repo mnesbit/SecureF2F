@@ -8,7 +8,6 @@ import uk.co.nesbit.avro.*
 import java.nio.ByteBuffer
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
-import java.util.*
 
 
 object PublicKeyHelper {
@@ -21,11 +20,7 @@ object PublicKeyHelper {
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
     private const val MAX_CACHE = 10000
-    private val keyCache = Collections.synchronizedMap(object : LinkedHashMap<ByteBuffer, PublicKey>(MAX_CACHE) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ByteBuffer, PublicKey>?): Boolean {
-            return (size > MAX_CACHE)
-        }
-    })
+    private val keyCache = LRUCache<ByteBuffer, PublicKey>(MAX_CACHE)
 
     fun deserialize(bytes: ByteArray): PublicKey {
         val keyRecord = publicKeySchema.deserialize(bytes)
@@ -40,26 +35,30 @@ object PublicKeyHelper {
         return when (keyAlgorithm) {
             "EdDSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
-                val cacheKey = ByteBuffer.wrap(publicKeyBytes)
-                if (cacheKey in keyCache) {
-                    return keyCache[cacheKey]!!
+                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
+                cacheKey.put(publicKeyBytes)
+                cacheKey.flip()
+                val cached = keyCache[cacheKey]
+                if (cached != null) {
+                    return cached
                 }
                 val pk = EdDSAPublicKey(keySpec)
-                val bufCopy = publicKeyBytes.copyOf()
-                keyCache[ByteBuffer.wrap(bufCopy)] = pk
+                keyCache[cacheKey] = pk
                 pk
             }
             "EC", "RSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
-                val cacheKey = ByteBuffer.wrap(publicKeyBytes)
-                if (cacheKey in keyCache) {
-                    return keyCache[cacheKey]!!
+                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
+                cacheKey.put(publicKeyBytes)
+                cacheKey.flip()
+                val cached = keyCache[cacheKey]
+                if (cached != null) {
+                    return cached
                 }
                 val pk = ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
                     generatePublic(keySpec)
                 }
-                val bufCopy = publicKeyBytes.copyOf()
-                keyCache[ByteBuffer.wrap(bufCopy)] = pk
+                keyCache[cacheKey] = pk
                 pk
             }
             "DH" -> { // don't cache DH keys as they change a lot
