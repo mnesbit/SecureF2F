@@ -53,38 +53,40 @@ class Sphinx(
 
     private fun rho(rhoKey: SecretKeySpec): ByteArray {
         val streamOutput = ByteArray(rhoLength)
-        val aesCipher = Cipher.getInstance("AES/CTR/NoPadding", "SunJCE")
-        aesCipher.init(Cipher.ENCRYPT_MODE, rhoKey, IvParameterSpec(ZERO_16))
-        return aesCipher.doFinal(streamOutput)
+        return ProviderCache.withCipherInstance("AES/CTR/NoPadding", "SunJCE") {
+            init(Cipher.ENCRYPT_MODE, rhoKey, IvParameterSpec(ZERO_16))
+            doFinal(streamOutput)
+        }
     }
 
     private class EncryptionResult(val newPayload: ByteArray, val tag: ByteArray)
 
     private fun encryptPayload(key: SecretKeySpec, nonce: ByteArray, header: ByteArray, payload: ByteArray): EncryptionResult {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.ENCRYPT_MODE, key, spec)
-        cipher.updateAAD(header)
-        val cipherText = cipher.doFinal(payload)
-        val tag = cipherText.copyOfRange(payload.size, payload.size + GCM_TAG_LENGTH)
-        val newPayload = cipherText.copyOf(payload.size)
-        return EncryptionResult(newPayload, tag)
+        return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
+            val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+            init(Cipher.ENCRYPT_MODE, key, spec)
+            updateAAD(header)
+            val cipherText = doFinal(payload)
+            val tag = cipherText.copyOfRange(payload.size, payload.size + GCM_TAG_LENGTH)
+            val newPayload = cipherText.copyOf(payload.size)
+            EncryptionResult(newPayload, tag)
+        }
     }
 
     private class DecryptionResult(val valid: Boolean, val newPayload: ByteArray)
 
     private fun decryptPayload(key: SecretKeySpec, nonce: ByteArray, header: ByteArray, tag: ByteArray, payload: ByteArray): DecryptionResult {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding", "SunJCE")
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
-        cipher.init(Cipher.DECRYPT_MODE, key, spec)
-        cipher.updateAAD(header)
-        val cipherText = concatByteArrays(payload, tag)
-        val decrypted = try {
-            cipher.doFinal(cipherText)
-        } catch (ex: AEADBadTagException) {
-            return DecryptionResult(false, ByteArray(0))
+        return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
+            val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce)
+            init(Cipher.DECRYPT_MODE, key, spec)
+            updateAAD(header)
+            val cipherText = concatByteArrays(payload, tag)
+            try {
+                DecryptionResult(true, doFinal(cipherText))
+            } catch (ex: AEADBadTagException) {
+                DecryptionResult(false, ByteArray(0))
+            }
         }
-        return DecryptionResult(true, decrypted)
     }
 
     private fun padSourcePayload(input: ByteArray, secureRandom: SecureRandom): ByteArray {
@@ -180,7 +182,7 @@ class Sphinx(
     }
 
     fun makeMessage(route: List<SphinxPublicIdentity>, payload: ByteArray, random: SecureRandom = this.random): UnpackedSphinxMessage {
-        require(route.size in 1..maxRouteLength) { "Invalid route length" }
+        require(route.size in 1..maxRouteLength) { "Invalid route length ${route.size}" }
         require(route.all { it.id.bytes.size == ID_HASH_SIZE }) { "ID Hash wrong size length" }// Ensure sizes align properly
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }

@@ -20,9 +20,10 @@ class RouteEntry(val nonce: ByteArray,
     }
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val routeEntrySchema: Schema = Schema.Parser()
-                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema))
-                .parse(RouteEntry::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routeentry.avsc"))
+            .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/routeentry.avsc"))
 
         fun deserialize(bytes: ByteArray): RouteEntry {
             val routeEntryRecord = routeEntrySchema.deserialize(bytes)

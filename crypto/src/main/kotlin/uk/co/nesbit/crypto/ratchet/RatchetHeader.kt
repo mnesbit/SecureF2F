@@ -19,9 +19,10 @@ class RatchetHeader(val senderDHKey: PublicKey,
                     ratchetHeaderRecord.getTyped("sequenceNumber"))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val ratchetHeaderSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
-                .parse(RatchetHeader::class.java.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
+            .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
 
         fun deserialize(bytes: ByteArray): RatchetHeader {
             val ratchetHeaderRecord = ratchetHeaderSchema.deserialize(bytes)

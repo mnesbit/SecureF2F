@@ -10,14 +10,10 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Before
 import org.junit.Test
 import scala.collection.JavaConverters
-import scala.concurrent.duration.Duration
-import scala.concurrent.duration.FiniteDuration
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.engine.*
-import java.util.concurrent.TimeUnit
+import uk.co.nesbit.network.util.seconds
 import kotlin.test.assertEquals
-
-fun Int.seconds(): FiniteDuration = Duration.create(this.toLong(), TimeUnit.SECONDS)
 
 class NetworkTest {
     private var actorSystem: ActorSystem? = null
@@ -373,12 +369,22 @@ class NetworkTest {
                     val linkUpdate1 = expectMsgClass(LinkInfo::class.java)
                     assertEquals(LinkStatus.LINK_UP_ACTIVE, linkUpdate1.status)
                     // Send message from 1 to 2
-                    physicalNetworkActor1.tell(SendMessage(linkUpdate1.linkId, "Hello1".toByteArray()), testActor())
+                    physicalNetworkActor1.tell(
+                        LinkSendMessage(
+                            linkUpdate1.linkId,
+                            "Hello1".toByteArray()
+                        ), testActor()
+                    )
                     val msg1 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate2.linkId, msg1.linkId)
                     assertArrayEquals("Hello1".toByteArray(), msg1.msg)
                     // Send message from 2 to 1
-                    physicalNetworkActor2.tell(SendMessage(linkUpdate2.linkId, "Hello2".toByteArray()), testActor())
+                    physicalNetworkActor2.tell(
+                        LinkSendMessage(
+                            linkUpdate2.linkId,
+                            "Hello2".toByteArray()
+                        ), testActor()
+                    )
                     val msg2 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate1.linkId, msg2.linkId)
                     assertArrayEquals("Hello2".toByteArray(), msg2.msg)

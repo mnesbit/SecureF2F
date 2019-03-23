@@ -37,10 +37,15 @@ class Heartbeat private constructor(private val schemaId: SecureHash,
     }
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val heartbeatSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema,
-                        DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
-                .parse(Heartbeat::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/heartbeat.avsc"))
+            .addTypes(
+                mapOf(
+                    SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema,
+                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/heartbeat.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", heartbeatSchema)
 

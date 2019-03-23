@@ -26,17 +26,17 @@ class DnsMockActor : AbstractLoggingActor() {
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting DnsMockActor")
+        //log().info("Starting DnsMockActor")
     }
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped DnsMockActor")
+        //log().info("Stopped DnsMockActor")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart DnsMockActor")
+        //log().info("Restart DnsMockActor")
     }
 
     override fun createReceive(): Receive =
@@ -47,14 +47,14 @@ class DnsMockActor : AbstractLoggingActor() {
             .build()
 
     private fun onRegistration(registration: DnsRegistration) {
-        log().info("Received DNS registration $registration")
+        //log().info("Received DNS registration $registration")
         knownAddresses[registration.networkId] = sender
         knownActors[sender] = registration.networkId
         context.watch(sender)
     }
 
     private fun onDeath(death: Terminated) {
-        log().info("Received Death of watched actor $death")
+        //log().info("Received Death of watched actor $death")
         val address = knownActors.remove(death.actor)
         if (address != null) {
             knownAddresses -= address
@@ -62,7 +62,7 @@ class DnsMockActor : AbstractLoggingActor() {
     }
 
     private fun onLookup(lookup: DnsLookup) {
-        log().info("Received DNS request $lookup")
+        //log().info("Received DNS request $lookup")
         val node = knownAddresses[lookup.networkId]
         sender.tell(DnsResponse(lookup.linkId, node), self)
     }

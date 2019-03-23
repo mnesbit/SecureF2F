@@ -34,9 +34,10 @@ class VersionedRoute private constructor(private val schemaId: SecureHash,
     companion object {
         const val NONCE_SIZE = 16
 
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val versionedRouteSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema))
-                .parse(VersionedRoute::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/versionedroute.avsc"))
+            .addTypes(mapOf(VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/versionedroute.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", versionedRouteSchema)
 

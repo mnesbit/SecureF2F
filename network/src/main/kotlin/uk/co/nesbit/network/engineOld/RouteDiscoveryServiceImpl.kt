@@ -5,6 +5,7 @@ import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import org.bouncycastle.util.Arrays
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.BloomFilter
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.network.api.Address
@@ -127,14 +128,14 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
             Pair(replyPath, ArrayList(knownRoutes))
         }
         if (path != null) {
-            val routeReplyTable = RouteTable(routes!!, null)
+            val routeReplyTable = RouteTable(routes!!, BloomFilter.EmptyFilter, null)
             send(path, RoutedMessage.createRoutedMessage(networkAddress, routeReplyTable))
         }
     }
 
     private fun mergeRouteTable(routes: RouteTable) {
         state.locked {
-            for (route in routes.allRoutes) {
+            for (route in routes.fullRoutes) {
                 val existingRouteIndex = knownRoutes.indexOfFirst { it.from.id == route.from.id }
                 if (existingRouteIndex == -1) {
                     knownRoutes += route
@@ -203,7 +204,7 @@ class RouteDiscoveryServiceImpl(private val neighbourDiscoveryService: Neighbour
             Pair(listOf(target), ArrayList(knownRoutes))
         }
         if (path != null) {
-            val routeTable = RouteTable(routes!!, networkAddress.id)
+            val routeTable = RouteTable(routes!!, BloomFilter.EmptyFilter, networkAddress.id)
             send(path, RoutedMessage.createRoutedMessage(networkAddress, routeTable))
         }
     }

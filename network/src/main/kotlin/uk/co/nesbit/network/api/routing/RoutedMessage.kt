@@ -23,10 +23,15 @@ class RoutedMessage private constructor(val replyTo: SphinxAddress,
     }
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val routedMessageSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
-                        SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(RoutedMessage::class.java.getResourceAsStream("/uk/co/nesbit/network/api/routing/routedmessage.avsc"))
+            .addTypes(
+                mapOf(
+                    SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
+                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                )
+            )
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/routedmessage.avsc"))
 
         val knownSchemas = SchemaRegistry()
 

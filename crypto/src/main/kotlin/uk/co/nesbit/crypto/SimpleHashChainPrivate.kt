@@ -1,7 +1,6 @@
 package uk.co.nesbit.crypto
 
 import java.util.*
-import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 class SimpleHashChainPrivate private constructor(private val chainKey: SecretKeySpec,
@@ -23,14 +22,15 @@ class SimpleHashChainPrivate private constructor(private val chainKey: SecretKey
 
         private fun getChainValueInternal(stepsFromEnd: Int, seed: SecureHash, hmacKey: SecretKeySpec, maxChainLength: Int): SecureHash {
             require(stepsFromEnd <= maxChainLength)
-            val hmac = Mac.getInstance(HashChainPublic.CHAIN_HASH_ID)
-            val endHash = seed.bytes.copyOf()
-            hmac.init(hmacKey)
-            for (i in 0 until (maxChainLength - stepsFromEnd)) {
-                hmac.update(endHash)
-                hmac.doFinal(endHash, 0)
+            return ProviderCache.withMacInstance(HashChainPublic.CHAIN_HASH_ID) {
+                val endHash = seed.bytes.copyOf()
+                init(hmacKey)
+                for (i in 0 until (maxChainLength - stepsFromEnd)) {
+                    update(endHash)
+                    doFinal(endHash, 0)
+                }
+                SecureHash(HashChainPublic.CHAIN_HASH_ID, endHash)
             }
-            return SecureHash(HashChainPublic.CHAIN_HASH_ID, endHash)
         }
     }
 

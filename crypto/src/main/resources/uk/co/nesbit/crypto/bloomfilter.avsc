@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "BloomFilter",
+  "type": "record",
+  "fields": [
+    {
+      "name": "expectedItemCount",
+      "type": "int"
+    },
+    {
+      "name": "falsePositiveRate",
+      "type": "double"
+    },
+    {
+      "name": "hashSeed",
+      "type": "int"
+    },
+    {
+      "name": "filterBits",
+      "type": "bytes"
+    }
+  ]
+}

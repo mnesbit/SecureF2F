@@ -7,7 +7,6 @@ import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
-import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVersion: Int) : AvroConvertible {
@@ -17,9 +16,10 @@ data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVer
                     versionRecord.getTyped("maxVersion"))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val secureVersionSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(SecureVersion::class.java.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
+            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
 
         fun deserialize(bytes: ByteArray): SecureVersion {
             val secureVersionRecord = secureVersionSchema.deserialize(bytes)
@@ -48,9 +48,11 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     companion object {
         const val CHAIN_HASH_ID = "HmacSHA256"
         const val MAX_CHAIN_LENGTH = 65536
+
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val hashChainSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-                .parse(HashChainPublic::class.java.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
+            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
 
         fun deserialize(bytes: ByteArray): HashChainPublic {
             val hashChainRecord = hashChainSchema.deserialize(bytes)
@@ -93,14 +95,16 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
         if (stepsFromEnd > maxChainLength) {
             return false
         }
-        val hmac = Mac.getInstance(CHAIN_HASH_ID)
-        val endHash = hashBytes.copyOf()
-        hmac.init(chainKey)
-        for (i in 0 until stepsFromEnd) {
-            hmac.update(endHash)
-            hmac.doFinal(endHash, 0)
+        val finalHash = ProviderCache.withMacInstance(CHAIN_HASH_ID) {
+            val endHash = hashBytes.copyOf()
+            init(chainKey)
+            for (i in 0 until stepsFromEnd) {
+                update(endHash)
+                doFinal(endHash, 0)
+            }
+            endHash
         }
-        return org.bouncycastle.util.Arrays.constantTimeAreEqual(targetHash.bytes, endHash)
+        return org.bouncycastle.util.Arrays.constantTimeAreEqual(targetHash.bytes, finalHash)
     }
 
     override fun equals(other: Any?): Boolean {

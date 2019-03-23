@@ -1,6 +1,5 @@
 package uk.co.nesbit.crypto
 
-import net.i2p.crypto.eddsa.EdDSAEngine
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
@@ -11,7 +10,6 @@ import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
 import java.security.PublicKey
-import java.security.Signature
 import java.security.SignatureException
 import java.util.*
 
@@ -22,8 +20,9 @@ class DigitalSignature(val signatureAlgorithm: String,
                     signatureRecord.getTyped("signature"))
 
     companion object {
+        @Suppress("JAVA_CLASS_ON_COMPANION")
         val digitalSignatureSchema: Schema = Schema.Parser()
-                .parse(DigitalSignatureAndKey::class.java.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignature {
             val signatureRecord = digitalSignatureSchema.deserialize(bytes)
@@ -43,19 +42,22 @@ class DigitalSignature(val signatureAlgorithm: String,
     fun verify(publicKey: PublicKey, bytes: ByteArray) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA", "SHA256withRSA" -> {
-                val verifier = Signature.getInstance(this.signatureAlgorithm)
-                verifier.initVerify(publicKey)
-                verifier.update(bytes)
-                if (!verifier.verify(this.signature))
-                    throw SignatureException("Signature did not match")
+                ProviderCache.withSignatureInstance(signatureAlgorithm) {
+                    initVerify(publicKey)
+                    update(bytes)
+                    if (!verify(signature))
+                        throw SignatureException("Signature did not match")
+                }
             }
             "NONEwithEdDSA" -> {
-                val verifier = EdDSAEngine()
-                require(this.signatureAlgorithm == verifier.algorithm) { "Signature algorithm not EdDSA" }
-                verifier.initVerify(publicKey)
-                verifier.update(bytes)
-                if (!verifier.verify(this.signature))
-                    throw SignatureException("Signature did not match")
+                ProviderCache.withEdDSAEngine {
+                    require(signatureAlgorithm == algorithm) { "Signature algorithm not EdDSA" }
+                    initVerify(publicKey)
+                    update(bytes)
+                    if (!verify(signature))
+                        throw SignatureException("Signature did not match")
+                }
+
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")
         }
@@ -65,23 +67,25 @@ class DigitalSignature(val signatureAlgorithm: String,
     fun verify(publicKey: PublicKey, hash: SecureHash) {
         when (this.signatureAlgorithm) {
             "SHA256withECDSA" -> {
-                val verifier = Signature.getInstance("NONEwithECDSA")
-                verifier.initVerify(publicKey)
-                verifier.update(hash.bytes)
-                if (!verifier.verify(this.signature))
-                    throw SignatureException("Signature did not match")
+                ProviderCache.withSignatureInstance("NONEwithECDSA") {
+                    initVerify(publicKey)
+                    update(hash.bytes)
+                    if (!verify(signature))
+                        throw SignatureException("Signature did not match")
+                }
             }
             "SHA256withRSA" -> {
-                val verifier = Signature.getInstance("NONEwithRSA", "SunJCE")
-                verifier.initVerify(publicKey)
-                val bytes = ByteArrayOutputStream()
-                // Java wraps hash in DER encoded Digest structure before signing
-                bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
-                bytes.write(hash.bytes)
-                val digest = bytes.toByteArray()
-                verifier.update(digest)
-                if (!verifier.verify(this.signature))
-                    throw SignatureException("Signature did not match")
+                ProviderCache.withSignatureInstance("NONEwithRSA", "SunJCE") {
+                    initVerify(publicKey)
+                    val bytes = ByteArrayOutputStream()
+                    // Java wraps hash in DER encoded Digest structure before signing
+                    bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
+                    bytes.write(hash.bytes)
+                    val digest = bytes.toByteArray()
+                    update(digest)
+                    if (!verify(signature))
+                        throw SignatureException("Signature did not match")
+                }
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")
         }
