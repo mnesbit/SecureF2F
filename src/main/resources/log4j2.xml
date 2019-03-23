@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="info" name="AkkaTest" packages="">
+    <Appenders>
+        <File name="FileLogger" fileName="logs/app.log">
+            <PatternLayout>
+                <Pattern>[%-5level] %X{akkaTimestamp} [%t] %c{2} %X{akkaSource} - %msg%n</Pattern>
+            </PatternLayout>
+        </File>
+        <Async name="Async">
+            <AppenderRef ref="FileLogger"/>
+        </Async>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Async"/>
+        </Root>
+    </Loggers>
+</Configuration>
