@@ -1,10 +1,10 @@
 buildscript {
-    ext{
-        kotlin_version = '1.3.21'
+    ext {
+        akkanet_version = '1.0.0-SNAPSHOT'
+        junit_version = '4.12'
+        junit5_version = '5.1.0'
         rx_version = '2.2.0'
-        sl4j_version = '1.7.25'
-        log4j2_version = '2.11.1'
-		bouncycastle_version = '1.60'
+        bouncycastle_version = '1.60'
         eddsa_version = '0.3.0'
         avro_version = '1.8.2'
         akka_version = '2.5.19'
@@ -17,49 +17,78 @@ buildscript {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
-apply plugin: 'application'
+
+import static org.gradle.api.JavaVersion.*
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    id 'application'
+}
 
 allprojects {
     apply plugin: 'java'
-    apply plugin: 'kotlin'
+    apply plugin: 'org.jetbrains.kotlin.jvm'
+    apply plugin: 'idea'
 
     group 'uk.co.nesbit'
-    version '1.0-SNAPSHOT'
-
-    sourceCompatibility = 1.8
+    version akkanet_version
 
     repositories {
         mavenCentral()
+        jcenter()
     }
+
+    tasks.withType(JavaCompile) {
+        sourceCompatibility = VERSION_1_8
+        targetCompatibility = VERSION_1_8
+        options.encoding = 'UTF-8'
+        options.compilerArgs += '-XDenableSunApiLintControl'
+    }
+
+    tasks.withType(KotlinCompile) {
+        kotlinOptions {
+            languageVersion = '1.3'
+            apiVersion = '1.3'
+            jvmTarget = VERSION_1_8
+            javaParameters = true   // Useful for reflection.
+            freeCompilerArgs = ['-Xjvm-default=enable']
+        }
+    }
+
+    tasks.withType(Test) {
+        useJUnitPlatform()
+
+        // Prevent the project from creating temporary files outside of the build directory.
+        systemProperty 'java.io.tmpdir', buildDir.absolutePath
+    }
+
 
     dependencies {
-        compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-        compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
-        compile "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
-        compile "org.slf4j:slf4j-api:$sl4j_version"
-        compile "com.typesafe.akka:akka-slf4j_2.12:$akka_version"
-        compile "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
-        testCompile group: 'junit', name: 'junit', version: '4.12'
-    }
+        implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+        implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
+        implementation "org.slf4j:slf4j-api:$slf4j_version"
 
-    compileKotlin {
-        kotlinOptions.jvmTarget = "1.8"
-        kotlinOptions.apiVersion = "1.3"
-        kotlinOptions.languageVersion = "1.3"
-        kotlinOptions.javaParameters = true
-    }
-    compileTestKotlin {
-        kotlinOptions.jvmTarget = "1.8"
-        kotlinOptions.apiVersion = "1.3"
-        kotlinOptions.languageVersion = "1.3"
-        kotlinOptions.javaParameters = true
+        // Test utilities
+        testImplementation "junit:junit:$junit_version"
+        testRuntime "org.junit.vintage:junit-vintage-engine:$junit5_version"
+        testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
+        testRuntimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
     }
 }
 
+wrapper {
+    gradleVersion = "5.5.1"
+    distributionType = Wrapper.DistributionType.ALL
+}
 
 dependencies {
-    compile project(':crypto')
-    compile project(':network')
+    // Actor framework
+    implementation "com.typesafe.akka:akka-actor_2.12:$akka_version"
+    testImplementation "com.typesafe.akka:akka-testkit_2.12:$akka_version"
+    runtime "com.typesafe.akka:akka-slf4j_2.12:$akka_version"
+    runtime "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
+    implementation project(':crypto')
+    implementation project(':network')
 }
 
-mainClassName = "uk.co.nesbit.Main"
+mainClassName = "uk.co.nesbit.MainKt"
