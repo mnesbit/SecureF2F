@@ -18,17 +18,17 @@ class SchemaRegistry {
     private val state = ThreadSafeState(RegistryState())
 
     fun registerSchema(schema: Schema): ByteArray {
-        state.locked {
+        return state.locked {
             val fingerprint = fingerprints[schema]
             if (fingerprint != null) {
-                return fingerprint.array()
+                return@locked fingerprint.array()
             }
             val wrappedFingerprint = ByteBuffer.wrap(SchemaNormalization.parsingFingerprint("SHA-256", schema))
             schemas[wrappedFingerprint] = schema
             fingerprints[schema] = wrappedFingerprint
             val schemaList = schemasByName.getOrPut(schema.fullName, { mutableListOf() })
             schemaList += schema
-            return wrappedFingerprint.array()
+            wrappedFingerprint.array()
         }
     }
 
@@ -39,18 +39,18 @@ class SchemaRegistry {
     fun getSchemas(schemaName: String): List<Schema> = state.locked { schemasByName[schemaName] ?: emptyList() }
 
     fun <T : AvroConvertible> registerDeserializer(convertibleClass: Class<T>, schema: Schema): ByteArray {
-        state.locked {
+        return state.locked {
             val fingerprint = getFingeprint(schema)
             require(!converters.containsKey(ByteBuffer.wrap(fingerprint))) { "Only one class allowed to be registered per schema" }
             val constructor = convertibleClass.getConstructor(GenericRecord::class.java)
             require(constructor != null) { "No constructor from GenericRecord found" }
             converters[ByteBuffer.wrap(fingerprint)] = constructor
-            return fingerprint
+            fingerprint
         }
     }
 
     fun deserialize(schemaId: ByteArray, data: ByteArray): AvroConvertible {
-        state.locked {
+        return state.locked {
             require(schemaId.size == 32) { "Invalid fingerprint" }
             val schemaKey = ByteBuffer.wrap(schemaId)
             val schema = schemas[schemaKey]
@@ -58,7 +58,7 @@ class SchemaRegistry {
             val genericRecord = schema.deserialize(data)
             val constructor = converters[schemaKey]
             require(constructor != null) { "No AvroConvertible registered to this schema fingerprint" }
-            return constructor.newInstance(genericRecord)
+            constructor.newInstance(genericRecord)
         }
     }
 }
