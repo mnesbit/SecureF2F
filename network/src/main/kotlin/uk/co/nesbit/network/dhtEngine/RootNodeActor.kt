@@ -1,4 +1,4 @@
-package uk.co.nesbit.network.engine
+package uk.co.nesbit.network.dhtEngine
 
 import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
@@ -21,21 +21,6 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
 
     private val physicalNetworkActor: ActorRef =
         context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
-    private val neighbourLinkActor: ActorRef =
-        context.actorOf(
-            NeighbourLinkActor.getProps(
-                keyService,
-                networkConfig,
-                physicalNetworkActor
-            ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
-        )
-    private val routeDiscoveryActor: ActorRef =
-        context.actorOf(
-            RouteDiscoveryActor.getProps(
-                keyService,
-                neighbourLinkActor
-            ).withDispatcher("akka.fixed-dispatcher"), "routes"
-        )
 
     override fun preStart() {
         super.preStart()

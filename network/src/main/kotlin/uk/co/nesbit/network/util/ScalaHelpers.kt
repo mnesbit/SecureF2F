@@ -1,10 +1,12 @@
 package uk.co.nesbit.network.util
 
 import akka.actor.AbstractActorWithTimers
+import akka.actor.Props
 import akka.event.Logging
 import akka.event.LoggingAdapter
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration.FiniteDuration
+import scala.jdk.javaapi.CollectionConverters
 import java.util.concurrent.TimeUnit
 
 fun Int.seconds(): FiniteDuration =
@@ -54,5 +56,9 @@ abstract class AbstractActorWithLoggingAndTimers() : AbstractActorWithTimers() {
         }
         return _log!!
     }
+}
 
+// TODO This works around a stupid error highlighting bug in Idea, hopefully will get fixed
+fun createProps(clazz: Class<*>, vararg inputs: Any): Props {
+    return Props.create(clazz, CollectionConverters.asScala(inputs.iterator()).toSeq())
 }

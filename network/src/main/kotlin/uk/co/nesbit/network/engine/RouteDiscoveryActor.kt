@@ -16,6 +16,7 @@ import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.util.*
 
@@ -27,7 +28,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         @JvmStatic
         fun getProps(keyService: KeyService, neighbourLinkActor: ActorRef): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
-            return Props.create(javaClass.enclosingClass, keyService, neighbourLinkActor)
+            return createProps(javaClass.enclosingClass, keyService, neighbourLinkActor)
         }
 
         const val ROUTE_DISCOVERY_INTERVAL_MS = 5000L

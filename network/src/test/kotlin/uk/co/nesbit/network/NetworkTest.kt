@@ -9,7 +9,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Before
 import org.junit.Test
-import scala.collection.JavaConverters
+import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.engine.*
 import uk.co.nesbit.network.util.seconds
@@ -272,7 +272,7 @@ class NetworkTest {
                         mockNode
                     )
                     // should get back update of new LinkInfo
-                    val msgs = JavaConverters.asJavaIterable(receiveN(2))
+                    val msgs = CollectionConverters.asJava(receiveN(2))
                     val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
                     val connectResult =
@@ -320,7 +320,7 @@ class NetworkTest {
                         mockNode
                     )
                     // should get back update of new LinkInfo
-                    val msgs = JavaConverters.asJavaIterable(receiveN(2))
+                    val msgs = CollectionConverters.asJava(receiveN(2))
                     val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
                     val connectResult =

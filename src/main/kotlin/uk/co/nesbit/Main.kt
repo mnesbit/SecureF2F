@@ -4,8 +4,8 @@ import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
+import uk.co.nesbit.network.dhtEngine.DhtNode
 import uk.co.nesbit.network.engine.DnsMockActor
-import uk.co.nesbit.network.engine.SimNode
 import java.util.*
 
 fun main(args: Array<String>) {
@@ -15,7 +15,7 @@ fun main(args: Array<String>) {
     val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
-    val simNodes = mutableListOf<SimNode>()
+    val simNodes = mutableListOf<DhtNode>()
     val conf = ConfigFactory.load()
     val actorSystem = ActorSystem.create("Akka", conf)
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
@@ -23,7 +23,7 @@ fun main(args: Array<String>) {
         val networkAddress = NetworkAddress(nodeAddress)
         val links = simNetwork[networkAddress]!!
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
-        simNodes += SimNode(actorSystem, config)
+        simNodes += DhtNode(actorSystem, config)
     }
 //        var stabilised = false
 //        var round = 0
