@@ -5,14 +5,14 @@ import com.typesafe.config.ConfigFactory
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.dhtEngine.DhtNode
-import uk.co.nesbit.network.engine.DnsMockActor
+import uk.co.nesbit.network.dhtEngine.DnsMockActor
 import java.util.*
 
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 5
-    val N = 1000
+    val degree = 3
+    val N = 10
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     val simNodes = mutableListOf<DhtNode>()

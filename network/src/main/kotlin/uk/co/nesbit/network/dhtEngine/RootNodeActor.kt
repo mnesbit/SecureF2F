@@ -10,7 +10,7 @@ import uk.co.nesbit.network.util.createProps
 
 class WatchRequest
 
-class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
+class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
     companion object {
         @JvmStatic
         fun getProps(keyService: KeyService, networkConfig: NetworkConfiguration): Props {
@@ -21,6 +21,23 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
 
     private val physicalNetworkActor: ActorRef =
         context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
+
+    private val neighbourLinkActor: ActorRef =
+        context.actorOf(
+            NeighbourLinkActor.getProps(
+                keyService,
+                networkConfig,
+                physicalNetworkActor
+            ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
+        )
+
+    private val dhtRoutingActor: ActorRef =
+        context.actorOf(
+            DhtRoutingActor.getProps(
+                keyService,
+                neighbourLinkActor
+            ).withDispatcher("akka.fixed-dispatcher"), "routing"
+        )
 
     override fun preStart() {
         super.preStart()

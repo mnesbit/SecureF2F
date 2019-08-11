@@ -11,6 +11,8 @@ import uk.co.nesbit.network.api.routing.*
 import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engineOld.KeyServiceImpl
+import java.security.SignatureException
+import kotlin.experimental.xor
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
@@ -191,6 +193,34 @@ class RoutingDataTest {
             val bobHeartbeat1 = Heartbeat.createHeartbeat(aliceNonce, aliceIdentity, bobKeyService, bobId)
             bobIdentity = bobHeartbeat1.verify(aliceNonce, aliceIdentity, bobIdentity)
             bobNonce = bobHeartbeat1.nextExpectedNonce
+        }
+    }
+
+    @Test
+    fun `Ping Pong verification test`() {
+        val keyService: KeyService = KeyServiceImpl()
+        val networkId = keyService.generateNetworkID()
+        val ping = Ping.createPing(keyService)
+        val serializedPing = ping.serialize()
+        val deserializedPing = Ping.deserialize(serializedPing)
+        assertEquals(ping, deserializedPing)
+        val tryDeserializedPing = Ping.tryDeserialize(serializedPing)!!
+        assertEquals(ping, tryDeserializedPing)
+        serializedPing[2] = serializedPing[2] xor 1
+        val failedDeserialize = Ping.tryDeserialize(serializedPing)
+        assertNull(failedDeserialize)
+        val pong = Pong.createPong(ping, networkId, keyService)
+        val serializedPong = pong.serialize()
+        val deserializedPong = Pong.deserialize(serializedPong)
+        assertEquals(pong, deserializedPong)
+        val tryDeserializedPong = Pong.tryDeserialize(serializedPong)!!
+        assertEquals(pong, tryDeserializedPong)
+        serializedPong[2] = serializedPong[2] xor 1
+        val failedDeserialize2 = Ping.tryDeserialize(serializedPong)
+        assertNull(failedDeserialize2)
+        pong.verify(ping)
+        assertFailsWith(SignatureException::class) {
+            pong.verify(Ping.createPing(keyService))
         }
     }
 }

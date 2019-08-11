@@ -85,7 +85,7 @@ dependencies {
     // Actor framework
     implementation "com.typesafe.akka:akka-actor_2.13:$akka_version"
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
-    runtime "com.typesafe.akka:akka-slf4j_2.12:$akka_version"
+    runtime "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
     runtime "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
     implementation project(':crypto')
     implementation project(':network')
