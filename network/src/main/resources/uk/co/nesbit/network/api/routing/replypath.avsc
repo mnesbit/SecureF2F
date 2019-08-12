@@ -1,0 +1,14 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "ReplyPath",
+  "type": "record",
+  "fields": [
+    {
+      "name": "path",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
+      }
+    }
+  ]
+}

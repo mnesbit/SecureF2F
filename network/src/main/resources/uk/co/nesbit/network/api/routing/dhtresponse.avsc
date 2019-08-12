@@ -1,0 +1,32 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "DhtResponse",
+  "type": "record",
+  "fields": [
+    {
+      "name": "requestId",
+      "type": "long"
+    },
+    {
+      "name": "nearestPaths",
+      "type": {
+        "type": "array",
+        "items": "ReplyPath"
+      }
+    },
+    {
+      "name": "directNeighbours",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
+      }
+    },
+    {
+      "name": "data",
+      "type": [
+        "null",
+        "bytes"
+      ]
+    }
+  ]
+}
