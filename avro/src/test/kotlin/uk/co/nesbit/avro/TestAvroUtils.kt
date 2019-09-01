@@ -295,7 +295,12 @@ class TestAvroUtils {
                         "nestedMap[\"second\"]", "nestedMap[\"second\"].unionSubField"))
             }
 
-            override fun enumVisitor(value: GenericEnumSymbol, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun enumVisitor(
+                value: GenericEnumSymbol<*>,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
                 assert(pathStr in setOf(
                         "enumField"))

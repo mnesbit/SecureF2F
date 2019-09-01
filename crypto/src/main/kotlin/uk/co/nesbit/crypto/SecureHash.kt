@@ -31,6 +31,8 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
             val hashRecord = secureHashSchema.deserialize(bytes)
             return SecureHash(hashRecord)
         }
+
+        val EMPTY_HASH = secureHash(ByteArray(0))
     }
 
     override fun toGenericRecord(): GenericRecord {

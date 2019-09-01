@@ -18,7 +18,7 @@ import java.security.SignatureException
 
 class NeighbourSendMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
 class NeighbourReceivedMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
-class NeighbourUpdate(val addresses: List<VersionedIdentity>)
+class NeighbourUpdate(val localId: VersionedIdentity, val addresses: List<VersionedIdentity>)
 
 class NeighbourLinkActor(
     private val keyService: KeyService,
@@ -54,7 +54,7 @@ class NeighbourLinkActor(
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting NeighbourLinkActor")
+        //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
         timers.startPeriodicTimer(
             "staticLinkPoller",
@@ -100,7 +100,7 @@ class NeighbourLinkActor(
     }
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
-        log().info("onLinkStatusChange $linkInfo")
+        //log().info("onLinkStatusChange $linkInfo")
         if (linkInfo.status.active) {
             if (linkInfo.route.to in networkConfig.staticRoutes) {
                 staticLinkStatus[linkInfo.route.to] = linkInfo.linkId
@@ -112,8 +112,13 @@ class NeighbourLinkActor(
             val oldAddress = links.remove(linkInfo.linkId)
             if (oldAddress != null) {
                 addresses.remove(oldAddress.id, linkInfo.linkId)
+                for (link in links) {
+                    if (link.value.id == oldAddress.id) {
+                        addresses[link.value.id] = link.key
+                    }
+                }
             }
-            val update = NeighbourUpdate(links.values.toList())
+            val update = NeighbourUpdate(keyService.getVersion(networkId), addresses.values.mapNotNull { links[it] })
             for (owner in owners) {
                 owner.tell(update, self)
             }
@@ -128,7 +133,7 @@ class NeighbourLinkActor(
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {
-        log().info("onLinkReceivedMessage $message")
+        //log().info("onLinkReceivedMessage $message")
         if (processPing(message)) return
         if (linkProbes.containsKey(message.linkId)) {
             if (processPong(message)) return
@@ -160,12 +165,13 @@ class NeighbourLinkActor(
             val ping = linkProbes.remove(message.linkId)!!
             try {
                 val remoteIdentity = pong.verify(ping.first)
-                log().info("received valid pong on link ${message.linkId} from ${pong.identity}")
+                //log().info("received valid pong on link ${message.linkId} from ${pong.identity}")
                 links[message.linkId] = remoteIdentity
                 if (!addresses.containsKey(remoteIdentity.id) || ping.second) { // favour active links
                     addresses[remoteIdentity.id] = message.linkId
                 }
-                val update = NeighbourUpdate(links.values.toList())
+                val update =
+                    NeighbourUpdate(keyService.getVersion(networkId), addresses.values.mapNotNull { links[it] })
                 for (owner in owners) {
                     owner.tell(update, self)
                 }
@@ -178,7 +184,7 @@ class NeighbourLinkActor(
     }
 
     private fun onNeighbourSendMessage(message: NeighbourSendMessage) {
-        log().info("onNeighbourSendMessage $message")
+        //log().info("onNeighbourSendMessage $message")
         val linkId = addresses[message.networkAddress.id]
         if (linkId != null) {
             val linkMessage = LinkSendMessage(linkId, message.msg)

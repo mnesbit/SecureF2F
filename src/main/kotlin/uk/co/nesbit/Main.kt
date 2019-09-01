@@ -11,8 +11,8 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 3
-    val N = 10
+    val degree = 5
+    val N = 100
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     val simNodes = mutableListOf<DhtNode>()

@@ -3,10 +3,10 @@ buildscript {
         akkanet_version = '1.0.0-SNAPSHOT'
         junit_version = '4.12'
         junit5_version = '5.1.0'
-        rx_version = '2.2.0'
+        rx_version = '2.2.12'
         bouncycastle_version = '1.60'
         eddsa_version = '0.3.0'
-        avro_version = '1.8.2'
+        avro_version = '1.9.0'
         akka_version = '2.5.24'
     }
 
@@ -22,14 +22,19 @@ import static org.gradle.api.JavaVersion.*
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm'
+    id 'idea'
     id 'application'
 }
 
-allprojects {
-    apply plugin: 'java'
+subprojects {
+    apply plugin: 'java-library'
     apply plugin: 'org.jetbrains.kotlin.jvm'
     apply plugin: 'idea'
+}
 
+allprojects {
     group 'uk.co.nesbit'
     version akkanet_version
 
@@ -77,8 +82,13 @@ allprojects {
 }
 
 wrapper {
-    gradleVersion = "5.5.1"
+    gradleVersion = "5.6.1"
     distributionType = Wrapper.DistributionType.ALL
+}
+
+repositories {
+    mavenCentral()
+    jcenter()
 }
 
 dependencies {
@@ -87,6 +97,7 @@ dependencies {
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
     runtime "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
     runtime "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
+    implementation project(':avro')
     implementation project(':crypto')
     implementation project(':network')
 }

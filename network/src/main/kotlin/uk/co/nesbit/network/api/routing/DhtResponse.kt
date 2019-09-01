@@ -6,13 +6,14 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
+import uk.co.nesbit.network.api.Message
 
 class DhtResponse(
     val requestId: Long,
     val nearestPaths: List<ReplyPath>,
     val directNeighbours: List<SphinxPublicIdentity>,
     val data: ByteArray?
-) : AvroConvertible {
+) : Message {
     constructor(dhtResponse: GenericRecord) :
             this(
                 dhtResponse.getTyped("requestId"),
@@ -32,7 +33,7 @@ class DhtResponse(
             )
             .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/dhtresponse.avsc"))
 
-        private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", dhtResponseSchema)
+        val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", dhtResponseSchema)
 
         fun deserialize(bytes: ByteArray): DhtResponse {
             val dhtResponseRecord = dhtResponseSchema.deserialize(bytes)

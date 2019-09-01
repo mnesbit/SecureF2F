@@ -4,19 +4,19 @@ import org.apache.avro.Schema
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
+import uk.co.nesbit.network.api.Message
 
 class DhtRequest(
     val requestId: Long,
     val key: SecureHash,
     val replyPath: ReplyPath,
     val data: ByteArray?
-) : AvroConvertible {
+) : Message {
     constructor(dhtRequest: GenericRecord) :
             this(
                 dhtRequest.getTyped("requestId"),
@@ -37,7 +37,7 @@ class DhtRequest(
             )
             .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/dhtrequest.avsc"))
 
-        private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", dhtRequestSchema)
+        val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", dhtRequestSchema)
 
         fun deserialize(bytes: ByteArray): DhtRequest {
             val dhtRequestRecord = dhtRequestSchema.deserialize(bytes)

@@ -1,11 +1,6 @@
 description 'Crptographic helpers library'
 
 dependencies {
-    implementation "org.apache.avro:avro:$avro_version"
-
-    // RxJava: observable streams of events.
-    implementation "io.reactivex.rxjava2:rxjava:$rx_version"
-
     // Bouncy castle
     implementation "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
     implementation "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
@@ -15,7 +10,7 @@ dependencies {
 
     implementation "org.zeromq:curve25519-java:0.1.0"
 
-    implementation project(':avro')
+    api project(':avro')
 }
 
 idea {
