@@ -5,20 +5,17 @@ import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
-import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.network.api.Message
 
 class DhtResponse(
     val requestId: Long,
     val nearestPaths: List<ReplyPath>,
-    val directNeighbours: List<SphinxPublicIdentity>,
     val data: ByteArray?
 ) : Message {
     constructor(dhtResponse: GenericRecord) :
             this(
                 dhtResponse.getTyped("requestId"),
                 dhtResponse.getObjectArray("nearestPaths", ::ReplyPath),
-                dhtResponse.getObjectArray("directNeighbours", ::SphinxPublicIdentity),
                 dhtResponse.getTyped("data")
             )
 
@@ -27,8 +24,7 @@ class DhtResponse(
         val dhtResponseSchema: Schema = Schema.Parser()
             .addTypes(
                 mapOf(
-                    ReplyPath.replyPathSchema.fullName to ReplyPath.replyPathSchema,
-                    SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema
+                    ReplyPath.replyPathSchema.fullName to ReplyPath.replyPathSchema
                 )
             )
             .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/routing/dhtresponse.avsc"))
@@ -45,7 +41,6 @@ class DhtResponse(
         val dhtResponseRecord = GenericData.Record(dhtResponseSchema)
         dhtResponseRecord.putTyped("requestId", requestId)
         dhtResponseRecord.putObjectArray("nearestPaths", nearestPaths)
-        dhtResponseRecord.putObjectArray("directNeighbours", directNeighbours)
         dhtResponseRecord.putTyped("data", data)
         return dhtResponseRecord
     }
@@ -58,7 +53,6 @@ class DhtResponse(
 
         if (requestId != other.requestId) return false
         if (nearestPaths != other.nearestPaths) return false
-        if (directNeighbours != other.directNeighbours) return false
         if (data != null) {
             if (other.data == null) return false
             if (!data.contentEquals(other.data)) return false
@@ -70,7 +64,6 @@ class DhtResponse(
     override fun hashCode(): Int {
         var result = requestId.hashCode()
         result = 31 * result + nearestPaths.hashCode()
-        result = 31 * result + directNeighbours.hashCode()
         result = 31 * result + (data?.contentHashCode() ?: 0)
         return result
     }

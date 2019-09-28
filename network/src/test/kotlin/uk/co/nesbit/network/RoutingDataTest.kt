@@ -266,11 +266,11 @@ class RoutingDataTest {
         val idList2 = listOf(id4, id5, id6).map { keyService.getVersion(it).identity }
         val replyPath1 = ReplyPath(idList1)
         val replyPath2 = ReplyPath(idList2)
-        val dhtResponse1 = DhtResponse(123456L, listOf(replyPath1, replyPath2), idList1, null)
+        val dhtResponse1 = DhtResponse(123456L, listOf(replyPath1, replyPath2), null)
         val serializedResponse1 = dhtResponse1.serialize()
         val deserializedResponse1 = DhtResponse.deserialize(serializedResponse1)
         assertEquals(dhtResponse1, deserializedResponse1)
-        val dhtResponse2 = DhtResponse(123456L, listOf(replyPath1, replyPath2), idList1, "test bytes".toByteArray())
+        val dhtResponse2 = DhtResponse(123456L, listOf(replyPath1, replyPath2), "test bytes".toByteArray())
         val serializedResponse2 = dhtResponse2.serialize()
         val deserializedResponse2 = DhtResponse.deserialize(serializedResponse2)
         assertEquals(dhtResponse2, deserializedResponse2)

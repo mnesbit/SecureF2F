@@ -15,13 +15,6 @@
       }
     },
     {
-      "name": "directNeighbours",
-      "type": {
-        "type": "array",
-        "items": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
-      }
-    },
-    {
       "name": "data",
       "type": [
         "null",
