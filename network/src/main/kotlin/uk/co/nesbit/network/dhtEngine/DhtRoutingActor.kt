@@ -18,6 +18,8 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
+import java.time.Duration
+import java.time.Instant
 import java.util.*
 import kotlin.experimental.xor
 
@@ -39,8 +41,9 @@ class DhtRoutingActor(
             return createProps(javaClass.enclosingClass, keyService, neighbourLinkActor)
         }
 
-        const val LINK_CHECK_INTERVAL_MS = 1000L
+        const val LINK_CHECK_INTERVAL_MS = 10000L
         const val ALPHA = 5
+        const val K = 20
 
         @JvmStatic
         fun xorDistance(x: SecureHash, y: SecureHash): Int {
@@ -60,9 +63,10 @@ class DhtRoutingActor(
         }
     }
 
-    private class TimerTick
+    private class TimerTick(val first: Boolean)
 
     private data class RequestState(
+        val startTime: Instant,
         val parent: ClientRequestState?,
         val destination: SecureHash,
         val request: DhtRequest,
@@ -70,6 +74,7 @@ class DhtRoutingActor(
     )
 
     private data class ClientRequestState(
+        val startTime: Instant,
         val sender: ActorRef,
         val request: ClientDhtRequest,
         var outstanding: Int,
@@ -93,10 +98,10 @@ class DhtRoutingActor(
         super.preStart()
         //log().info("Starting DhtRoutingActor")
         neighbourLinkActor.tell(WatchRequest(), self)
-        timers.startPeriodicTimer(
-            "dhtLinkPoller",
-            TimerTick(),
-            LINK_CHECK_INTERVAL_MS.millis()
+        timers.startSingleTimer(
+            "dhtLinkStartup",
+            TimerTick(true),
+            keyService.random.nextInt(LINK_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -116,7 +121,7 @@ class DhtRoutingActor(
             .match(NeighbourUpdate::class.java, ::onNeighbourUpdate)
             .match(NeighbourReceivedMessage::class.java, ::onNeighbourReceivedMessage)
             .match(ClientDhtRequest::class.java, ::onClientRequest)
-            .match(TimerTick::class.java) { onTimer() }
+            .match(TimerTick::class.java, ::onTimer)
             .build()
 
     private fun addNeighbours(neighbours: List<VersionedIdentity>) {
@@ -151,26 +156,21 @@ class DhtRoutingActor(
         }
     }
 
-    private fun getNearestAlphaPaths(key: SecureHash, origin: SecureHash): MutableList<ReplyPath> {
-        val orderedAddresses = PriorityQueue<SecureHash>(ALPHA + 1, Comparator { x, y ->
-            val xorx = xorDistance(key, x)
-            val xory = xorDistance(key, y)
-            -xorx.compareTo(xory)
+    private fun getNearestPaths(key: SecureHash, origin: SecureHash, count: Int): MutableList<ReplyPath> {
+        val orderedAddresses = fullAddresses.keys.toMutableList()
+        orderedAddresses.sortWith(Comparator { x, y ->
+            val xorx = xorDistance(x, key)
+            val xory = xorDistance(y, key)
+            xorx.compareTo(xory)
         })
-        for (address in fullAddresses.values) {
-            if (address.id != origin) {
-                orderedAddresses.offer(address.id)
-                if (orderedAddresses.size > ALPHA) {
-                    orderedAddresses.poll()
-                }
-            }
-        }
         val nearestPaths = mutableListOf<ReplyPath>()
-        while (orderedAddresses.isNotEmpty()) {
-            val item = orderedAddresses.poll()
-            val path = findRandomRoute(origin, item)
+        for (address in orderedAddresses) {
+            val path = findRandomRoute(origin, address)
             if (path != null && path.isNotEmpty()) {
                 nearestPaths += ReplyPath(path)
+                if (nearestPaths.size >= count) {
+                    break
+                }
             }
         }
         return nearestPaths
@@ -193,7 +193,7 @@ class DhtRoutingActor(
             }
         }
         if (linkCount > 0) {
-            maxLinkAge = 3 * (ageTotal / linkCount)
+            maxLinkAge = (3 * ageTotal) / linkCount
         }
         for (link in forDelete) {
             val link1 = graph[link.first]
@@ -230,7 +230,12 @@ class DhtRoutingActor(
                 if (parent != null) {
                     --parent.outstanding
                     if (parent.outstanding == 0) {
-                        log().info("Send response timed out")
+                        log().info(
+                            "Send response timed out ${Duration.between(
+                                parent.startTime,
+                                Instant.now()
+                            ).toMillis()}"
+                        )
                         val originalRequest = request.value.request
                         val clientResponse =
                             ClientDhtResponse(originalRequest.requestId, originalRequest.key, originalRequest.data)
@@ -240,7 +245,7 @@ class DhtRoutingActor(
             }
         }
         if (requestCount > 0) {
-            maxRequestAge = 2 * (requestAgeTotal / requestCount)
+            maxRequestAge = (3 * requestAgeTotal) / requestCount
         }
     }
 
@@ -269,8 +274,9 @@ class DhtRoutingActor(
         val reversePath = (listOf(networkAddress!!.identity) + path.path).reversed().drop(1)
         val replyPath = ReplyPath(reversePath)
         val dhtRequest = DhtRequest(requestId++, key, replyPath, data)
-        val record = RequestState(parent, target, dhtRequest)
+        val record = RequestState(Instant.now(), parent, target, dhtRequest)
         outstandingRequests[dhtRequest.requestId] = record
+        log().info("send dht ${path.path.last().publicAddress} ${path.path.size} $key")
         send(path.path, dhtRequest)
     }
 
@@ -359,23 +365,31 @@ class DhtRoutingActor(
         }
     }
 
-    private fun onTimer() {
+    private fun onTimer(tick: TimerTick) {
+        if (tick.first) {
+            timers.startPeriodicTimer(
+                "dhtLinkPoller",
+                TimerTick(false),
+                LINK_CHECK_INTERVAL_MS.millis()
+            )
+        }
         if (networkAddress == null || fullAddresses.isEmpty()) {
             return
         }
         ageCache()
+        log().info("Total addresses ${fullAddresses.size}")
         if (outstandingRequests.isNotEmpty()) {
             return
         }
-        val nearestPaths = getNearestAlphaPaths(networkAddress!!.id, networkAddress!!.id)
+        val nearestPaths = getNearestPaths(networkAddress!!.id, networkAddress!!.id, ALPHA)
         for (path in nearestPaths) {
             sendDhtProbe(null, path, networkAddress!!.id, networkAddress!!.serialize())
         }
-        val randomAddress = getRandomAddress()
-        val randomPath = findRandomRoute(networkAddress!!.id, randomAddress.id)
-        if (randomPath != null && randomPath.isNotEmpty()) {
-            sendDhtProbe(null, ReplyPath(randomPath), networkAddress!!.id, networkAddress!!.serialize())
-        }
+//        val randomAddress = getRandomAddress()
+//        val randomPath = findRandomRoute(networkAddress!!.id, randomAddress.id)
+//        if (randomPath != null && randomPath.isNotEmpty()) {
+//            sendDhtProbe(null, ReplyPath(randomPath), networkAddress!!.id, networkAddress!!.serialize())
+//        }
     }
 
     private fun onNeighbourUpdate(neighbours: NeighbourUpdate) {
@@ -446,14 +460,14 @@ class DhtRoutingActor(
             data[request.key] = request.data
         }
         val replyAddress = request.replyPath.path.last()
-        val nearestPaths = getNearestAlphaPaths(request.key, replyAddress.id)
+        val nearestPaths = getNearestPaths(request.key, replyAddress.id, K)
         val response = DhtResponse(request.requestId, nearestPaths, data[request.key])
         send(request.replyPath.path, response)
     }
 
     private fun processResponse(response: DhtResponse) {
         val originalRequest = outstandingRequests.remove(response.requestId) ?: return
-        //log().info("got response aged ${originalRequest.age}")
+        log().info("got response ${Duration.between(originalRequest.startTime, Instant.now()).toMillis()}")
         val neigbourSet = currentNeighbours.map { it.identity }.toSet()
         for (path in response.nearestPaths) {
             if (path.path.isEmpty()) {
@@ -472,14 +486,17 @@ class DhtRoutingActor(
         for (path in response.nearestPaths) {
             insertPath(networkAddress!!.id, path)
         }
-        log().info("Total addresses ${fullAddresses.size}")
+        //log().info("Total addresses ${fullAddresses.size}")
         val clientRequestState = originalRequest.parent
         if (clientRequestState != null && clientRequests.contains(clientRequestState)) {
             --clientRequestState.outstanding
             val originalClientRequest = clientRequestState.request
             if (originalClientRequest.data == null && response.data != null) {
                 log().info(
-                    "send response got data ${originalClientRequest.requestId} ${originalClientRequest.key} ${response.data.toString(
+                    "send response got data ${Duration.between(
+                        clientRequestState.startTime,
+                        Instant.now()
+                    ).toMillis()} ${originalClientRequest.requestId} ${originalClientRequest.key} ${response.data.toString(
                         Charsets.UTF_8
                     )}"
                 )
@@ -491,7 +508,7 @@ class DhtRoutingActor(
                 clientRequestState.sender.tell(clientResponse, self)
                 clientRequests.remove(clientRequestState)
             } else {
-                val newPaths = getNearestAlphaPaths(originalClientRequest.key, networkAddress!!.id)
+                val newPaths = getNearestPaths(originalClientRequest.key, networkAddress!!.id, K)
                 var bestDistance = clientRequestState.bestDistance
                 for (newPath in newPaths) {
                     val target = newPath.path.last()
@@ -506,9 +523,19 @@ class DhtRoutingActor(
                 clientRequestState.bestDistance = bestDistance
                 if (clientRequestState.outstanding == 0) {
                     if (originalClientRequest.data == null) {
-                        log().info("send response no better path ${originalClientRequest.requestId} ${originalClientRequest.key}")
+                        log().info(
+                            "send response ${Duration.between(
+                                clientRequestState.startTime,
+                                Instant.now()
+                            ).toMillis()} no better path ${originalClientRequest.requestId} ${originalClientRequest.key}"
+                        )
                     } else {
-                        log().info("send response done ${originalClientRequest.requestId} ${originalClientRequest.key}")
+                        log().info(
+                            "send response ${Duration.between(
+                                clientRequestState.startTime,
+                                Instant.now()
+                            ).toMillis()} done ${originalClientRequest.requestId} ${originalClientRequest.key}"
+                        )
                     }
                     val clientResponse = ClientDhtResponse(
                         originalClientRequest.requestId,
@@ -530,7 +557,7 @@ class DhtRoutingActor(
             sender.tell(reply, self)
             return
         }
-        val nearestPaths = getNearestAlphaPaths(request.key, networkAddress!!.id)
+        val nearestPaths = getNearestPaths(request.key, networkAddress!!.id, ALPHA)
         if (nearestPaths.isEmpty()) {
             log().info("Send response no nearest neighbour")
             val reply = ClientDhtResponse(request.requestId, request.key, null)
@@ -539,7 +566,13 @@ class DhtRoutingActor(
         }
         val nearestTarget = nearestPaths.first().path.last().id
         val clientRequestState =
-            ClientRequestState(sender, request, nearestPaths.size, xorDistance(nearestTarget, request.key))
+            ClientRequestState(
+                Instant.now(),
+                sender,
+                request,
+                nearestPaths.size,
+                xorDistance(nearestTarget, request.key)
+            )
         clientRequests += clientRequestState
         for (path in nearestPaths) {
             sendDhtProbe(clientRequestState, path, request.key, request.data)

@@ -24,7 +24,7 @@ fun main(args: Array<String>) {
     val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
-    println("Network diameter: ${diameter(simNetwork)}")
+    //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<DhtNode>()
     val conf = ConfigFactory.load()
     val actorSystem = ActorSystem.create("Akka", conf)

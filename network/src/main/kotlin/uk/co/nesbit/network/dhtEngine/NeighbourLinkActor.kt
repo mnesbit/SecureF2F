@@ -37,10 +37,10 @@ class NeighbourLinkActor(
             return createProps(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
         }
 
-        const val LINK_CHECK_INTERVAL_MS = 10000L
+        const val LINK_CHECK_INTERVAL_MS = 60000L
     }
 
-    private class CheckStaticLinks
+    private class CheckStaticLinks(val first: Boolean)
 
     private val networkId: SecureHash by lazy {
         keyService.generateNetworkID(networkConfig.networkId.toString())
@@ -56,10 +56,10 @@ class NeighbourLinkActor(
         super.preStart()
         //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
-        timers.startPeriodicTimer(
-            "staticLinkPoller",
-            CheckStaticLinks(),
-            LINK_CHECK_INTERVAL_MS.millis()
+        timers.startSingleTimer(
+            "staticLinkStartup",
+            CheckStaticLinks(true),
+            keyService.random.nextInt(LINK_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -76,7 +76,7 @@ class NeighbourLinkActor(
     override fun createReceive(): Receive =
         ReceiveBuilder()
             .match(WatchRequest::class.java) { onWatchRequest() }
-            .match(CheckStaticLinks::class.java) { onCheckStaticLinks() }
+            .match(CheckStaticLinks::class.java, ::onCheckStaticLinks)
             .match(LinkInfo::class.java, ::onLinkStatusChange)
             .match(LinkReceivedMessage::class.java, ::onLinkReceivedMessage)
             .match(NeighbourSendMessage::class.java, ::onNeighbourSendMessage)
@@ -90,7 +90,14 @@ class NeighbourLinkActor(
         }
     }
 
-    private fun onCheckStaticLinks() {
+    private fun onCheckStaticLinks(check: CheckStaticLinks) {
+        if (check.first) {
+            timers.startPeriodicTimer(
+                "staticLinkPoller",
+                CheckStaticLinks(false),
+                LINK_CHECK_INTERVAL_MS.millis()
+            )
+        }
         for (expectedLink in networkConfig.staticRoutes) {
             if (!staticLinkStatus.containsKey(expectedLink)) {
                 log().info("open static link to $expectedLink")
