@@ -3,10 +3,10 @@ buildscript {
         akkanet_version = '1.0.0-SNAPSHOT'
         junit_version = '4.12'
         junit5_version = '5.1.0'
-        rx_version = '2.2.12'
-        bouncycastle_version = '1.60'
+        rx_version = '2.2.13'
+        bouncycastle_version = '1.64'
         eddsa_version = '0.3.0'
-        avro_version = '1.9.0'
+        avro_version = '1.9.1'
         akka_version = '2.5.24'
     }
 
