@@ -21,7 +21,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 5
-    val N = 10000
+    val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     //println("Network diameter: ${diameter(simNetwork)}")
@@ -65,7 +65,7 @@ fun main(args: Array<String>) {
     val rand = Random()
     var test = 1
     var requestId = rand.nextLong()
-    val timeout = Timeout.create(Duration.ofSeconds(10L))
+    val timeout = Timeout.create(Duration.ofSeconds(80L))
     var succeeded = 0
     Thread.sleep(20000L)
     while (true) {
