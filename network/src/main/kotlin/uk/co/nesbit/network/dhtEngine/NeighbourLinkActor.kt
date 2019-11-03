@@ -37,7 +37,7 @@ class NeighbourLinkActor(
             return createProps(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
         }
 
-        const val LINK_CHECK_INTERVAL_MS = 60000L
+        const val LINK_CHECK_INTERVAL_MS = 5000L
     }
 
     private class CheckStaticLinks(val first: Boolean)

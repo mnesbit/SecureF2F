@@ -18,8 +18,6 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.time.Duration
-import java.time.Instant
 import java.util.*
 import kotlin.experimental.xor
 
@@ -65,34 +63,14 @@ class DhtRoutingActor(
 
     private class TimerTick(val first: Boolean)
 
-    private data class RequestState(
-        val startTime: Instant,
-        val parent: ClientRequestState?,
-        val destination: SecureHash,
-        val request: DhtRequest,
-        var age: Int = 0
-    )
-
-    private data class ClientRequestState(
-        val startTime: Instant,
-        val sender: ActorRef,
-        val request: ClientDhtRequest,
-        var outstanding: Int,
-        var bestDistance: Int
-    )
-
     private val owners = mutableSetOf<ActorRef>()
     private val sphinxEncoder = Sphinx(keyService.random, 10, 1024)
     private val fullAddresses = mutableMapOf<SecureHash, SphinxPublicIdentity>()
-    private val graph = mutableMapOf<SecureHash, MutableMap<SecureHash, Int>>()
-    private val outstandingRequests = mutableMapOf<Long, RequestState>()
-    private val clientRequests = mutableListOf<ClientRequestState>()
+    private val graph = mutableMapOf<SecureHash, MutableSet<SecureHash>>()
     private val data = mutableMapOf<SecureHash, ByteArray>()
     private var networkAddress: VersionedIdentity? = null
     private var currentNeighbours = emptyList<VersionedIdentity>()
     private var requestId = keyService.random.nextLong()
-    private var maxLinkAge = Int.MAX_VALUE
-    private var maxRequestAge = Int.MAX_VALUE
 
     override fun preStart() {
         super.preStart()
@@ -125,33 +103,33 @@ class DhtRoutingActor(
             .build()
 
     private fun addNeighbours(neighbours: List<VersionedIdentity>) {
-        val neighbourLinks = graph.getOrPut(networkAddress!!.id) { mutableMapOf() }
+        val neighbourLinks = graph.getOrPut(networkAddress!!.id) { mutableSetOf() }
         for (neighbour in neighbours) {
             fullAddresses[neighbour.id] = neighbour.identity
-            neighbourLinks[neighbour.id] = 0
-            val links = graph.getOrPut(neighbour.id) { mutableMapOf() }
-            links[networkAddress!!.id] = 0
+            neighbourLinks += neighbour.id
+            val links = graph.getOrPut(neighbour.id) { mutableSetOf() }
+            links += networkAddress!!.id
         }
     }
 
-    private fun removeAddress(neighbour: VersionedIdentity) {
-        val oldLinks = graph.remove(neighbour.id)
+    private fun removeAddress(neighbour: SecureHash) {
+        val oldLinks = graph.remove(neighbour)
         if (oldLinks != null) {
-            for (link in oldLinks.keys) {
-                graph[link]?.remove(neighbour.id)
+            for (link in oldLinks) {
+                graph[link]?.remove(neighbour)
             }
         }
-        fullAddresses.remove(neighbour.id)
+        fullAddresses.remove(neighbour)
     }
 
     private fun insertPath(origin: SecureHash, path: ReplyPath) {
-        var prevLinks = graph.getOrPut(origin) { mutableMapOf() }
+        var prevLinks = graph.getOrPut(origin) { mutableSetOf() }
         var prevAddress = origin
         for (address in path.path) {
             fullAddresses[address.id] = address
-            prevLinks[address.id] = 0
-            prevLinks = graph.getOrPut(address.id) { mutableMapOf() }
-            prevLinks[prevAddress] = 0
+            prevLinks.add(address.id)
+            prevLinks = graph.getOrPut(address.id) { mutableSetOf() }
+            prevLinks.add(prevAddress)
             prevAddress = address.id
         }
     }
@@ -176,79 +154,6 @@ class DhtRoutingActor(
         return nearestPaths
     }
 
-    private fun ageCache() {
-        if (networkAddress == null) return
-        val forDelete = mutableListOf<Pair<SecureHash, SecureHash>>()
-        var ageTotal = 0
-        var linkCount = 0
-        for (links in graph) {
-            for (link in links.value) {
-                val age = link.value + 1
-                ageTotal += age
-                linkCount++
-                link.setValue(age)
-                if (age >= maxLinkAge) {
-                    forDelete += Pair(links.key, link.key)
-                }
-            }
-        }
-        if (linkCount > 0) {
-            maxLinkAge = (3 * ageTotal) / linkCount
-        }
-        for (link in forDelete) {
-            val link1 = graph[link.first]
-            if (link1 != null) {
-                link1.remove(link.second)
-                if (link1.isEmpty()) {
-                    graph.remove(link.first)
-                    fullAddresses.remove(link.first)
-                }
-            }
-            val link2 = graph[link.second]
-            if (link2 != null) {
-                link2.remove(link.first)
-                if (link2.isEmpty()) {
-                    graph.remove(link.second)
-                    fullAddresses.remove(link.second)
-                }
-            }
-
-        }
-        addNeighbours(currentNeighbours)
-        val requestItr = outstandingRequests.iterator()
-        var requestAgeTotal = 0
-        var requestCount = 0
-        while (requestItr.hasNext()) {
-            val request = requestItr.next()
-            val age = request.value.age + 1
-            requestAgeTotal += age
-            requestCount++
-            request.value.age = age
-            if (age > maxRequestAge) {
-                requestItr.remove()
-                val parent = request.value.parent
-                if (parent != null) {
-                    --parent.outstanding
-                    if (parent.outstanding == 0) {
-                        log().info(
-                            "Send response timed out ${Duration.between(
-                                parent.startTime,
-                                Instant.now()
-                            ).toMillis()}"
-                        )
-                        val originalRequest = request.value.request
-                        val clientResponse =
-                            ClientDhtResponse(originalRequest.requestId, originalRequest.key, originalRequest.data)
-                        parent.sender.tell(clientResponse, self)
-                    }
-                }
-            }
-        }
-        if (requestCount > 0) {
-            maxRequestAge = (3 * requestAgeTotal) / requestCount
-        }
-    }
-
     private fun send(route: List<SphinxPublicIdentity>, msg: Message) {
         val target = route.last()
         if (target.id == networkAddress!!.id) { // reflect self addressed message
@@ -262,22 +167,6 @@ class DhtRoutingActor(
 
         val sendableMessage = sphinxEncoder.makeMessage(route, routedMessage.serialize())
         neighbourLinkActor.tell(NeighbourSendMessage(route.first(), sendableMessage.messageBytes), self)
-    }
-
-    private fun sendDhtProbe(
-        parent: ClientRequestState?,
-        path: ReplyPath,
-        key: SecureHash,
-        data: ByteArray?
-    ) {
-        val target = path.path.last().id
-        val reversePath = (listOf(networkAddress!!.identity) + path.path).reversed().drop(1)
-        val replyPath = ReplyPath(reversePath)
-        val dhtRequest = DhtRequest(requestId++, key, replyPath, data)
-        val record = RequestState(Instant.now(), parent, target, dhtRequest)
-        outstandingRequests[dhtRequest.requestId] = record
-        log().info("send dht ${path.path.last().publicAddress} ${path.path.size} $key")
-        send(path.path, dhtRequest)
     }
 
     private fun getRandomAddress(): SphinxPublicIdentity {
@@ -309,7 +198,7 @@ class DhtRoutingActor(
         val randomStack = Array(maxDepth) { IntArray(0) }
         val path = Array(maxDepth) { emptyList<SecureHash>() }
         val neighbourRoutes = graph[origin] ?: return null
-        path[depth] = neighbourRoutes.map { it.key }
+        path[depth] = neighbourRoutes.toList()
         if (path[depth].isEmpty()) {
             return null
         }
@@ -326,7 +215,7 @@ class DhtRoutingActor(
                 }
                 return output
             }
-            val nextRoute = graph[nextNode]?.map { it.key }
+            val nextRoute = graph[nextNode]?.toList()
             var inPrefix = false
             if (nextRoute != null) {
                 for (i in 0..depth) {
@@ -376,27 +265,14 @@ class DhtRoutingActor(
         if (networkAddress == null || fullAddresses.isEmpty()) {
             return
         }
-        ageCache()
         log().info("Total addresses ${fullAddresses.size}")
-        if (outstandingRequests.isNotEmpty()) {
-            return
-        }
-        val nearestPaths = getNearestPaths(networkAddress!!.id, networkAddress!!.id, ALPHA)
-        for (path in nearestPaths) {
-            sendDhtProbe(null, path, networkAddress!!.id, networkAddress!!.serialize())
-        }
-//        val randomAddress = getRandomAddress()
-//        val randomPath = findRandomRoute(networkAddress!!.id, randomAddress.id)
-//        if (randomPath != null && randomPath.isNotEmpty()) {
-//            sendDhtProbe(null, ReplyPath(randomPath), networkAddress!!.id, networkAddress!!.serialize())
-//        }
     }
 
     private fun onNeighbourUpdate(neighbours: NeighbourUpdate) {
         //log().info("onNeighbourUpdate ${neighbours.addresses.map { it.identity.publicAddress }}")
         val oldNeighbours = currentNeighbours
         for (neighbour in oldNeighbours) {
-            removeAddress(neighbour)
+            removeAddress(neighbour.id)
         }
         networkAddress = neighbours.localId
         fullAddresses[neighbours.localId.id] = neighbours.localId.identity
@@ -454,128 +330,14 @@ class DhtRoutingActor(
     }
 
     private fun processRequest(request: DhtRequest) {
-        //log().info("got request")
-        insertPath(networkAddress!!.id, request.replyPath)
-        if (request.data != null) {
-            data[request.key] = request.data
-        }
-        val replyAddress = request.replyPath.path.last()
-        val nearestPaths = getNearestPaths(request.key, replyAddress.id, K)
-        val response = DhtResponse(request.requestId, nearestPaths, data[request.key])
-        send(request.replyPath.path, response)
+
     }
 
     private fun processResponse(response: DhtResponse) {
-        val originalRequest = outstandingRequests.remove(response.requestId) ?: return
-        log().info("got response ${Duration.between(originalRequest.startTime, Instant.now()).toMillis()}")
-        val neigbourSet = currentNeighbours.map { it.identity }.toSet()
-        for (path in response.nearestPaths) {
-            if (path.path.isEmpty()) {
-                log().error("Bad response contains empty path")
-                return
-            }
-            if (path.path.contains(networkAddress!!.identity)) {
-                log().error("Bad response contains our address")
-                return
-            }
-            if (path.path.first() !in neigbourSet) {
-                log().error("Bad response path doesn't start with a valid local neighbour")
-                return
-            }
-        }
-        for (path in response.nearestPaths) {
-            insertPath(networkAddress!!.id, path)
-        }
-        //log().info("Total addresses ${fullAddresses.size}")
-        val clientRequestState = originalRequest.parent
-        if (clientRequestState != null && clientRequests.contains(clientRequestState)) {
-            --clientRequestState.outstanding
-            val originalClientRequest = clientRequestState.request
-            if (originalClientRequest.data == null && response.data != null) {
-                log().info(
-                    "send response got data ${Duration.between(
-                        clientRequestState.startTime,
-                        Instant.now()
-                    ).toMillis()} ${originalClientRequest.requestId} ${originalClientRequest.key} ${response.data.toString(
-                        Charsets.UTF_8
-                    )}"
-                )
-                val clientResponse = ClientDhtResponse(
-                    originalClientRequest.requestId,
-                    originalClientRequest.key,
-                    response.data
-                )
-                clientRequestState.sender.tell(clientResponse, self)
-                clientRequests.remove(clientRequestState)
-            } else {
-                val newPaths = getNearestPaths(originalClientRequest.key, networkAddress!!.id, K)
-                var bestDistance = clientRequestState.bestDistance
-                for (newPath in newPaths) {
-                    val target = newPath.path.last()
-                    val distance = xorDistance(target.id, originalClientRequest.key)
-                    if (distance < clientRequestState.bestDistance) {
-                        log().info("Able to query nearer: $distance requestId: ${originalClientRequest.requestId} key: ${originalClientRequest.key}")
-                        bestDistance = distance
-                        ++clientRequestState.outstanding
-                        sendDhtProbe(clientRequestState, newPath, originalClientRequest.key, originalClientRequest.data)
-                    }
-                }
-                clientRequestState.bestDistance = bestDistance
-                if (clientRequestState.outstanding == 0) {
-                    if (originalClientRequest.data == null) {
-                        log().info(
-                            "send response ${Duration.between(
-                                clientRequestState.startTime,
-                                Instant.now()
-                            ).toMillis()} no better path ${originalClientRequest.requestId} ${originalClientRequest.key}"
-                        )
-                    } else {
-                        log().info(
-                            "send response ${Duration.between(
-                                clientRequestState.startTime,
-                                Instant.now()
-                            ).toMillis()} done ${originalClientRequest.requestId} ${originalClientRequest.key}"
-                        )
-                    }
-                    val clientResponse = ClientDhtResponse(
-                        originalClientRequest.requestId,
-                        originalClientRequest.key,
-                        response.data
-                    )
-                    clientRequestState.sender.tell(clientResponse, self)
-                    clientRequests.remove(clientRequestState)
-                }
-            }
-        }
+
     }
 
     private fun onClientRequest(request: ClientDhtRequest) {
-        log().info("onClientRequest ${request.requestId} ${request.key} ${request.data?.toString(Charsets.UTF_8)}")
-        if (fullAddresses.isEmpty()) {
-            log().info("Send response not ready")
-            val reply = ClientDhtResponse(request.requestId, request.key, null)
-            sender.tell(reply, self)
-            return
-        }
-        val nearestPaths = getNearestPaths(request.key, networkAddress!!.id, ALPHA)
-        if (nearestPaths.isEmpty()) {
-            log().info("Send response no nearest neighbour")
-            val reply = ClientDhtResponse(request.requestId, request.key, null)
-            sender.tell(reply, self)
-            return
-        }
-        val nearestTarget = nearestPaths.first().path.last().id
-        val clientRequestState =
-            ClientRequestState(
-                Instant.now(),
-                sender,
-                request,
-                nearestPaths.size,
-                xorDistance(nearestTarget, request.key)
-            )
-        clientRequests += clientRequestState
-        for (path in nearestPaths) {
-            sendDhtProbe(clientRequestState, path, request.key, request.data)
-        }
+
     }
 }
