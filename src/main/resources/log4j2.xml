@@ -6,13 +6,10 @@
                 <Pattern>[%-5level] %X{akkaTimestamp} [%t] %c{2} %X{akkaSource} - %msg%n</Pattern>
             </PatternLayout>
         </File>
-        <Async name="Async">
-            <AppenderRef ref="FileLogger"/>
-        </Async>
     </Appenders>
     <Loggers>
         <Root level="info">
-            <AppenderRef ref="Async"/>
+            <AppenderRef ref="FileLogger"/>
         </Root>
     </Loggers>
 </Configuration>

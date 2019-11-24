@@ -4,6 +4,8 @@ import akka.actor.AbstractActorWithTimers
 import akka.actor.Props
 import akka.event.Logging
 import akka.event.LoggingAdapter
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.javaapi.CollectionConverters
@@ -20,39 +22,36 @@ abstract class AbstractActorWithLoggingAndTimers() : AbstractActorWithTimers() {
     private var _log: LoggingAdapter? = null
     protected fun log(): LoggingAdapter {
         if (_log == null) {
-            _log = Logging.getLogger(getContext().getSystem(), this)
-//            _log = object : LoggingAdapter {
-//                val label = self.toString()
-//
-//                override fun isErrorEnabled(): Boolean = true
-//
-//                override fun isWarningEnabled(): Boolean = true
-//
-//                override fun isInfoEnabled(): Boolean = true
-//
-//                override fun isDebugEnabled(): Boolean = false
-//
-//                override fun notifyError(message: String?) {
-//                    println("$label $message")
-//                }
-//
-//                override fun notifyError(cause: Throwable?, message: String?) {
-//                    println("$label $message")
-//                }
-//
-//                override fun notifyWarning(message: String?) {
-//                    println("$label $message")
-//                }
-//
-//                override fun notifyInfo(message: String?) {
-//                    println("$label $message")
-//                }
-//
-//                override fun notifyDebug(message: String?) {
-//                    println("$label $message")
-//                }
-//
-//            }
+            _log = object : LoggingAdapter {
+                private var logger: Logger = LoggerFactory.getLogger(self.toString())
+                override fun isErrorEnabled(): Boolean = logger.isErrorEnabled
+
+                override fun isWarningEnabled(): Boolean = logger.isWarnEnabled
+
+                override fun isInfoEnabled(): Boolean = logger.isInfoEnabled
+
+                override fun isDebugEnabled(): Boolean = logger.isDebugEnabled
+
+                override fun notifyError(message: String?) {
+                    logger.error(message)
+                }
+
+                override fun notifyError(cause: Throwable?, message: String?) {
+                    logger.error(message, cause)
+                }
+
+                override fun notifyWarning(message: String?) {
+                    logger.warn(message)
+                }
+
+                override fun notifyInfo(message: String?) {
+                    logger.info(message)
+                }
+
+                override fun notifyDebug(message: String?) {
+                    logger.debug(message)
+                }
+            }
         }
         return _log!!
     }
