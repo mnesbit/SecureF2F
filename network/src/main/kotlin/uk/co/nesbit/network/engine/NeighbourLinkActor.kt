@@ -37,7 +37,7 @@ class NeighbourLinkActor(
 
     private class CheckStaticLinks
 
-    private val networkAddress: SphinxPublicIdentity by lazy {
+    private val networkAddress: SphinxPublicIdentity by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val sphinxId = keyService.getVersion(keyService.generateNetworkID(networkConfig.networkId.toString()))
         sphinxId.identity
     }

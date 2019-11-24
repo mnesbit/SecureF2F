@@ -46,6 +46,12 @@ class SimpleHashChainPrivate private constructor(private val chainKey: SecretKey
     override val secureVersion: SecureVersion
         get() = getSecureVersion(version)
 
-    override val public: HashChainPublic by lazy { HashChainPublic(chainKey, targetHash, maxChainLength) }
+    override val public: HashChainPublic by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        HashChainPublic(
+            chainKey,
+            targetHash,
+            maxChainLength
+        )
+    }
 
 }

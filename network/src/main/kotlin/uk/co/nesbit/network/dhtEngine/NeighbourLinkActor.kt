@@ -42,7 +42,7 @@ class NeighbourLinkActor(
 
     private class CheckStaticLinks(val first: Boolean)
 
-    private val networkId: SecureHash by lazy {
+    private val networkId: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
         keyService.generateNetworkID(networkConfig.networkId.toString())
     }
 
