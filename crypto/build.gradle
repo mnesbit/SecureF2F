@@ -10,6 +10,8 @@ dependencies {
 
     implementation "org.zeromq:curve25519-java:0.1.0"
 
+    implementation "com.github.ben-manes.caffeine:caffeine:${caffeine_version}"
+
     api project(':avro')
 }
 

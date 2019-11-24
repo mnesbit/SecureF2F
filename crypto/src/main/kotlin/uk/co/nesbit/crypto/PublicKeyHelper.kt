@@ -1,5 +1,7 @@
 package uk.co.nesbit.crypto
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
 import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
@@ -19,8 +21,8 @@ object PublicKeyHelper {
         .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
-    private const val MAX_CACHE = 10000
-    private val keyCache = LRUCache<ByteBuffer, PublicKey>(MAX_CACHE)
+    private const val MAX_CACHE = 20000L
+    private val keyCache: Cache<ByteBuffer, PublicKey> = Caffeine.newBuilder().maximumSize(MAX_CACHE).build()
 
     fun deserialize(bytes: ByteArray): PublicKey {
         val keyRecord = publicKeySchema.deserialize(bytes)
@@ -38,28 +40,22 @@ object PublicKeyHelper {
                 val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
                 cacheKey.put(publicKeyBytes)
                 cacheKey.flip()
-                val cached = keyCache[cacheKey]
-                if (cached != null) {
-                    return cached
+                val pk = keyCache.get(cacheKey) {
+                    EdDSAPublicKey(keySpec)
                 }
-                val pk = EdDSAPublicKey(keySpec)
-                keyCache[cacheKey] = pk
-                pk
+                pk!!
             }
             "EC", "RSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
                 cacheKey.put(publicKeyBytes)
                 cacheKey.flip()
-                val cached = keyCache[cacheKey]
-                if (cached != null) {
-                    return cached
+                val pk = keyCache.get(cacheKey) {
+                    ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
+                        generatePublic(keySpec)
+                    }
                 }
-                val pk = ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
-                    generatePublic(keySpec)
-                }
-                keyCache[cacheKey] = pk
-                pk
+                pk!!
             }
             "DH" -> { // don't cache DH keys as they change a lot
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
