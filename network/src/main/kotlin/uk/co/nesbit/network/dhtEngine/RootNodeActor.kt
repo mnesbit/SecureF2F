@@ -20,7 +20,9 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     }
 
     private val physicalNetworkActor: ActorRef =
-        context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
+        context.actorOf(
+            PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"), "net"
+        )
 
     private val neighbourLinkActor: ActorRef =
         context.actorOf(

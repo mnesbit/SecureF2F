@@ -14,7 +14,10 @@ import java.security.spec.X509EncodedKeySpec
 
 object PublicKeyHelper {
     init {
-        AvroTypeHelpers.registerHelper(PublicKey::class.java, { x -> x.toGenericRecord() }, { y -> PublicKeyHelper.fromGenericRecord(y) })
+        AvroTypeHelpers.registerHelper(
+            PublicKey::class.java,
+            { x -> x.toGenericRecord() },
+            { y -> fromGenericRecord(y) })
     }
 
     val publicKeySchema: Schema = Schema.Parser()

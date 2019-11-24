@@ -2,7 +2,6 @@ package uk.co.nesbit.network.util
 
 import akka.actor.AbstractActorWithTimers
 import akka.actor.Props
-import akka.event.Logging
 import akka.event.LoggingAdapter
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
