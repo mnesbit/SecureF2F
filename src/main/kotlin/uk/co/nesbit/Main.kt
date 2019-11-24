@@ -21,7 +21,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 5
-    val N = 1000
+    val N = 10000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     //println("Network diameter: ${diameter(simNetwork)}")
@@ -35,6 +35,53 @@ fun main(args: Array<String>) {
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
         simNodes += DhtNode(actorSystem, config)
     }
+//    val timeout = Timeout.create(Duration.ofSeconds(80L))
+//    val ids = mutableListOf<SecureHash?>()
+//    val best = mutableListOf<SecureHash?>()
+//    for(i in 0 until N) {
+//        val target = actorSystem.actorSelection("akka://Akka/user/${i+1}/routing")
+//        val queryFut = Patterns.ask(target, GetInfoRequest(), timeout)
+//        try {
+//            val infoResponse = Await.result(queryFut, timeout.duration()) as GetInfoResponse
+//            ids += infoResponse.address?.id
+//            if(infoResponse.kpaths.isNotEmpty()) {
+//                best += infoResponse.kpaths.first().path.last().id
+//            } else {
+//                best.add(null)
+//            }
+//        } catch (ex: TimeoutException) {
+//            println("query ${i+1} timed out")
+//        }
+//    }
+//    val actualBest = mutableMapOf<Int, SecureHash>()
+//    val diffs = mutableMapOf<Int, Int>()
+//    for(i in 0 until N) {
+//        val id = ids[i]
+//        if(id == null) continue
+//        var bestDist = 257
+//        var bestHash = SecureHash.EMPTY_HASH
+//        for(id2 in ids) {
+//            if(id2 == null || id == id2) continue
+//            val actDist = DhtRoutingActor.xorDistance(id, id2)
+//            if(actDist <= bestDist) {
+//                bestDist = actDist
+//                bestHash = id2
+//            }
+//        }
+//        actualBest[i] = bestHash
+//        val foundBest = best[i]
+//        if(foundBest == null) {
+//            println("no nearest for $i")
+//        } else {
+//            val realDist = DhtRoutingActor.xorDistance(id, foundBest)
+//            val diff = realDist - bestDist
+//            println("$i best real neighbour dist $bestDist actual $realDist diff $diff")
+//            val diffCount = diffs[diff] ?: 0
+//            diffs[diff] = diffCount + 1
+//        }
+//    }
+//    println("Diffs $diffs")
+//    actorSystem.terminate().value()
 //        var stabilised = false
 //        var round = 0
 //
@@ -65,9 +112,9 @@ fun main(args: Array<String>) {
     val rand = Random()
     var test = 1
     var requestId = rand.nextLong()
-    val timeout = Timeout.create(Duration.ofSeconds(80L))
+    val timeout = Timeout.create(Duration.ofSeconds(60L))
     var succeeded = 0
-    Thread.sleep(20000L)
+    Thread.sleep(60000L)
     while (true) {
         Thread.sleep(1000L)
         val randomNodePut = 1 + rand.nextInt(N)
