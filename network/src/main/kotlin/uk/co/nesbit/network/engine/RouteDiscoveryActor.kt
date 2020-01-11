@@ -49,7 +49,7 @@ class RouteDiscoveryActor(private val keyService: KeyService, private val neighb
         super.preStart()
         //log().info("Starting RouteDiscoveryActor")
         neighbourLinkActor.tell(WatchRequest(), self)
-        timers.startPeriodicTimer(
+        timers.startTimerAtFixedRate(
             "routeTick",
             Tick(),
             ROUTE_DISCOVERY_INTERVAL_MS.millis()

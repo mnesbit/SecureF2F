@@ -53,7 +53,7 @@ class NeighbourLinkActor(
         super.preStart()
         //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
-        timers.startPeriodicTimer(
+        timers.startTimerAtFixedRate(
             "staticLinkPoller",
             CheckStaticLinks(),
             LINK_CHECK_INTERVAL_MS.millis()

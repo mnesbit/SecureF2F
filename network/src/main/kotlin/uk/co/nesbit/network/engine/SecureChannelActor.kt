@@ -193,7 +193,7 @@ class SecureChannelActor(
             state = ChannelState.WAIT_FOR_INITIATOR_NONCE
         }
         updateTimeout()
-        timers.startPeriodicTimer("linkHeartbeat", Tick(), HEARTBEAT_INTERVAL_MS.millis())
+        timers.startTimerAtFixedRate("linkHeartbeat", Tick(), HEARTBEAT_INTERVAL_MS.millis())
     }
 
     private fun processInitiatorParams(msg: LinkReceivedMessage) {

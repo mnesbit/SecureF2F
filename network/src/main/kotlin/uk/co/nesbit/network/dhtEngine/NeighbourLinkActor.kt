@@ -92,7 +92,7 @@ class NeighbourLinkActor(
 
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
         if (check.first) {
-            timers.startPeriodicTimer(
+            timers.startTimerAtFixedRate(
                 "staticLinkPoller",
                 CheckStaticLinks(false),
                 LINK_CHECK_INTERVAL_MS.millis()
