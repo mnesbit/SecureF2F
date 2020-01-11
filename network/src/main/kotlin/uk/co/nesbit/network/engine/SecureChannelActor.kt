@@ -21,6 +21,7 @@ import uk.co.nesbit.network.api.routing.RouteEntry
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.security.KeyPair
 import java.time.Clock
@@ -50,7 +51,7 @@ class SecureChannelActor(
             networkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
-            return Props.create(javaClass.enclosingClass, linkId, fromId, initiator, keyService, networkActor)
+            return createProps(javaClass.enclosingClass, linkId, fromId, initiator, keyService, networkActor)
         }
 
         const val HEARTBEAT_INTERVAL_MS = 20000L
@@ -192,7 +193,7 @@ class SecureChannelActor(
             state = ChannelState.WAIT_FOR_INITIATOR_NONCE
         }
         updateTimeout()
-        timers.startPeriodicTimer("linkHeartbeat", Tick(), HEARTBEAT_INTERVAL_MS.millis())
+        timers.startTimerAtFixedRate("linkHeartbeat", Tick(), HEARTBEAT_INTERVAL_MS.millis())
     }
 
     private fun processInitiatorParams(msg: LinkReceivedMessage) {

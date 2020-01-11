@@ -9,6 +9,7 @@ import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 
 class NeighbourSendMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
@@ -28,7 +29,7 @@ class NeighbourLinkActor(
             physicalNetworkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
-            return Props.create(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
+            return createProps(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
         }
 
         const val LINK_CHECK_INTERVAL_MS = 10000L
@@ -36,7 +37,7 @@ class NeighbourLinkActor(
 
     private class CheckStaticLinks
 
-    private val networkAddress: SphinxPublicIdentity by lazy {
+    private val networkAddress: SphinxPublicIdentity by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val sphinxId = keyService.getVersion(keyService.generateNetworkID(networkConfig.networkId.toString()))
         sphinxId.identity
     }
@@ -52,7 +53,7 @@ class NeighbourLinkActor(
         super.preStart()
         //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
-        timers.startPeriodicTimer(
+        timers.startTimerAtFixedRate(
             "staticLinkPoller",
             CheckStaticLinks(),
             LINK_CHECK_INTERVAL_MS.millis()

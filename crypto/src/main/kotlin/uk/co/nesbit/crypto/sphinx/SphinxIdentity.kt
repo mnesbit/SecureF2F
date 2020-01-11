@@ -56,7 +56,7 @@ class SphinxPublicIdentity(val signingPublicKey: PublicKey,
         return hashChainRecord
     }
 
-    val id: SecureHash by lazy {
+    val id: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val bytes = this.serialize()
         bytes.secureHash(ID_HASH_ALGORITHM)
     }
@@ -99,7 +99,15 @@ class SphinxIdentityKeyPair(val signingKeys: KeyPair, val diffieHellmanKeys: Key
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))
 
-    val public: SphinxPublicIdentity by lazy { SphinxPublicIdentity(signingKeys.public, diffieHellmanKeys.public, hashChain.targetHash, hashChain.maxChainLength, publicAddress) }
+    val public: SphinxPublicIdentity by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        SphinxPublicIdentity(
+            signingKeys.public,
+            diffieHellmanKeys.public,
+            hashChain.targetHash,
+            hashChain.maxChainLength,
+            publicAddress
+        )
+    }
 
     val id: SecureHash get() = public.id
 }

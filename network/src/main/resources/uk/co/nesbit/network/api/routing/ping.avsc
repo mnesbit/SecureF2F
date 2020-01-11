@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "Ping",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "nonce",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    }
+  ]
+}

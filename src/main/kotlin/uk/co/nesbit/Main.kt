@@ -1,21 +1,31 @@
 package uk.co.nesbit
 
 import akka.actor.ActorSystem
+import akka.pattern.Patterns
+import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import scala.concurrent.Await
+import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
-import uk.co.nesbit.network.engine.DnsMockActor
-import uk.co.nesbit.network.engine.SimNode
+import uk.co.nesbit.network.dhtEngine.ClientDhtRequest
+import uk.co.nesbit.network.dhtEngine.ClientDhtResponse
+import uk.co.nesbit.network.dhtEngine.DhtNode
+import uk.co.nesbit.network.dhtEngine.DnsMockActor
+import java.lang.Integer.max
+import java.time.Duration
 import java.util.*
+import java.util.concurrent.TimeoutException
 
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 5
-    val N = 1000
+    val N = 10000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
-    val simNodes = mutableListOf<SimNode>()
+    //println("Network diameter: ${diameter(simNetwork)}")
+    val simNodes = mutableListOf<DhtNode>()
     val conf = ConfigFactory.load()
     val actorSystem = ActorSystem.create("Akka", conf)
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
@@ -23,8 +33,55 @@ fun main(args: Array<String>) {
         val networkAddress = NetworkAddress(nodeAddress)
         val links = simNetwork[networkAddress]!!
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
-        simNodes += SimNode(actorSystem, config)
+        simNodes += DhtNode(actorSystem, config)
     }
+//    val timeout = Timeout.create(Duration.ofSeconds(80L))
+//    val ids = mutableListOf<SecureHash?>()
+//    val best = mutableListOf<SecureHash?>()
+//    for(i in 0 until N) {
+//        val target = actorSystem.actorSelection("akka://Akka/user/${i+1}/routing")
+//        val queryFut = Patterns.ask(target, GetInfoRequest(), timeout)
+//        try {
+//            val infoResponse = Await.result(queryFut, timeout.duration()) as GetInfoResponse
+//            ids += infoResponse.address?.id
+//            if(infoResponse.kpaths.isNotEmpty()) {
+//                best += infoResponse.kpaths.first().path.last().id
+//            } else {
+//                best.add(null)
+//            }
+//        } catch (ex: TimeoutException) {
+//            println("query ${i+1} timed out")
+//        }
+//    }
+//    val actualBest = mutableMapOf<Int, SecureHash>()
+//    val diffs = mutableMapOf<Int, Int>()
+//    for(i in 0 until N) {
+//        val id = ids[i]
+//        if(id == null) continue
+//        var bestDist = 257
+//        var bestHash = SecureHash.EMPTY_HASH
+//        for(id2 in ids) {
+//            if(id2 == null || id == id2) continue
+//            val actDist = DhtRoutingActor.xorDistance(id, id2)
+//            if(actDist <= bestDist) {
+//                bestDist = actDist
+//                bestHash = id2
+//            }
+//        }
+//        actualBest[i] = bestHash
+//        val foundBest = best[i]
+//        if(foundBest == null) {
+//            println("no nearest for $i")
+//        } else {
+//            val realDist = DhtRoutingActor.xorDistance(id, foundBest)
+//            val diff = realDist - bestDist
+//            println("$i best real neighbour dist $bestDist actual $realDist diff $diff")
+//            val diffCount = diffs[diff] ?: 0
+//            diffs[diff] = diffCount + 1
+//        }
+//    }
+//    println("Diffs $diffs")
+//    actorSystem.terminate().value()
 //        var stabilised = false
 //        var round = 0
 //
@@ -49,10 +106,81 @@ fun main(args: Array<String>) {
 //            }
 //        }
 //        println("Done round $round messages ${simNetwork.messageCount}")
-    while (System.`in`.read() != 'q'.toInt());
-    actorSystem.terminate().value()
+//    while (System.`in`.read() != 'q'.toInt());
+//    actorSystem.terminate().value()
     //}
+    val rand = Random()
+    var test = 1
+    var requestId = rand.nextLong()
+    val timeout = Timeout.create(Duration.ofSeconds(60L))
+    var succeeded = 0
+    Thread.sleep(60000L)
+    while (true) {
+        Thread.sleep(1000L)
+        val randomNodePut = 1 + rand.nextInt(N)
+        val key = SecureHash.secureHash(test.toString())
+        println("test $test key $key requestId $requestId")
+        val targetPut = actorSystem.actorSelection("akka://Akka/user/$randomNodePut/routing")
+        val putRequest = ClientDhtRequest(requestId++, key, test.toString().toByteArray(Charsets.UTF_8))
+        val putFut = Patterns.ask(targetPut, putRequest, timeout)
+        try {
+            val putResponse = Await.result(putFut, timeout.duration()) as ClientDhtResponse
+            println("put $randomNodePut ${putResponse.data?.toString(Charsets.UTF_8)}")
+        } catch (ex: TimeoutException) {
+            println("put $randomNodePut timed out")
+        }
+        val randomNodeGet = 1 + rand.nextInt(N)
+        val targetGet = actorSystem.actorSelection("akka://Akka/user/$randomNodeGet/routing")
+        val getRequest = ClientDhtRequest(requestId++, key, null)
+        val getFut = Patterns.ask(targetGet, getRequest, timeout)
+        try {
+            val getResponse = Await.result(getFut, timeout.duration()) as ClientDhtResponse
+            if (getResponse.data != null) {
+                ++succeeded
+            }
+            println("get $randomNodeGet ${getResponse.data?.toString(Charsets.UTF_8)}")
+        } catch (ex: TimeoutException) {
+            println("get $randomNodeGet timed out")
+        }
+        println("stats $succeeded / $test ${(100.0 * succeeded) / test.toDouble()}")
+        ++test
+    }
+}
 
+private fun diameter(graph: Map<NetworkAddress, Set<NetworkAddress>>): Pair<Int, Int> {
+    val INF = 1000000
+    val allDistances = Array(graph.size) { IntArray(graph.size) { INF } }
+    val idMap = graph.keys.mapIndexed { index, networkAddress -> networkAddress to index }.toMap()
+    for (links in graph) {
+        val i = idMap[links.key]!!
+        for (link in links.value) {
+            val j = idMap[link]!!
+            allDistances[i][j] = 1
+        }
+    }
+    for (i in 0 until graph.size) {
+        for (j in 0 until graph.size) {
+            for (k in 0 until graph.size) {
+                if (allDistances[i][k] + allDistances[k][j] < allDistances[i][j]) {
+                    allDistances[i][j] = allDistances[i][k] + allDistances[k][j]
+                }
+            }
+        }
+    }
+    var diameter = 0
+    var distTotal = 0
+    var linkCount = 0
+    for (i in 0 until graph.size) {
+        for (j in 0 until graph.size) {
+            val dist = allDistances[i][j]
+            if (dist < INF) {
+                diameter = max(dist, diameter)
+                distTotal += dist
+                ++linkCount
+            }
+        }
+    }
+    return Pair(diameter, (distTotal / linkCount))
 }
 
 private fun makeLinearNetwork(N: Int): MutableMap<NetworkAddress, Set<NetworkAddress>> {

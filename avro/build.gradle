@@ -1,7 +1,7 @@
 description 'Avro wrapper library'
 
 dependencies {
-    implementation "org.apache.avro:avro:$avro_version"
+    api "org.apache.avro:avro:$avro_version"
 }
 
 idea {

@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.network.api.routing",
+  "name": "Pong",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "identity",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "signature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

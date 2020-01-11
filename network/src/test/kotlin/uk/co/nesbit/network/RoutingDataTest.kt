@@ -2,15 +2,14 @@ package uk.co.nesbit.network
 
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.BloomFilter
-import uk.co.nesbit.crypto.concatByteArrays
-import uk.co.nesbit.crypto.newSecureRandom
-import uk.co.nesbit.crypto.sign
+import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.network.api.routing.*
 import uk.co.nesbit.network.api.routing.VersionedRoute.Companion.NONCE_SIZE
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engineOld.KeyServiceImpl
+import java.security.SignatureException
+import kotlin.experimental.xor
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
@@ -192,5 +191,88 @@ class RoutingDataTest {
             bobIdentity = bobHeartbeat1.verify(aliceNonce, aliceIdentity, bobIdentity)
             bobNonce = bobHeartbeat1.nextExpectedNonce
         }
+    }
+
+    @Test
+    fun `Ping Pong verification test`() {
+        val keyService: KeyService = KeyServiceImpl()
+        val networkId = keyService.generateNetworkID()
+        val ping = Ping.createPing(keyService)
+        val serializedPing = ping.serialize()
+        val deserializedPing = Ping.deserialize(serializedPing)
+        assertEquals(ping, deserializedPing)
+        val tryDeserializedPing = Ping.tryDeserialize(serializedPing)!!
+        assertEquals(ping, tryDeserializedPing)
+        serializedPing[2] = serializedPing[2] xor 1
+        val failedDeserialize = Ping.tryDeserialize(serializedPing)
+        assertNull(failedDeserialize)
+        val pong = Pong.createPong(ping, networkId, keyService)
+        val serializedPong = pong.serialize()
+        val deserializedPong = Pong.deserialize(serializedPong)
+        assertEquals(pong, deserializedPong)
+        val tryDeserializedPong = Pong.tryDeserialize(serializedPong)!!
+        assertEquals(pong, tryDeserializedPong)
+        serializedPong[2] = serializedPong[2] xor 1
+        val failedDeserialize2 = Ping.tryDeserialize(serializedPong)
+        assertNull(failedDeserialize2)
+        pong.verify(ping)
+        assertFailsWith(SignatureException::class) {
+            pong.verify(Ping.createPing(keyService))
+        }
+    }
+
+    @Test
+    fun `ReplyPath test`() {
+        val keyService: KeyService = KeyServiceImpl()
+        val id1 = keyService.generateNetworkID("1")
+        val id2 = keyService.generateNetworkID("2")
+        val id3 = keyService.generateNetworkID("3")
+        val idList = listOf(id1, id2, id3).map { keyService.getVersion(it).identity }
+        val replyPath = ReplyPath(idList)
+        val serializedPath = replyPath.serialize()
+        val deserializedPath = ReplyPath.deserialize(serializedPath)
+        assertEquals(replyPath, deserializedPath)
+    }
+
+    @Test
+    fun `DhtRequest test`() {
+        val keyService: KeyService = KeyServiceImpl()
+        val id1 = keyService.generateNetworkID("1")
+        val id2 = keyService.generateNetworkID("2")
+        val id3 = keyService.generateNetworkID("3")
+        val idList = listOf(id1, id2, id3).map { keyService.getVersion(it).identity }
+        val replyPath = ReplyPath(idList)
+        val key = SecureHash.secureHash("test")
+        val dhtRequest1 = DhtRequest(123456L, key, replyPath, null)
+        val serializedRequest1 = dhtRequest1.serialize()
+        val deserializedRequest1 = DhtRequest.deserialize(serializedRequest1)
+        assertEquals(dhtRequest1, deserializedRequest1)
+        val dhtRequest2 = DhtRequest(123456L, key, replyPath, "TestBytes".toByteArray())
+        val serializedRequest2 = dhtRequest2.serialize()
+        val deserializedRequest2 = DhtRequest.deserialize(serializedRequest2)
+        assertEquals(dhtRequest2, deserializedRequest2)
+    }
+
+    @Test
+    fun `DhtResponse test`() {
+        val keyService: KeyService = KeyServiceImpl()
+        val id1 = keyService.generateNetworkID("1")
+        val id2 = keyService.generateNetworkID("2")
+        val id3 = keyService.generateNetworkID("3")
+        val id4 = keyService.generateNetworkID("4")
+        val id5 = keyService.generateNetworkID("5")
+        val id6 = keyService.generateNetworkID("6")
+        val idList1 = listOf(id1, id2, id3).map { keyService.getVersion(it).identity }
+        val idList2 = listOf(id4, id5, id6).map { keyService.getVersion(it).identity }
+        val replyPath1 = ReplyPath(idList1)
+        val replyPath2 = ReplyPath(idList2)
+        val dhtResponse1 = DhtResponse(123456L, listOf(replyPath1, replyPath2), null)
+        val serializedResponse1 = dhtResponse1.serialize()
+        val deserializedResponse1 = DhtResponse.deserialize(serializedResponse1)
+        assertEquals(dhtResponse1, deserializedResponse1)
+        val dhtResponse2 = DhtResponse(123456L, listOf(replyPath1, replyPath2), "test bytes".toByteArray())
+        val serializedResponse2 = dhtResponse2.serialize()
+        val deserializedResponse2 = DhtResponse.deserialize(serializedResponse2)
+        assertEquals(dhtResponse2, deserializedResponse2)
     }
 }

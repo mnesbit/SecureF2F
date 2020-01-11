@@ -114,7 +114,7 @@ fun GenericRecord.visit(body: (obj: Any?, schema: Schema, path: List<PathCompone
 
 interface AvroVisitor {
     fun recordVisitor(value: GenericRecord, schema: Schema, path: List<PathComponent>, root: GenericRecord)
-    fun enumVisitor(value: GenericEnumSymbol, schema: Schema, path: List<PathComponent>, root: GenericRecord)
+    fun enumVisitor(value: GenericEnumSymbol<*>, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun arrayVisitor(value: GenericArray<*>, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun mapVisitor(value: Map<String, Any?>, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun stringVisitor(value: String, schema: Schema, path: List<PathComponent>, root: GenericRecord)
@@ -142,7 +142,7 @@ fun GenericRecord.visit(visitor: AvroVisitor) {
                 visitor.recordVisitor(obj as GenericRecord, schema, path, root)
             }
             AvroExtendedType.ENUM -> {
-                visitor.enumVisitor(obj as GenericEnumSymbol, schema, path, root)
+                visitor.enumVisitor(obj as GenericEnumSymbol<*>, schema, path, root)
             }
             AvroExtendedType.ARRAY -> {
                 visitor.arrayVisitor(obj as GenericArray<*>, schema, path, root)

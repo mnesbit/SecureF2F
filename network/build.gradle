@@ -1,21 +1,19 @@
 description 'Akka based network routing simulator'
 
 dependencies {
-    implementation "org.apache.avro:avro:$avro_version"
-
     // RxJava: observable streams of events.
-    implementation "io.reactivex.rxjava2:rxjava:$rx_version"
+    api "io.reactivex.rxjava2:rxjava:$rx_version"
 
     // Actor framework
-    implementation "com.typesafe.akka:akka-actor_2.12:$akka_version"
-    testImplementation "com.typesafe.akka:akka-testkit_2.12:$akka_version"
+    api "com.typesafe.akka:akka-actor_2.13:$akka_version"
+    testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
 
     // Bouncy castle
     implementation "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
     implementation "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
 
-    implementation project(':avro')
-    implementation project(':crypto')
+    api project(':avro')
+    api project(':crypto')
 }
 
 idea {

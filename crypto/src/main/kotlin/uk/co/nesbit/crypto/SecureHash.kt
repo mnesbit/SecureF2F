@@ -31,6 +31,8 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
             val hashRecord = secureHashSchema.deserialize(bytes)
             return SecureHash(hashRecord)
         }
+
+        val EMPTY_HASH = secureHash(ByteArray(0))
     }
 
     override fun toGenericRecord(): GenericRecord {
@@ -46,7 +48,7 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
 
         other as SecureHash
         if (algorithm != other.algorithm) return false
-        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(bytes, other.bytes)) return false
+        if (!Arrays.equals(bytes, other.bytes)) return false
 
         return true
     }

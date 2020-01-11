@@ -44,7 +44,13 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
 
     private val pebbles = mutableListOf<Pebble>()
 
-    override val public: HashChainPublic by lazy { HashChainPublic(chainKey, targetHash, maxChainLength) }
+    override val public: HashChainPublic by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        HashChainPublic(
+            chainKey,
+            targetHash,
+            maxChainLength
+        )
+    }
 
     override fun getChainValue(stepsFromEnd: Int): SecureHash = getSecureVersion(stepsFromEnd).chainHash
 
