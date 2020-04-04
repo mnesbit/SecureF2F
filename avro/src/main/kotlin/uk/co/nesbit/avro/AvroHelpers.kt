@@ -102,6 +102,11 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     if (pluginHandlers != null) {
         return pluginHandlers.second(value as GenericRecord) as T
     }
+    if (T::class.java.isEnum) {
+        val enumString = (value as GenericEnumSymbol<*>).toString()
+        @Suppress("UPPER_BOUND_VIOLATED", "UNCHECKED_CAST")
+        return java.lang.Enum.valueOf<T>(T::class.java, enumString)
+    }
     when (T::class.java) {
         String::class.java -> {
             return value.toString() as T
@@ -247,6 +252,12 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
     if (pluginHandlers != null) {
         val encoder = pluginHandlers.first as AvroEncoder<T>
         put(fieldName, encoder(value))
+        return
+    }
+    if (T::class.java.isEnum) {
+        val fieldSchema = schema.getField(fieldName).schema()
+        val enumRecord = GenericData.EnumSymbol(fieldSchema, value)
+        put(fieldName, enumRecord)
         return
     }
     when (T::class.java) {
@@ -398,7 +409,7 @@ fun GenericRecord.putGenericArray(fieldName: String, value: List<GenericRecord>)
             val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
-        else -> IllegalArgumentException("putGenericArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
+        else -> throw IllegalArgumentException("putGenericArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
     }
 }
 
@@ -416,7 +427,7 @@ inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName:
             val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
-        else -> IllegalArgumentException("putObjectArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
+        else -> throw IllegalArgumentException("putObjectArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
     }
 }
 
