@@ -12,6 +12,10 @@
       "type": "SecureHash"
     },
     {
+      "name": "minChainLength",
+      "type": "int"
+    },
+    {
       "name": "maxChainLength",
       "type": "int"
     }

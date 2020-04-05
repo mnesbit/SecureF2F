@@ -12,6 +12,10 @@
       "type": "SecureHash"
     },
     {
+      "name": "minVersion",
+      "type": "int"
+    },
+    {
       "name": "maxVersion",
       "type": "int"
     }

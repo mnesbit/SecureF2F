@@ -10,13 +10,21 @@ import java.security.PublicKey
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
-class KeyServiceImpl(override val random: SecureRandom = newSecureRandom(),
-                     val maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH) : KeyService {
+class KeyServiceImpl(
+    override val random: SecureRandom = newSecureRandom(),
+    val maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+    val minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
+) : KeyService {
     private val networkKeys = ConcurrentHashMap<SecureHash, SphinxIdentityKeyPair>()
     private val overlayKeys = ConcurrentHashMap<SecureHash, KeyPair>()
 
     override fun generateNetworkID(publicAddress: String?): SecureHash {
-        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(random, maxVersion = maxVersion, publicAddress = publicAddress)
+        val newNetworkKeys = SphinxIdentityKeyPair.generateKeyPair(
+            random,
+            publicAddress = publicAddress,
+            maxVersion = maxVersion,
+            minVersion = minVersion
+        )
         networkKeys[newNetworkKeys.id] = newNetworkKeys
         return newNetworkKeys.id
     }

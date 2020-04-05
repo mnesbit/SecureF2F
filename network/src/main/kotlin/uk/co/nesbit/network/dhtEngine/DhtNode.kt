@@ -7,7 +7,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engineOld.KeyServiceImpl
 
 class DhtNode(private val actorSystem: ActorSystem, networkConfig: NetworkConfiguration) {
-    val keyService: KeyService = KeyServiceImpl(maxVersion = 64)
+    val keyService: KeyService = KeyServiceImpl(maxVersion = 64, minVersion = 0)
     val rootNodeActor: ActorRef =
         actorSystem.actorOf(
             RootNodeActor.getProps(keyService, networkConfig),
