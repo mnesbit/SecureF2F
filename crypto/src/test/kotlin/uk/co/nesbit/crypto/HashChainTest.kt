@@ -47,17 +47,19 @@ class HashChainTest {
     fun `short version chain test`() {
         val rand = newSecureRandom()
         val maxVersion = 128
-        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice", maxVersion)
-        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob", maxVersion)
+        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice", maxVersion = maxVersion)
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob", maxVersion = maxVersion)
         val chainValue1 = id1.getVersionedId(0)
         Assert.assertEquals(id1.hashChain.targetHash, chainValue1.currentVersion.chainHash)
         Assert.assertEquals(0, chainValue1.currentVersion.version)
+        Assert.assertEquals(0, chainValue1.currentVersion.minVersion)
         Assert.assertEquals(maxVersion, chainValue1.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue1.identity)
         val chainValue2a = id1.getVersionedId(100)
         val chainValue2b = id1.getVersionedId(100)
         Assert.assertEquals(chainValue2a, chainValue2b)
         Assert.assertEquals(100, chainValue2a.currentVersion.version)
+        Assert.assertEquals(0, chainValue2a.currentVersion.minVersion)
         Assert.assertEquals(maxVersion, chainValue2a.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue2a.identity)
         Assert.assertTrue(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
@@ -70,6 +72,7 @@ class HashChainTest {
         }
         val chainValue3 = id1.getVersionedId(101)
         Assert.assertEquals(101, chainValue3.currentVersion.version)
+        Assert.assertEquals(0, chainValue3.currentVersion.minVersion)
         Assert.assertEquals(maxVersion, chainValue3.currentVersion.maxVersion)
         Assert.assertEquals(id1.public, chainValue3.identity)
         Assert.assertTrue(id1.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
@@ -78,6 +81,122 @@ class HashChainTest {
             // Check version ratchet
             id1.getVersionedId(maxVersion + 1)
         }
+    }
+
+    @Test
+    fun `short version chain test non-zero minimum`() {
+        val rand = newSecureRandom()
+        val minVersion = 10
+        val maxVersion = 128
+        val id1 = SphinxIdentityKeyPair.generateKeyPair(rand, "Alice", maxVersion = maxVersion, minVersion = minVersion)
+        val id2 = SphinxIdentityKeyPair.generateKeyPair(rand, "Bob", maxVersion = maxVersion, minVersion = minVersion)
+        val chainValue1 = id1.getVersionedId(minVersion)
+        Assert.assertEquals(minVersion, chainValue1.currentVersion.version)
+        Assert.assertEquals(minVersion, chainValue1.currentVersion.minVersion)
+        Assert.assertEquals(maxVersion, chainValue1.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue1.identity)
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue1.currentVersion))
+        val chainValue2a = id1.getVersionedId(100)
+        val chainValue2b = id1.getVersionedId(100)
+        Assert.assertEquals(chainValue2a, chainValue2b)
+        Assert.assertEquals(100, chainValue2a.currentVersion.version)
+        Assert.assertEquals(minVersion, chainValue2a.currentVersion.minVersion)
+        Assert.assertEquals(maxVersion, chainValue2a.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue2a.identity)
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue2a.currentVersion))
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
+        Assert.assertFalse(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 99))
+        Assert.assertFalse(id1.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 101))
+        Assert.assertFalse(id2.public.verifyChainValue(chainValue2a.currentVersion.chainHash, 100))
+        assertFailsWith<IllegalArgumentException> {
+            // Check version ratchet
+            id1.getVersionedId(99)
+        }
+        val chainValue3 = id1.getVersionedId(101)
+        Assert.assertEquals(101, chainValue3.currentVersion.version)
+        Assert.assertEquals(minVersion, chainValue3.currentVersion.minVersion)
+        Assert.assertEquals(maxVersion, chainValue3.currentVersion.maxVersion)
+        Assert.assertEquals(id1.public, chainValue3.identity)
+        Assert.assertTrue(id1.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
+        Assert.assertFalse(id2.public.verifyChainValue(chainValue3.currentVersion.chainHash, 101))
+        assertFailsWith<IllegalArgumentException> {
+            // Check version ratchet
+            id1.getVersionedId(maxVersion + 1)
+        }
+    }
+
+    @Test
+    fun `non-minimum version chain test`() {
+        val dummySecureRandom = Random()
+        dummySecureRandom.setSeed(100)
+        val minVersion = 99
+        val maxVersion = 256
+        val keyMaterial = "Test".toByteArray()
+        val simpleHashChain = SimpleHashChainPrivate.generateChain(
+            keyMaterial,
+            dummySecureRandom,
+            maxChainLength = maxVersion,
+            minChainLength = minVersion
+        )
+        dummySecureRandom.setSeed(100)
+        val pebbledHashChain = PebbledHashChain.generateChain(
+            keyMaterial,
+            dummySecureRandom,
+            maxChainLength = maxVersion,
+            minChainLength = minVersion
+        )
+        assertFailsWith<java.lang.IllegalArgumentException> {
+            simpleHashChain.getSecureVersion(0)
+        }
+        assertFailsWith<java.lang.IllegalArgumentException> {
+            pebbledHashChain.getSecureVersion(0)
+        }
+        assertFailsWith<java.lang.IllegalArgumentException> {
+            simpleHashChain.getSecureVersion(98)
+        }
+        assertFailsWith<java.lang.IllegalArgumentException> {
+            pebbledHashChain.getSecureVersion(98)
+        }
+        val chainValue1a = simpleHashChain.getSecureVersion(minVersion)
+        val chainValue1b = pebbledHashChain.getSecureVersion(minVersion)
+        Assert.assertEquals(minVersion, chainValue1a.version)
+        Assert.assertEquals(minVersion, chainValue1a.minVersion)
+        Assert.assertEquals(maxVersion, chainValue1a.maxVersion)
+        Assert.assertEquals(minVersion, chainValue1b.version)
+        Assert.assertEquals(minVersion, chainValue1b.minVersion)
+        Assert.assertEquals(maxVersion, chainValue1b.maxVersion)
+        Assert.assertTrue(simpleHashChain.public.verifyChainValue(chainValue1b))
+        Assert.assertTrue(pebbledHashChain.public.verifyChainValue(chainValue1a))
+        val chainValue2a = simpleHashChain.getSecureVersion(maxVersion - 10)
+        val chainValue2b = pebbledHashChain.getSecureVersion(maxVersion - 10)
+        Assert.assertEquals(maxVersion - 10, chainValue2a.version)
+        Assert.assertEquals(minVersion, chainValue2a.minVersion)
+        Assert.assertEquals(maxVersion, chainValue2a.maxVersion)
+        Assert.assertEquals(maxVersion - 10, chainValue2b.version)
+        Assert.assertEquals(minVersion, chainValue2b.minVersion)
+        Assert.assertEquals(maxVersion, chainValue2b.maxVersion)
+        Assert.assertTrue(simpleHashChain.public.verifyChainValue(chainValue2b))
+        Assert.assertTrue(pebbledHashChain.public.verifyChainValue(chainValue2a))
+        val chainValue3a = simpleHashChain.getSecureVersion(maxVersion - 1)
+        val chainValue3b = pebbledHashChain.getSecureVersion(maxVersion - 1)
+        Assert.assertEquals(maxVersion - 1, chainValue3a.version)
+        Assert.assertEquals(minVersion, chainValue3a.minVersion)
+        Assert.assertEquals(maxVersion, chainValue3a.maxVersion)
+        Assert.assertEquals(maxVersion - 1, chainValue3b.version)
+        Assert.assertEquals(minVersion, chainValue3b.minVersion)
+        Assert.assertEquals(maxVersion, chainValue3b.maxVersion)
+        Assert.assertTrue(simpleHashChain.public.verifyChainValue(chainValue3b))
+        Assert.assertTrue(pebbledHashChain.public.verifyChainValue(chainValue3a))
+        val chainValue4a = simpleHashChain.getSecureVersion(maxVersion)
+        val chainValue4b = pebbledHashChain.getSecureVersion(maxVersion)
+        Assert.assertEquals(maxVersion, chainValue4a.version)
+        Assert.assertEquals(minVersion, chainValue4a.minVersion)
+        Assert.assertEquals(maxVersion, chainValue4a.maxVersion)
+        Assert.assertEquals(maxVersion, chainValue4b.version)
+        Assert.assertEquals(minVersion, chainValue4b.minVersion)
+        Assert.assertEquals(maxVersion, chainValue4b.maxVersion)
+        Assert.assertTrue(simpleHashChain.public.verifyChainValue(chainValue4b))
+        Assert.assertTrue(pebbledHashChain.public.verifyChainValue(chainValue4a))
     }
 
     @Test
@@ -91,8 +210,8 @@ class HashChainTest {
         val deserializedChain2 = HashChainPublic(serializedChainRecord)
         assertEquals(publicChain, deserializedChain2)
         val id1 = chain.getSecureVersion(100)
-        assertTrue(deserializedChain.verifyChainValue(id1.chainHash, 100, id1.maxVersion))
-        assertFalse(deserializedChain.verifyChainValue(id1.chainHash, 99, id1.maxVersion))
+        assertTrue(deserializedChain.verifyChainValue(id1.chainHash, 100, id1.minVersion, id1.maxVersion))
+        assertFalse(deserializedChain.verifyChainValue(id1.chainHash, 99, id1.minVersion, id1.maxVersion))
     }
 
     @Test
@@ -111,24 +230,28 @@ class HashChainTest {
             val pebbledVersion = pebbledHashChain.getSecureVersion(i)
             assertEquals(originalVersion, pebbledVersion)
             assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+            assertTrue(pebbledHashChain.public.verifyChainValue(originalVersion))
         }
         for (i in 150 until 160 step 3) {
             val originalVersion = originalHashChain.getSecureVersion(i)
             val pebbledVersion = pebbledHashChain.getSecureVersion(i)
             assertEquals(originalVersion, pebbledVersion)
             assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+            assertTrue(pebbledHashChain.public.verifyChainValue(originalVersion))
         }
         for (i in 2000 until 2010) {
             val originalVersion = originalHashChain.getSecureVersion(i)
             val pebbledVersion = pebbledHashChain.getSecureVersion(i)
             assertEquals(originalVersion, pebbledVersion)
             assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+            assertTrue(pebbledHashChain.public.verifyChainValue(originalVersion))
         }
         for (i in HashChainPublic.MAX_CHAIN_LENGTH - 3..HashChainPublic.MAX_CHAIN_LENGTH) {
             val originalVersion = originalHashChain.getSecureVersion(i)
             val pebbledVersion = pebbledHashChain.getSecureVersion(i)
             assertEquals(originalVersion, pebbledVersion)
             assertTrue(originalHashChain.public.verifyChainValue(pebbledVersion))
+            assertTrue(pebbledHashChain.public.verifyChainValue(originalVersion))
         }
     }
 }

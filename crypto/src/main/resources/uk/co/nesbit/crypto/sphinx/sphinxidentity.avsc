@@ -16,6 +16,10 @@
       "type": "uk.co.nesbit.crypto.SecureHash"
     },
     {
+      "name": "minVersion",
+      "type": "int"
+    },
+    {
       "name": "maxVersion",
       "type": "int"
     },

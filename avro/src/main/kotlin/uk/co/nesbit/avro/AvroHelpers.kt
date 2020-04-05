@@ -77,11 +77,13 @@ fun GenericArray<GenericRecord>.serialize(): ByteArray {
 typealias AvroEncoder<T> = (T) -> GenericRecord
 typealias AvroDecoder<T> = (GenericRecord) -> T
 
+data class AvroCodec<T>(val enc: AvroEncoder<T>, val dec: AvroDecoder<T>)
+
 object AvroTypeHelpers {
-    val helpers = mutableMapOf<Class<*>, Pair<AvroEncoder<*>, AvroDecoder<*>>>()
+    val helpers = mutableMapOf<Class<*>, AvroCodec<*>>()
 
     fun <T> registerHelper(clazz: Class<T>, encoder: AvroEncoder<T>, decoder: AvroDecoder<T>) {
-        helpers[clazz] = Pair(encoder, decoder)
+        helpers[clazz] = AvroCodec(encoder, decoder)
     }
 }
 
@@ -98,118 +100,147 @@ fun Schema.deserialize(bytes: ByteArray): GenericRecord {
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     val value = this.get(fieldName) ?: return null as T
-    val pluginHandlers = AvroTypeHelpers.helpers[T::class.java]
+    val clazz = T::class.java
+    val pluginHandlers = AvroTypeHelpers.helpers[clazz]
     if (pluginHandlers != null) {
-        return pluginHandlers.second(value as GenericRecord) as T
+        return pluginHandlers.dec(value as GenericRecord) as T
     }
-    when (T::class.java) {
-        String::class.java -> {
-            return value.toString() as T
-        }
-        ByteArray::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            return if (fieldSchema.type == Schema.Type.FIXED) {
-                (value as GenericData.Fixed).bytes().copyOf() as T
-            } else {
-                (value as ByteBuffer).array().copyOf() as T
-            }
-        }
-        BigDecimal::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            return Conversions.DecimalConversion().fromBytes(get(fieldName) as ByteBuffer, fieldSchema, fieldSchema.logicalType) as T
-        }
-        UUID::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            return Conversions.UUIDConversion().fromCharSequence(get(fieldName) as CharSequence, fieldSchema, fieldSchema.logicalType) as T
-        }
-        Instant::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                return when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        LocalDate.ofEpochDay((get(fieldName) as Int).toLong()).atStartOfDay().toInstant(ZoneOffset.UTC) as T
-                    }
-                    "timestamp-millis" -> {
-                        Instant.ofEpochMilli(get(fieldName) as Long) as T
-                    }
-                    "timestamp-micros" -> {
-                        val micros = get(fieldName) as Long
-                        Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)) as T
-                    }
-                    else -> {
-                        Instant.ofEpochMilli(get(fieldName) as Long) as T
-                    }
-                }
-            } else {
-                return Instant.ofEpochMilli(get(fieldName) as Long) as T
-            }
-        }
-        LocalDateTime::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                return when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        LocalDate.ofEpochDay((get(fieldName) as Int).toLong()).atStartOfDay() as T
-                    }
-                    "timestamp-millis" -> {
-                        LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC) as T
-                    }
-                    "timestamp-micros" -> {
-                        val micros = get(fieldName) as Long
-                        LocalDateTime.ofInstant(Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)), ZoneOffset.UTC) as T
-                    }
-                    else -> {
-                        LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC) as T
-                    }
-                }
-            } else {
-                return LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC) as T
-            }
-        }
-        LocalDate::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        return LocalDate.ofEpochDay((get(fieldName) as Int).toLong()) as T
-                    }
-                    "timestamp-millis" -> {
-                        val instant = Instant.ofEpochMilli(get(fieldName) as Long)
-                        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate() as T
-                    }
-                    "timestamp-micros" -> {
-                        val micros = get(fieldName) as Long
-                        val instant = Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L))
-                        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate() as T
-                    }
-                    else -> {
-                        return LocalDate.ofEpochDay((get(fieldName) as Int).toLong()) as T
-                    }
-                }
-            } else {
-                return LocalDate.ofEpochDay((get(fieldName) as Int).toLong()) as T
-            }
-        }
-        LocalTime::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            return if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "time-millis" -> {
-                        LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L) as T
-                    }
-                    "time-micros" -> {
-                        LocalTime.ofNanoOfDay((get(fieldName) as Long) * 1000L) as T
-                    }
-                    else -> {
-                        LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L) as T
-                    }
-                }
-            } else {
-                LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L) as T
-            }
-        }
+    if (clazz.isEnum) {
+        val enumString = (value as GenericEnumSymbol<*>).toString()
+        @Suppress("UPPER_BOUND_VIOLATED")
+        return java.lang.Enum.valueOf<T>(clazz, enumString)
     }
-    return (value as T)
+    return when (clazz) {
+        String::class.java -> value.toString()
+        ByteArray::class.java -> getBytes(fieldName, value)
+        BigDecimal::class.java -> getDecimal(fieldName)
+        UUID::class.java -> getUUID(fieldName)
+        Instant::class.java -> getInstant(fieldName)
+        LocalDate::class.java -> getLocalDate(fieldName)
+        LocalTime::class.java -> getLocalTime(fieldName)
+        LocalDateTime::class.java -> getLocalDateTime(fieldName)
+        else -> value
+    } as T
+}
+
+fun GenericRecord.getBytes(fieldName: String, value: Any): ByteArray {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return if (fieldSchema.type == Schema.Type.FIXED) {
+        (value as GenericData.Fixed).bytes().copyOf()
+    } else {
+        (value as ByteBuffer).array().copyOf()
+    }
+}
+
+fun GenericRecord.getDecimal(fieldName: String): BigDecimal {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return Conversions.DecimalConversion().fromBytes(
+        get(fieldName) as ByteBuffer,
+        fieldSchema,
+        fieldSchema.logicalType
+    )
+}
+
+fun GenericRecord.getUUID(fieldName: String): UUID {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return Conversions.UUIDConversion().fromCharSequence(
+        get(fieldName) as CharSequence,
+        fieldSchema,
+        fieldSchema.logicalType
+    )
+}
+
+fun GenericRecord.getInstant(fieldName: String): Instant {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                LocalDate.ofEpochDay((get(fieldName) as Int).toLong()).atStartOfDay().toInstant(ZoneOffset.UTC)
+            }
+            "timestamp-millis" -> {
+                Instant.ofEpochMilli(get(fieldName) as Long)
+            }
+            "timestamp-micros" -> {
+                val micros = get(fieldName) as Long
+                Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L))
+            }
+            else -> {
+                Instant.ofEpochMilli(get(fieldName) as Long)
+            }
+        }
+    } else {
+        Instant.ofEpochMilli(get(fieldName) as Long)
+    }
+}
+
+fun GenericRecord.getLocalDate(fieldName: String): LocalDate {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                LocalDate.ofEpochDay((get(fieldName) as Int).toLong())
+            }
+            "timestamp-millis" -> {
+                val instant = Instant.ofEpochMilli(get(fieldName) as Long)
+                LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate()
+            }
+            "timestamp-micros" -> {
+                val micros = get(fieldName) as Long
+                val instant = Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L))
+                LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate()
+            }
+            else -> {
+                LocalDate.ofEpochDay((get(fieldName) as Int).toLong())
+            }
+        }
+    } else {
+        LocalDate.ofEpochDay((get(fieldName) as Int).toLong())
+    }
+}
+
+fun GenericRecord.getLocalTime(fieldName: String): LocalTime {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "time-millis" -> {
+                LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L)
+            }
+            "time-micros" -> {
+                LocalTime.ofNanoOfDay((get(fieldName) as Long) * 1000L)
+            }
+            else -> {
+                LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L)
+            }
+        }
+    } else {
+        LocalTime.ofNanoOfDay((get(fieldName) as Int).toLong() * 1000000L)
+    }
+}
+
+fun GenericRecord.getLocalDateTime(fieldName: String): LocalDateTime {
+    val fieldSchema = schema.getField(fieldName).schema()
+    return if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                LocalDate.ofEpochDay((get(fieldName) as Int).toLong()).atStartOfDay()
+            }
+            "timestamp-millis" -> {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC)
+            }
+            "timestamp-micros" -> {
+                val micros = get(fieldName) as Long
+                LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)),
+                    ZoneOffset.UTC
+                )
+            }
+            else -> {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC)
+            }
+        }
+    } else {
+        LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC)
+    }
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -233,154 +264,168 @@ inline fun <reified T : Any> GenericRecord.getObjectArray(fieldName: String, con
 
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
-    when (value) {
-        is AvroConvertible -> {
-            put(fieldName, value.toGenericRecord())
-            return
-        }
-        null -> {
-            put(fieldName, null)
-            return
-        }
+    if (value == null) {
+        put(fieldName, null)
+        return
     }
-    val pluginHandlers = AvroTypeHelpers.helpers[T::class.java]
+    if (value is AvroConvertible) {
+        put(fieldName, value.toGenericRecord())
+        return
+    }
+    val clazz = T::class.java
+    val pluginHandlers = AvroTypeHelpers.helpers[clazz]
     if (pluginHandlers != null) {
-        val encoder = pluginHandlers.first as AvroEncoder<T>
+        val encoder = pluginHandlers.enc as AvroEncoder<T>
         put(fieldName, encoder(value))
         return
     }
-    when (T::class.java) {
-        String::class.java -> {
-            put(fieldName, Utf8(value as String))
-        }
-        ByteArray::class.java -> {
-            val bytes = value as ByteArray
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.type == Schema.Type.FIXED) {
-                require(bytes.size == fieldSchema.fixedSize) { "Fixed field requires input of size ${fieldSchema.fixedSize} not ${bytes.size}" }
-                put(fieldName, GenericData.Fixed(fieldSchema, bytes))
-            } else {
-                val buffer = ByteBuffer.wrap(bytes)
-                put(fieldName, buffer)
+    if (clazz.isEnum) {
+        putEnum(fieldName, value as Enum<*>)
+        return
+    }
+    when (clazz) {
+        String::class.java -> put(fieldName, Utf8(value as String))
+        ByteArray::class.java -> putBytes(fieldName, value as ByteArray)
+        BigDecimal::class.java -> putDecimal(fieldName, value as BigDecimal)
+        UUID::class.java -> putUUID(fieldName, value as UUID)
+        Instant::class.java -> putInstant(fieldName, value as Instant)
+        LocalDate::class.java -> putLocalDate(fieldName, value as LocalDate)
+        LocalTime::class.java -> putLocalTime(fieldName, value as LocalTime)
+        LocalDateTime::class.java -> putLocalDateTime(fieldName, value as LocalDateTime)
+        else -> put(fieldName, value)
+    }
+}
+
+fun GenericRecord.putEnum(fieldName: String, value: Enum<*>) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    val enumRecord = GenericData.EnumSymbol(fieldSchema, value)
+    put(fieldName, enumRecord)
+}
+
+fun GenericRecord.putBytes(fieldName: String, bytes: ByteArray) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    if (fieldSchema.type == Schema.Type.FIXED) {
+        require(bytes.size == fieldSchema.fixedSize) { "Fixed field requires input of size ${fieldSchema.fixedSize} not ${bytes.size}" }
+        put(fieldName, GenericData.Fixed(fieldSchema, bytes))
+    } else {
+        val buffer = ByteBuffer.wrap(bytes)
+        put(fieldName, buffer)
+    }
+}
+
+fun GenericRecord.putDecimal(fieldName: String, decimal: BigDecimal) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    val bytes = Conversions.DecimalConversion().toBytes(decimal, fieldSchema, fieldSchema.logicalType)
+    put(fieldName, bytes)
+}
+
+fun GenericRecord.putUUID(fieldName: String, uuid: UUID) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    val uuidString = Conversions.UUIDConversion().toCharSequence(uuid, fieldSchema, fieldSchema.logicalType)
+    put(fieldName, uuidString)
+}
+
+fun GenericRecord.putInstant(fieldName: String, instant: Instant) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                val date = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate()
+                put(fieldName, date.toEpochDay().toInt())
             }
-        }
-        BigDecimal::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            val bytes = Conversions.DecimalConversion().toBytes(value as BigDecimal, fieldSchema, fieldSchema.logicalType)
-            put(fieldName, bytes)
-        }
-        UUID::class.java -> {
-            val fieldSchema = schema.getField(fieldName).schema()
-            val uuidString = Conversions.UUIDConversion().toCharSequence(value as UUID, fieldSchema, fieldSchema.logicalType)
-            put(fieldName, uuidString)
-        }
-        Instant::class.java -> {
-            val instant = value as Instant
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        val date = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalDate()
-                        put(fieldName, date.toEpochDay().toInt())
-                    }
-                    "time-millis" -> {
-                        val time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalTime()
-                        put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
-                    }
-                    "time-micros" -> {
-                        val time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalTime()
-                        put(fieldName, time.toNanoOfDay() / 1000L)
-                    }
-                    "timestamp-millis" -> {
-                        put(fieldName, instant.toEpochMilli())
-                    }
-                    "timestamp-micros" -> {
-                        val micros = (instant.epochSecond * 1000000L) + (instant.nano / 1000L)
-                        put(fieldName, micros)
-                    }
-                    else -> {
-                        put(fieldName, instant.toEpochMilli())
-                    }
-                }
-            } else {
+            "time-millis" -> {
+                val time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalTime()
+                put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
+            }
+            "time-micros" -> {
+                val time = LocalDateTime.ofInstant(instant, ZoneOffset.UTC).toLocalTime()
+                put(fieldName, time.toNanoOfDay() / 1000L)
+            }
+            "timestamp-millis" -> {
+                put(fieldName, instant.toEpochMilli())
+            }
+            "timestamp-micros" -> {
+                val micros = (instant.epochSecond * 1000000L) + (instant.nano / 1000L)
+                put(fieldName, micros)
+            }
+            else -> {
                 put(fieldName, instant.toEpochMilli())
             }
         }
-        LocalDate::class.java -> {
-            val date = value as LocalDate
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        put(fieldName, date.toEpochDay().toInt())
-                    }
-                    "timestamp-millis" -> {
-                        put(fieldName, date.toEpochDay() * 86400000L)
-                    }
-                    "timestamp-micros" -> {
-                        put(fieldName, date.toEpochDay() * 86400000000L)
-                    }
-                    else -> {
-                        put(fieldName, date.toEpochDay().toInt())
-                    }
-                }
-            } else {
+    } else {
+        put(fieldName, instant.toEpochMilli())
+    }
+}
+
+fun GenericRecord.putLocalDate(fieldName: String, date: LocalDate) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                put(fieldName, date.toEpochDay().toInt())
+            }
+            "timestamp-millis" -> {
+                put(fieldName, date.toEpochDay() * 86400000L)
+            }
+            "timestamp-micros" -> {
+                put(fieldName, date.toEpochDay() * 86400000000L)
+            }
+            else -> {
                 put(fieldName, date.toEpochDay().toInt())
             }
         }
-        LocalTime::class.java -> {
-            val time = value as LocalTime
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "time-millis" -> {
-                        put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
-                    }
-                    "time-micros" -> {
-                        put(fieldName, time.toNanoOfDay() / 1000L)
+    } else {
+        put(fieldName, date.toEpochDay().toInt())
+    }
+}
 
-                    }
-                    else -> {
-                        put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
-                    }
-                }
-            } else {
+fun GenericRecord.putLocalTime(fieldName: String, time: LocalTime) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "time-millis" -> {
+                put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
+            }
+            "time-micros" -> {
+                put(fieldName, time.toNanoOfDay() / 1000L)
+
+            }
+            else -> {
                 put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
             }
         }
-        LocalDateTime::class.java -> {
-            val dateTime = value as LocalDateTime
-            val fieldSchema = schema.getField(fieldName).schema()
-            if (fieldSchema.logicalType != null) {
-                when (fieldSchema.logicalType.name) {
-                    "date" -> {
-                        put(fieldName, dateTime.toLocalDate().toEpochDay().toInt())
-                    }
-                    "time-millis" -> {
-                        put(fieldName, (dateTime.toLocalTime().toNanoOfDay() / 1000000L).toInt())
-                    }
-                    "time-micros" -> {
-                        put(fieldName, dateTime.toLocalTime().toNanoOfDay() / 1000L)
-                    }
-                    "timestamp-millis" -> {
-                        put(fieldName, dateTime.toInstant(ZoneOffset.UTC).toEpochMilli())
-                    }
-                    "timestamp-micros" -> {
-                        val instant = dateTime.toInstant(ZoneOffset.UTC)
-                        val micros = (instant.epochSecond * 1000000L) + (instant.nano / 1000L)
-                        put(fieldName, micros)
-                    }
-                    else -> {
-                        put(fieldName, dateTime.toInstant(ZoneOffset.UTC).toEpochMilli().toInt())
-                    }
-                }
-            } else {
+    } else {
+        put(fieldName, (time.toNanoOfDay() / 1000000L).toInt())
+    }
+}
+
+fun GenericRecord.putLocalDateTime(fieldName: String, dateTime: LocalDateTime) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    if (fieldSchema.logicalType != null) {
+        when (fieldSchema.logicalType.name) {
+            "date" -> {
+                put(fieldName, dateTime.toLocalDate().toEpochDay().toInt())
+            }
+            "time-millis" -> {
+                put(fieldName, (dateTime.toLocalTime().toNanoOfDay() / 1000000L).toInt())
+            }
+            "time-micros" -> {
+                put(fieldName, dateTime.toLocalTime().toNanoOfDay() / 1000L)
+            }
+            "timestamp-millis" -> {
                 put(fieldName, dateTime.toInstant(ZoneOffset.UTC).toEpochMilli())
             }
+            "timestamp-micros" -> {
+                val instant = dateTime.toInstant(ZoneOffset.UTC)
+                val micros = (instant.epochSecond * 1000000L) + (instant.nano / 1000L)
+                put(fieldName, micros)
+            }
+            else -> {
+                put(fieldName, dateTime.toInstant(ZoneOffset.UTC).toEpochMilli().toInt())
+            }
         }
-        else -> {
-            put(fieldName, value)
-        }
+    } else {
+        put(fieldName, dateTime.toInstant(ZoneOffset.UTC).toEpochMilli())
     }
 }
 
@@ -398,7 +443,7 @@ fun GenericRecord.putGenericArray(fieldName: String, value: List<GenericRecord>)
             val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
-        else -> IllegalArgumentException("putGenericArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
+        else -> throw IllegalArgumentException("putGenericArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
     }
 }
 
@@ -416,7 +461,7 @@ inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName:
             val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
-        else -> IllegalArgumentException("putObjectArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
+        else -> throw IllegalArgumentException("putObjectArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
     }
 }
 

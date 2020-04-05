@@ -6,14 +6,28 @@ import javax.crypto.spec.SecretKeySpec
 
 // Based upon the pebbling algorithm in http://www.win.tue.nl/~berry/papers/eobp.pdf
 // and code at http://www.win.tue.nl/~berry/pebbling/
-class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
-                                           override val targetHash: SecureHash,
-                                           private val seedHash: SecureHash,
-                                           private val intermediateHashes: MutableList<SecureHash>,
-                                           override var version: Int,
-                                           override val maxChainLength: Int) : HashChainPrivate {
+class PebbledHashChain private constructor(
+    private val chainKey: SecretKeySpec,
+    override val targetHash: SecureHash,
+    private val seedHash: SecureHash,
+    private val intermediateHashes: MutableList<SecureHash>,
+    override var version: Int,
+    override val maxChainLength: Int,
+    override val minChainLength: Int
+) : HashChainPrivate {
+    init {
+        require(minChainLength >= 0) { "min chain length cannot be negative" }
+        require(minChainLength < maxChainLength) { "min chain length smaller than max chain length" }
+        require(version <= maxChainLength) { "version above allowed maxChainLength" }
+    }
+
     companion object {
-        fun generateChain(keyMaterial: ByteArray, secureRandom: Random = newSecureRandom(), maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH): HashChainPrivate {
+        fun generateChain(
+            keyMaterial: ByteArray,
+            secureRandom: Random = newSecureRandom(),
+            maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+            minChainLength: Int = HashChainPublic.MIN_CHAIN_LENGTH
+        ): HashChainPrivate {
             require(maxChainLength and (maxChainLength - 1) == 0) {
                 "Maximum chain length must be a power of 2"
             }
@@ -36,7 +50,19 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
                 endHash
             }
             intermediateHashes.reverse()
-            return PebbledHashChain(hmacKey, SecureHash(CHAIN_HASH_ID, finalHash), startHash, intermediateHashes, 0, maxChainLength)
+            val chain = PebbledHashChain(
+                hmacKey,
+                SecureHash(CHAIN_HASH_ID, finalHash),
+                startHash,
+                intermediateHashes,
+                0,
+                maxChainLength,
+                minChainLength
+            )
+            for (i in 0 until minChainLength) {
+                chain.incrementVersion()
+            }
+            return chain
         }
     }
 
@@ -48,7 +74,8 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
         HashChainPublic(
             chainKey,
             targetHash,
-            maxChainLength
+            maxChainLength,
+            minChainLength
         )
     }
 
@@ -57,15 +84,16 @@ class PebbledHashChain private constructor(private val chainKey: SecretKeySpec,
     override val secureVersion: SecureVersion
         get() {
             if (version == maxChainLength - 1) {
-                return SecureVersion(version, chain(seedHash), maxChainLength)
+                return SecureVersion(version, chain(seedHash), maxChainLength, minChainLength)
             }
             if (version == maxChainLength) {
-                return SecureVersion(version, seedHash, maxChainLength)
+                return SecureVersion(version, seedHash, maxChainLength, minChainLength)
             }
-            return SecureVersion(version, intermediateHashes[0], maxChainLength)
+            return SecureVersion(version, intermediateHashes[0], maxChainLength, minChainLength)
         }
 
     override fun getSecureVersion(stepsFromEnd: Int): SecureVersion {
+        require(stepsFromEnd >= minChainLength)
         require(stepsFromEnd <= maxChainLength)
         require(stepsFromEnd >= version) { "Version $stepsFromEnd already used. Current version $version" }
         while (version < stepsFromEnd) {

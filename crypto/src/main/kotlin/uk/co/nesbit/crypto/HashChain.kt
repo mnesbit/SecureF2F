@@ -9,11 +9,19 @@ import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import javax.crypto.spec.SecretKeySpec
 
-data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVersion: Int) : AvroConvertible {
+data class SecureVersion(
+    val version: Int,
+    val chainHash: SecureHash,
+    val maxVersion: Int,
+    val minVersion: Int
+) : AvroConvertible {
     constructor(versionRecord: GenericRecord) :
-            this(versionRecord.getTyped("version"),
-                    versionRecord.getTyped("chainHash", ::SecureHash),
-                    versionRecord.getTyped("maxVersion"))
+            this(
+                versionRecord.getTyped("version"),
+                versionRecord.getTyped("chainHash", ::SecureHash),
+                versionRecord.getTyped("maxVersion"),
+                versionRecord.getTyped("minVersion")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
@@ -32,21 +40,47 @@ data class SecureVersion(val version: Int, val chainHash: SecureHash, val maxVer
         secureVersionRecord.putTyped("version", version)
         secureVersionRecord.putTyped("chainHash", chainHash)
         secureVersionRecord.putTyped("maxVersion", maxVersion)
+        secureVersionRecord.putTyped("minVersion", minVersion)
         return secureVersionRecord
     }
 }
 
-class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: SecureHash, val maxChainLength: Int) : AvroConvertible {
-    constructor(keyMaterial: ByteArray, targetHash: SecureHash, maxChainLength: Int) : this(SecretKeySpec(keyMaterial, CHAIN_HASH_ID), targetHash, maxChainLength)
+class HashChainPublic(
+    private val chainKey: SecretKeySpec,
+    val targetHash: SecureHash,
+    val maxChainLength: Int,
+    val minChainLength: Int
+) : AvroConvertible {
+    constructor(
+        keyMaterial: ByteArray,
+        targetHash: SecureHash,
+        maxChainLength: Int,
+        minChainLength: Int
+    ) : this(
+        SecretKeySpec(keyMaterial, CHAIN_HASH_ID),
+        targetHash,
+        maxChainLength,
+        minChainLength
+    )
+
     constructor(chainRecord: GenericRecord) :
-            this(chainRecord.getTyped<ByteArray>("chainKey"),
-                    chainRecord.getTyped("targetHash", ::SecureHash),
-                    chainRecord.getTyped("maxChainLength"))
+            this(
+                chainRecord.getTyped<ByteArray>("chainKey"),
+                chainRecord.getTyped("targetHash", ::SecureHash),
+                chainRecord.getTyped("maxChainLength"),
+                chainRecord.getTyped("minChainLength")
+            )
 
     private val cache = mutableMapOf(targetHash to 0)
 
+    init {
+        require(minChainLength >= 0) { "min chain length cannot be negative" }
+        require(minChainLength < maxChainLength) { "min chain length smaller than max chain length" }
+    }
+
     companion object {
         const val CHAIN_HASH_ID = "HmacSHA256"
+        const val MIN_CHAIN_LENGTH = 0
         const val MAX_CHAIN_LENGTH = 65536
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
@@ -65,31 +99,43 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
         hashChainRecord.putTyped("chainKey", chainKey.encoded)
         hashChainRecord.putTyped("targetHash", targetHash)
         hashChainRecord.putTyped("maxChainLength", maxChainLength)
+        hashChainRecord.putTyped("minChainLength", minChainLength)
         return hashChainRecord
     }
 
-    fun verifyChainValue(version: SecureVersion): Boolean = verifyChainValue(version.chainHash, version.version, version.maxVersion)
+    fun verifyChainValue(version: SecureVersion): Boolean = verifyChainValue(
+        version.chainHash,
+        version.version,
+        version.minVersion,
+        version.maxVersion
+    )
 
-    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int, maxVersion: Int): Boolean {
+    fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int, minVersion: Int, maxVersion: Int): Boolean {
         require(hash.algorithm == CHAIN_HASH_ID)
+        if (minVersion != minChainLength) {
+            return false
+        }
         if (maxVersion != maxChainLength) {
             return false
         }
         if (cache[hash] == stepsFromEnd) {
             return true
         }
-        if (verifyChainValue(hash.bytes, stepsFromEnd, maxVersion)) {
+        if (verifyChainValue(hash.bytes, stepsFromEnd, minVersion, maxVersion)) {
             cache[hash] = stepsFromEnd
             return true
         }
         return false
     }
 
-    fun verifyChainValue(hashBytes: ByteArray, stepsFromEnd: Int, maxVersion: Int): Boolean {
+    fun verifyChainValue(hashBytes: ByteArray, stepsFromEnd: Int, minVersion: Int, maxVersion: Int): Boolean {
+        if (minVersion != minChainLength) {
+            return false
+        }
         if (maxVersion != maxChainLength) {
             return false
         }
-        if (stepsFromEnd > maxChainLength) {
+        if (stepsFromEnd < minChainLength) {
             return false
         }
         if (stepsFromEnd > maxChainLength) {
@@ -115,6 +161,7 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
 
         if (chainKey != other.chainKey) return false
         if (targetHash != other.targetHash) return false
+        if (minChainLength != other.minChainLength) return false
         if (maxChainLength != other.maxChainLength) return false
 
         return true
@@ -123,6 +170,7 @@ class HashChainPublic(private val chainKey: SecretKeySpec, val targetHash: Secur
     override fun hashCode(): Int {
         var result = chainKey.hashCode()
         result = 31 * result + targetHash.hashCode()
+        result = 31 * result + minChainLength
         result = 31 * result + maxChainLength
         return result
     }
@@ -133,6 +181,7 @@ interface HashChainPrivate {
     val targetHash: SecureHash
     val version: Int
     val maxChainLength: Int
+    val minChainLength: Int
     val secureVersion: SecureVersion
     val public: HashChainPublic
     fun getChainValue(stepsFromEnd: Int): SecureHash
