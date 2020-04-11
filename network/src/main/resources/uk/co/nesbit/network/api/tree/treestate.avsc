@@ -1,0 +1,46 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "TreeState",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "currentSeqNo",
+      "type": "long"
+    },
+    {
+      "name": "replySeqNo",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "name": "status",
+      "type": {
+        "name": "TreeStatus",
+        "type": "enum",
+        "symbols": [
+          "Isolated",
+          "Correct",
+          "ErrorBroadcast",
+          "ErrorFeedback"
+        ]
+      }
+    },
+    {
+      "name": "pathToRoot",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
+      }
+    }
+  ]
+}

@@ -15,6 +15,7 @@ import uk.co.nesbit.network.api.routing.DhtResponse
 import uk.co.nesbit.network.api.routing.ReplyPath
 import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import java.lang.Integer.min

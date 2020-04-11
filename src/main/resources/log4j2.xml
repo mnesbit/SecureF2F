@@ -3,7 +3,8 @@
     <Appenders>
         <File name="FileLogger" fileName="logs/app.log">
             <PatternLayout>
-                <Pattern>[%-5level] %X{akkaTimestamp} [%t] %c{2} %X{akkaSource} - %msg%n</Pattern>
+                <!-- <Pattern>[%-5level] %X{akkaTimestamp} [%t] %c{2} %X{akkaSource} - %msg%n</Pattern> -->
+                <Pattern>[%-5level] %date{ISO8601}{UTC}Z [%t] %c{2} - %msg%n</Pattern>
             </PatternLayout>
         </File>
     </Appenders>

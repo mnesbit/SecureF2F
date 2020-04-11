@@ -6,9 +6,8 @@ import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
 import uk.co.nesbit.network.util.createProps
-
-class WatchRequest
 
 class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
     companion object {

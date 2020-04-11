@@ -1,4 +1,4 @@
-package uk.co.nesbit.network.engine
+package uk.co.nesbit.network.treeEngine
 
 import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
@@ -9,7 +9,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
 import uk.co.nesbit.network.util.createProps
 
-class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
+class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
     companion object {
         @JvmStatic
         fun getProps(keyService: KeyService, networkConfig: NetworkConfiguration): Props {
@@ -19,7 +19,10 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
     }
 
     private val physicalNetworkActor: ActorRef =
-        context.actorOf(PhysicalNetworkActor.getProps(networkConfig), "net")
+        context.actorOf(
+            PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"), "net"
+        )
+
     private val neighbourLinkActor: ActorRef =
         context.actorOf(
             NeighbourLinkActor.getProps(
@@ -27,13 +30,6 @@ class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfig
                 networkConfig,
                 physicalNetworkActor
             ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
-        )
-    private val routeDiscoveryActor: ActorRef =
-        context.actorOf(
-            RouteDiscoveryActor.getProps(
-                keyService,
-                neighbourLinkActor
-            ).withDispatcher("akka.fixed-dispatcher"), "routes"
         )
 
     override fun preStart() {

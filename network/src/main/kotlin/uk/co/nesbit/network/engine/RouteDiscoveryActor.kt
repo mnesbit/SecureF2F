@@ -15,6 +15,7 @@ import uk.co.nesbit.network.api.routing.RouteTable
 import uk.co.nesbit.network.api.routing.RoutedMessage
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis

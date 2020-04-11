@@ -62,9 +62,11 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
     override fun compareTo(other: SecureHash): Int {
         var i = 0
         while (i < bytes.size && i < other.bytes.size) {
-            if (bytes[i] < other.bytes[i]) {
+            val x = bytes[i].toInt() and 0xFF
+            val y = other.bytes[i].toInt() and 0xFF
+            if (x < y) {
                 return -1
-            } else if (bytes[i] > other.bytes[i]) {
+            } else if (x > y) {
                 return 1
             }
             ++i

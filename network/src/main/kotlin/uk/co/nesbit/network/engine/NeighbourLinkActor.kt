@@ -8,6 +8,8 @@ import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.routing.Routes
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.OpenRequest
+import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis

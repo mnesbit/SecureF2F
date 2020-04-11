@@ -1,4 +1,4 @@
-package uk.co.nesbit.network.engine
+package uk.co.nesbit.network.mocknet
 
 import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef

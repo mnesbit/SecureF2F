@@ -20,6 +20,7 @@ import uk.co.nesbit.network.api.routing.Heartbeat
 import uk.co.nesbit.network.api.routing.RouteEntry
 import uk.co.nesbit.network.api.routing.SignedEntry
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.CloseRequest
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
