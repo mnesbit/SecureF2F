@@ -1,15 +1,11 @@
 package uk.co.nesbit.crypto
 
-import uk.co.nesbit.avro.serialize
-import org.junit.Assert
-import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.*
 import org.junit.Test
+import uk.co.nesbit.avro.serialize
 import java.security.SignatureException
-import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotEquals
-
 
 class CryptoHelpersTest {
     @Test
@@ -34,12 +30,12 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
         val signature2 = DigitalSignatureAndKey(signatureRecord)
-        Assert.assertFalse(signature === signature2)
+        assertFalse(signature === signature2)
         assertEquals(signature, signature2)
         val shortSignature = signature.toDigitalSignature()
         val shortSignatureRecord = shortSignature.toGenericRecord()
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
-        Assert.assertFalse(shortSignature === shortSignature2)
+        assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
     }
 
@@ -74,12 +70,12 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
         val signature2 = DigitalSignatureAndKey(signatureRecord)
-        Assert.assertFalse(signature === signature2)
+        assertFalse(signature === signature2)
         assertEquals(signature, signature2)
         val shortSignature = signature.toDigitalSignature()
         val shortSignatureRecord = shortSignature.toGenericRecord()
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
-        Assert.assertFalse(shortSignature === shortSignature2)
+        assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
     }
 
@@ -114,12 +110,12 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         val signatureRecord = signature.toGenericRecord()
         val signature2 = DigitalSignatureAndKey(signatureRecord)
-        Assert.assertFalse(signature === signature2)
+        assertFalse(signature === signature2)
         assertEquals(signature, signature2)
         val shortSignature = signature.toDigitalSignature()
         val shortSignatureRecord = shortSignature.toGenericRecord()
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
-        Assert.assertFalse(shortSignature === shortSignature2)
+        assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
     }
 

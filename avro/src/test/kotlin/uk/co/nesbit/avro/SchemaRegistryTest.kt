@@ -5,10 +5,8 @@ import org.apache.avro.SchemaBuilder
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class SchemaRegistryTest {
@@ -69,7 +67,7 @@ class SchemaRegistryTest {
         registry.registerSchema(schema1) // duplicate registration is safe
         assertEquals(listOf(schema1, schema3), registry.getSchemas("test1"))
         assertEquals(listOf(schema2), registry.getSchemas("test2"))
-        assertEquals(emptyList(), registry.getSchemas("dummy"))
+        assertEquals(emptyList<Schema>(), registry.getSchemas("dummy"))
     }
 
     @Test

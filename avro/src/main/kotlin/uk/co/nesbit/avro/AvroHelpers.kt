@@ -19,7 +19,7 @@ fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
     var parser = Schema.Parser()
     val types = LinkedHashMap<String, Schema>()
     var lastError: Exception? = null
-    while (!unprocessed.isEmpty()) {
+    while (unprocessed.isNotEmpty()) {
         var progress = false
         val iter = unprocessed.listIterator()
         while (iter.hasNext()) {
@@ -433,14 +433,13 @@ fun GenericRecord.putLocalDateTime(fieldName: String, dateTime: LocalDateTime) {
 fun GenericRecord.putGenericArray(fieldName: String, value: List<GenericRecord>) {
     val fieldSchema = schema.getField(fieldName).schema()
     require(fieldSchema.type == Schema.Type.ARRAY) { "putGenericArray only works on Array fields" }
-    val arrayElementType = fieldSchema.elementType.type
-    when (arrayElementType) {
+    when (fieldSchema.elementType.type) {
         Schema.Type.RECORD -> {
-            val arrayData = GenericData.Array<GenericRecord>(fieldSchema, value.map { it })
+            val arrayData = GenericData.Array(fieldSchema, value.map { it })
             put(fieldName, arrayData)
         }
         Schema.Type.BYTES -> {
-            val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
+            val arrayData = GenericData.Array(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
         else -> throw IllegalArgumentException("putGenericArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")
@@ -451,14 +450,13 @@ fun GenericRecord.putGenericArray(fieldName: String, value: List<GenericRecord>)
 inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName: String, value: List<T>) {
     val fieldSchema = schema.getField(fieldName).schema()
     require(fieldSchema.type == Schema.Type.ARRAY) { "putObjectArray only works on Array fields" }
-    val arrayElementType = fieldSchema.elementType.type
-    when (arrayElementType) {
+    when (fieldSchema.elementType.type) {
         Schema.Type.RECORD -> {
-            val arrayData = GenericData.Array<GenericRecord>(fieldSchema, value.map { it.toGenericRecord() })
+            val arrayData = GenericData.Array(fieldSchema, value.map { it.toGenericRecord() })
             put(fieldName, arrayData)
         }
         Schema.Type.BYTES -> {
-            val arrayData = GenericData.Array<ByteBuffer>(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
+            val arrayData = GenericData.Array(fieldSchema, value.map { ByteBuffer.wrap(it.serialize()) })
             put(fieldName, arrayData)
         }
         else -> throw IllegalArgumentException("putObjectArray only applies to Array<GenericRecord> and Array<ByteBuffer> fields")

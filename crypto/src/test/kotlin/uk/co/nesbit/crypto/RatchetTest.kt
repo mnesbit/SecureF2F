@@ -1,6 +1,7 @@
 package uk.co.nesbit.crypto
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.ratchet.RatchetException
@@ -8,7 +9,6 @@ import uk.co.nesbit.crypto.ratchet.RatchetHeader
 import uk.co.nesbit.crypto.ratchet.RatchetMessage
 import uk.co.nesbit.crypto.ratchet.RatchetState
 import kotlin.experimental.xor
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class RatchetTest {

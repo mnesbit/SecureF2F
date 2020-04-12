@@ -1,5 +1,7 @@
 package uk.co.nesbit.network
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.*
@@ -10,9 +12,7 @@ import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.engineOld.KeyServiceImpl
 import java.security.SignatureException
 import kotlin.experimental.xor
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 
 class RoutingDataTest {
     @Test

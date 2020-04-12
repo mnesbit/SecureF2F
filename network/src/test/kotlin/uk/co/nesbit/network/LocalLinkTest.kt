@@ -1,6 +1,6 @@
 package uk.co.nesbit.network
 
-import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.*
 import org.junit.Test
 import uk.co.nesbit.network.api.LinkStatus
 import uk.co.nesbit.network.api.NetworkAddress
@@ -11,8 +11,6 @@ import java.time.Clock
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 class LocalLinkTest {
     @Test
@@ -119,8 +117,8 @@ class LocalLinkTest {
             val testMessage2a = "Test2a_$i".toByteArray(Charsets.UTF_8)
             val testMessage2b = "Test2b_$i".toByteArray(Charsets.UTF_8)
             val testMessage2c = "Test2c_$i".toByteArray(Charsets.UTF_8)
-            node1.neighbourDiscoveryService.send(link1to2, testMessage1a)
-            node2.neighbourDiscoveryService.send(link2to1, testMessage2a)
+            node1.neighbourDiscoveryService.send(link1to2!!, testMessage1a)
+            node2.neighbourDiscoveryService.send(link2to1!!, testMessage2a)
             node1.neighbourDiscoveryService.send(link1to2, testMessage1b)
             node2.neighbourDiscoveryService.send(link2to1, testMessage2b)
             node1.neighbourDiscoveryService.send(link1to2, testMessage1c)
@@ -172,7 +170,7 @@ class LocalLinkTest {
             val i = receivedOn2.incrementAndGet()
             println("2 $i ${it.msg.toString(Charsets.UTF_8)}")
             val msg = "From 2_$i".toByteArray(Charsets.UTF_8)
-            node2.neighbourDiscoveryService.send(link, msg)
+            node2.neighbourDiscoveryService.send(link!!, msg)
         }
         net1.openLink(net2.networkId)
         var stopping = false
@@ -250,7 +248,7 @@ class LocalLinkTest {
             val i = receivedOn2.incrementAndGet()
             println("2 $i ${it.msg.toString(Charsets.UTF_8)}")
             val msg = "From 2_$i".toByteArray(Charsets.UTF_8)
-            node2.neighbourDiscoveryService.send(link, msg)
+            node2.neighbourDiscoveryService.send(link!!, msg)
         }
         net2.openLink(net1.networkId)
         var stopping = false
@@ -321,7 +319,7 @@ class LocalLinkTest {
             val i = receivedOn2.incrementAndGet()
             println("2 $i ${it.msg.toString(Charsets.UTF_8)}")
             val msg = "From 2_$i".toByteArray(Charsets.UTF_8)
-            node2.neighbourDiscoveryService.send(link, msg)
+            node2.neighbourDiscoveryService.send(link!!, msg)
         }
         net1.openLink(net2.networkId)
         var stopping = false

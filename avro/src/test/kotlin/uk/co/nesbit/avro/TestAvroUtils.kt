@@ -5,15 +5,13 @@ import org.apache.avro.generic.GenericArray
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericEnumSymbol
 import org.apache.avro.generic.GenericRecord
-import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.*
 import org.junit.Test
 import uk.co.nesbit.utils.readTextAndClose
 import java.math.BigDecimal
 import java.time.*
 import java.time.temporal.ChronoUnit
 import java.util.*
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class TestAvroUtils {
     private val schemaWithLogicalTypes = """
@@ -415,7 +413,7 @@ class TestAvroUtils {
             override fun doubleVisitor(value: Double, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
                 val pathStr = path.toStringPath()
                 assertEquals("doubleField", pathStr)
-                assertEquals(5.6789, value)
+                assertEquals(5.6789.toRawBits(), value.toRawBits())
             }
 
             override fun booleanVisitor(value: Boolean, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
