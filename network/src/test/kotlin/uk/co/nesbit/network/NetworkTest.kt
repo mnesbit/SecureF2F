@@ -7,13 +7,13 @@ import akka.testkit.TestActors
 import akka.testkit.TestKit
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.mocknet.*
 import uk.co.nesbit.network.util.seconds
-import kotlin.test.assertEquals
 
 class NetworkTest {
     private var actorSystem: ActorSystem? = null

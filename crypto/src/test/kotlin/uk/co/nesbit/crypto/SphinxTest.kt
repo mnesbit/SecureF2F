@@ -1,14 +1,13 @@
 package uk.co.nesbit.crypto
 
+import org.junit.Assert.*
+import org.junit.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
-import org.junit.Assert.*
-import org.junit.Test
 import kotlin.experimental.xor
-import kotlin.test.assertNull
 
 class SphinxTest {
     @Test

@@ -3,11 +3,11 @@ package uk.co.nesbit.avro
 import org.apache.avro.SchemaBuilder
 import org.apache.avro.generic.GenericData
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.IOException
 import java.util.*
 import kotlin.experimental.xor
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class SafeDecoderTest {
@@ -212,7 +212,7 @@ class SafeDecoderTest {
         for (x in -512..+512) {
             val i = x.toDouble()
             val (serialized, field) = encodeDecode(i)
-            assertEquals(i, field)
+            assertEquals(i.toRawBits(), field.toRawBits())
             assertFailsWith<IOException> {
                 schema.deserialize(serialized.copyOf(serialized.size - 1))
             }
@@ -221,33 +221,33 @@ class SafeDecoderTest {
         for (x in 0..100) {
             val i = random.nextDouble()
             val (serialized, field) = encodeDecode(i)
-            assertEquals(i, field)
+            assertEquals(i.toRawBits(), field.toRawBits())
             assertFailsWith<IOException> {
                 schema.deserialize(serialized.copyOf(serialized.size - 1))
             }
         }
         val (serializedMin, fieldMin) = encodeDecode(Double.MIN_VALUE)
-        assertEquals(Double.MIN_VALUE, fieldMin)
+        assertEquals(Double.MIN_VALUE.toRawBits(), fieldMin.toRawBits())
         assertFailsWith<IOException> {
             schema.deserialize(serializedMin.copyOf(serializedMin.size - 1))
         }
         val (serializedMax, fieldMax) = encodeDecode(Double.MAX_VALUE)
-        assertEquals(Double.MAX_VALUE, fieldMax)
+        assertEquals(Double.MAX_VALUE.toRawBits(), fieldMax.toRawBits())
         assertFailsWith<IOException> {
             schema.deserialize(serializedMax.copyOf(serializedMax.size - 1))
         }
         val (serializedNan, fieldNan) = encodeDecode(Double.NaN)
-        assertEquals(Double.NaN, fieldNan)
+        assertEquals(Double.NaN.toRawBits(), fieldNan.toRawBits())
         assertFailsWith<IOException> {
             schema.deserialize(serializedNan.copyOf(serializedNan.size - 1))
         }
         val (serializedPInf, fieldPInf) = encodeDecode(Double.POSITIVE_INFINITY)
-        assertEquals(Double.POSITIVE_INFINITY, fieldPInf)
+        assertEquals(Double.POSITIVE_INFINITY.toRawBits(), fieldPInf.toRawBits())
         assertFailsWith<IOException> {
             schema.deserialize(serializedPInf.copyOf(serializedPInf.size - 1))
         }
         val (serializedNInf, fieldNInf) = encodeDecode(Double.NEGATIVE_INFINITY)
-        assertEquals(Double.NEGATIVE_INFINITY, fieldNInf)
+        assertEquals(Double.NEGATIVE_INFINITY.toRawBits(), fieldNInf.toRawBits())
         assertFailsWith<IOException> {
             schema.deserialize(serializedNInf.copyOf(serializedNInf.size - 1))
         }

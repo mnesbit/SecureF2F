@@ -79,6 +79,7 @@ allprojects {
         testImplementation "junit:junit:$junit_version"
         testRuntime "org.junit.vintage:junit-vintage-engine:$junit5_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
+        testRuntimeOnly "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
         testRuntimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
     }
 }

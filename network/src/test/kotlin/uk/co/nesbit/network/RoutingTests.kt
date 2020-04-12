@@ -4,6 +4,7 @@ import org.apache.avro.Schema
 import org.apache.avro.SchemaBuilder
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import org.junit.Assert.*
 import org.junit.Ignore
 import org.junit.Test
 import uk.co.nesbit.avro.deserialize
@@ -18,9 +19,6 @@ import uk.co.nesbit.network.engineOld.SimNetwork
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class RoutingTests {
     private data class TestMessage(val intField: Int) : Message {
@@ -358,7 +356,7 @@ class RoutingTests {
                         val path = node.routeDiscoveryService.findRandomRouteTo(msg.replyTo)
                         assertNotNull(path)
                         val test1 = RoutedMessage.createRoutedMessage(msg.replyTo, received)
-                        node.routeDiscoveryService.send(path, test1)
+                        node.routeDiscoveryService.send(path!!, test1)
                     }
                     while (receivedCount.get() < m * (n - 1)) {
                         node.runStateMachine()
