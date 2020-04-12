@@ -3,6 +3,7 @@ package uk.co.nesbit.crypto
 import org.junit.Assert.*
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 
 class UtilsTest {
     @Test
@@ -95,5 +96,24 @@ class UtilsTest {
         deserialized.add(500.toByteArray())
         assertEquals(true, deserialized.possiblyContains(500.toByteArray()))
         assertNotEquals(filter, deserialized)
+    }
+
+    @Test
+    fun `SignedData test`() {
+        val keys = SphinxIdentityKeyPair.generateKeyPair()
+        val value1 = "0123456789".toByteArray(Charsets.UTF_8)
+        val data1 = SignedData(value1, keys.signingKeys.sign(value1).toDigitalSignature())
+        data1.verify(keys.signingKeys.public)
+        val data1Bytes = data1.serialize()
+        val data1Deserialized = SignedData.deserialize(data1Bytes)
+        assertEquals(data1, data1Deserialized)
+        data1Deserialized.verify(keys.signingKeys.public)
+        val value2 = keys.public
+        val data2 = SignedData.createSignedData(value2) { keys.signingKeys.sign(it).toDigitalSignature() }
+        data2.verify(keys.signingKeys.public)
+        val data2Bytes = data2.serialize()
+        val data2Deserialized = SignedData.deserialize(data2Bytes)
+        assertEquals(data2, data2Deserialized)
+        data2Deserialized.verify(keys.signingKeys.public)
     }
 }

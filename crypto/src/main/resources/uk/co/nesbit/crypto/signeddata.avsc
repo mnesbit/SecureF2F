@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "SignedData",
+  "type": "record",
+  "fields": [
+    {
+      "name": "data",
+      "type": "bytes"
+    },
+    {
+      "name": "signature",
+      "type": "DigitalSignature"
+    }
+  ]
+}
