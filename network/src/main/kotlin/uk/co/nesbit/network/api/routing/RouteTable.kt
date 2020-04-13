@@ -13,8 +13,8 @@ class RouteTable(val fullRoutes: List<Routes>, val knownSources: BloomFilter, va
     constructor(routeTable: GenericRecord) :
             this(
                 routeTable.getObjectArray("fullRoutes", ::Routes),
-                routeTable.getTyped("knownSources", ::BloomFilter),
-                routeTable.getTyped<SecureHash?>("replyTo", ::SecureHash)
+                routeTable.getTyped("knownSources"),
+                routeTable.getTyped<SecureHash?>("replyTo")
             )
 
     companion object {

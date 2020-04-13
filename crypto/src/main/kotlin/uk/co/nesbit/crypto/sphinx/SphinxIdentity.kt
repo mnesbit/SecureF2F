@@ -21,7 +21,7 @@ class SphinxPublicIdentity(
             this(
                 signatureRecord.getTyped("signingPublicKey"),
                 signatureRecord.getTyped("diffieHellmanPublicKey"),
-                signatureRecord.getTyped("targetHash", ::SecureHash),
+                signatureRecord.getTyped("targetHash"),
                 signatureRecord.getTyped("maxVersion"),
                 signatureRecord.getTyped("minVersion"),
                 signatureRecord.getTyped<String?>("publicAddress")
@@ -145,8 +145,10 @@ class SphinxIdentityKeyPair(
 
 data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVersion: SecureVersion) : AvroConvertible {
     constructor(versionRecord: GenericRecord) :
-            this(versionRecord.getTyped("identity", ::SphinxPublicIdentity),
-                    versionRecord.getTyped("currentVersion", ::SecureVersion))
+            this(
+                versionRecord.getTyped("identity"),
+                versionRecord.getTyped("currentVersion")
+            )
 
     init {
         require(identity.verifyChainValue(currentVersion)) { "Invalid version information" }

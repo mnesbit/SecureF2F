@@ -20,8 +20,8 @@ class DhtRequest(
     constructor(dhtRequest: GenericRecord) :
             this(
                 dhtRequest.getTyped("requestId"),
-                dhtRequest.getTyped("key", ::SecureHash),
-                dhtRequest.getTyped("replyPath", ::ReplyPath),
+                dhtRequest.getTyped("key"),
+                dhtRequest.getTyped("replyPath"),
                 dhtRequest.getTyped("data")
             )
 

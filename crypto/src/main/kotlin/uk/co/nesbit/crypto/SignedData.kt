@@ -13,7 +13,7 @@ class SignedData(
     constructor(signedDataRecord: GenericRecord) :
             this(
                 signedDataRecord.getTyped("data"),
-                signedDataRecord.getTyped("signature", ::DigitalSignature)
+                signedDataRecord.getTyped("signature")
             )
 
     companion object {

@@ -7,7 +7,17 @@ import uk.co.nesbit.utils.ThreadSafeState
 import java.lang.reflect.Constructor
 import java.nio.ByteBuffer
 
-class SchemaRegistry {
+class SchemaRegistry(preregister: List<Schema> = emptyList()) {
+    companion object {
+        const val FingerprintSize: Int = 32
+    }
+
+    init {
+        for (schema in preregister) {
+            registerSchema(schema)
+        }
+    }
+
     private class RegistryState {
         val schemas = mutableMapOf<ByteBuffer, Schema>()
         val fingerprints = mutableMapOf<Schema, ByteBuffer>()
@@ -42,8 +52,11 @@ class SchemaRegistry {
         return state.locked {
             val fingerprint = getFingeprint(schema)
             require(!converters.containsKey(ByteBuffer.wrap(fingerprint))) { "Only one class allowed to be registered per schema" }
-            val constructor = convertibleClass.getConstructor(GenericRecord::class.java)
-            require(constructor != null) { "No constructor from GenericRecord found" }
+            val constructor = try {
+                convertibleClass.getConstructor(GenericRecord::class.java)
+            } catch (ex: NoSuchMethodException) {
+                throw IllegalArgumentException("No constructor from GenericRecord found", ex)
+            }
             converters[ByteBuffer.wrap(fingerprint)] = constructor
             fingerprint
         }
@@ -51,7 +64,7 @@ class SchemaRegistry {
 
     fun deserialize(schemaId: ByteArray, data: ByteArray): AvroConvertible {
         return state.locked {
-            require(schemaId.size == 32) { "Invalid fingerprint" }
+            require(schemaId.size == FingerprintSize) { "Invalid fingerprint" }
             val schemaKey = ByteBuffer.wrap(schemaId)
             val schema = schemas[schemaKey]
             require(schema != null) { "Can't find matching schema" }

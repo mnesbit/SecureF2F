@@ -17,10 +17,12 @@ class VersionedRoute private constructor(private val schemaId: SecureHash,
                                          val from: VersionedIdentity,
                                          val to: VersionedIdentity) : AvroConvertible {
     constructor(versionedRoute: GenericRecord) :
-            this(SecureHash("SHA-256", versionedRoute.getTyped("schemaFingerprint")),
-                    versionedRoute.getTyped("nonce"),
-                    versionedRoute.getTyped("from", ::VersionedIdentity),
-                    versionedRoute.getTyped("to", ::VersionedIdentity))
+            this(
+                SecureHash("SHA-256", versionedRoute.getTyped("schemaFingerprint")),
+                versionedRoute.getTyped("nonce"),
+                versionedRoute.getTyped("from"),
+                versionedRoute.getTyped("to")
+            )
 
     constructor(nonce: ByteArray,
                 from: VersionedIdentity,
