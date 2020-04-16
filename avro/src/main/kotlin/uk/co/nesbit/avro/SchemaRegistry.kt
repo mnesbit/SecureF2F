@@ -3,53 +3,70 @@ package uk.co.nesbit.avro
 import org.apache.avro.Schema
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.utils.ThreadSafeState
 import java.lang.reflect.Constructor
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
-class SchemaRegistry(preregister: List<Schema> = emptyList()) {
+class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>> = emptyList()) {
     companion object {
         const val FingerprintSize: Int = 32
     }
 
+    val lock = ReentrantLock()
+    val schemas = ConcurrentHashMap<ByteBuffer, Schema>()
+    val fingerprints = ConcurrentHashMap<Schema, ByteBuffer>()
+    val schemasByName = ConcurrentHashMap<String, MutableList<Schema>>()
+    val converters = ConcurrentHashMap<ByteBuffer, Constructor<out AvroConvertible>>()
+
     init {
-        for (schema in preregister) {
-            registerSchema(schema)
+        for (item in preregister) {
+            registerDeserializer(item.first, item.second)
         }
     }
 
-    private class RegistryState {
-        val schemas = mutableMapOf<ByteBuffer, Schema>()
-        val fingerprints = mutableMapOf<Schema, ByteBuffer>()
-        val schemasByName = mutableMapOf<String, MutableList<Schema>>()
-        val converters = mutableMapOf<ByteBuffer, Constructor<out AvroConvertible>>()
-    }
-
-    private val state = ThreadSafeState(RegistryState())
-
     fun registerSchema(schema: Schema): ByteArray {
-        return state.locked {
-            val fingerprint = fingerprints[schema]
-            if (fingerprint != null) {
-                return@locked fingerprint.array()
-            }
-            val wrappedFingerprint = ByteBuffer.wrap(SchemaNormalization.parsingFingerprint("SHA-256", schema))
+        val fingerprint = fingerprints[schema]
+        if (fingerprint != null) {
+            return fingerprint.array()
+        }
+        val wrappedFingerprint = ByteBuffer.wrap(SchemaNormalization.parsingFingerprint("SHA-256", schema))
+        lock.withLock {
             schemas[wrappedFingerprint] = schema
             fingerprints[schema] = wrappedFingerprint
             val schemaList = schemasByName.getOrPut(schema.fullName, { mutableListOf() })
             schemaList += schema
-            wrappedFingerprint.array()
+            return wrappedFingerprint.array()
         }
     }
 
-    fun getFingeprint(schema: Schema): ByteArray = state.locked {
-        fingerprints[schema]?.array() ?: registerSchema(schema)
+    fun getFingeprint(schema: Schema): ByteArray {
+        val fingerprint = fingerprints[schema]
+        if (fingerprint != null) {
+            return fingerprint.array()
+        }
+        lock.withLock {
+            return registerSchema(schema)
+        }
     }
 
-    fun getSchemas(schemaName: String): List<Schema> = state.locked { schemasByName[schemaName] ?: emptyList() }
+    fun getSchemas(schemaName: String): List<Schema> {
+        return schemasByName[schemaName] ?: emptyList()
+    }
+
+    fun <T : AvroConvertible> safeRegisterDeserializer(convertibleClass: Class<T>, schema: Schema): ByteArray {
+        val fingerprint = fingerprints[schema]
+        if (fingerprint != null) {
+            return fingerprint.array()
+        }
+        lock.withLock {
+            return registerDeserializer(convertibleClass, schema)
+        }
+    }
 
     fun <T : AvroConvertible> registerDeserializer(convertibleClass: Class<T>, schema: Schema): ByteArray {
-        return state.locked {
+        return lock.withLock {
             val fingerprint = getFingeprint(schema)
             require(!converters.containsKey(ByteBuffer.wrap(fingerprint))) { "Only one class allowed to be registered per schema" }
             val constructor = try {
@@ -63,15 +80,13 @@ class SchemaRegistry(preregister: List<Schema> = emptyList()) {
     }
 
     fun deserialize(schemaId: ByteArray, data: ByteArray): AvroConvertible {
-        return state.locked {
-            require(schemaId.size == FingerprintSize) { "Invalid fingerprint" }
-            val schemaKey = ByteBuffer.wrap(schemaId)
-            val schema = schemas[schemaKey]
-            require(schema != null) { "Can't find matching schema" }
-            val genericRecord = schema.deserialize(data)
-            val constructor = converters[schemaKey]
-            require(constructor != null) { "No AvroConvertible registered to this schema fingerprint" }
-            constructor.newInstance(genericRecord)
-        }
+        require(schemaId.size == FingerprintSize) { "Invalid fingerprint" }
+        val schemaKey = ByteBuffer.wrap(schemaId)
+        val schema = schemas[schemaKey]
+        require(schema != null) { "Can't find matching schema" }
+        val genericRecord = schema.deserialize(data)
+        val constructor = converters[schemaKey]
+        require(constructor != null) { "No AvroConvertible registered to this schema fingerprint" }
+        return constructor.newInstance(genericRecord)
     }
 }

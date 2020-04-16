@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "Hello",
+  "type": "record",
+  "fields": [
+    {
+      "name": "secureLinkId",
+      "type": {
+        "name": "nonce",
+        "type": "fixed",
+        "size": 16
+      }
+    },
+    {
+      "name": "sourceId",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "signature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

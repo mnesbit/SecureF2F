@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "OneHopMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    }
+  ]
+}

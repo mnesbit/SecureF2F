@@ -1,0 +1,22 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "SecurePathItem",
+  "type": "record",
+  "fields": [
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "identity",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "signatureOverNext",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}
