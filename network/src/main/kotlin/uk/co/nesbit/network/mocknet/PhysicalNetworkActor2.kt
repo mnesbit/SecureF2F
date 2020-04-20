@@ -1,18 +1,15 @@
 package uk.co.nesbit.network.mocknet
 
-import akka.actor.AbstractLoggingActor
 import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Terminated
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import java.util.concurrent.atomic.AtomicInteger
 
-data class OpenRequest(val remoteNetworkId: NetworkAddress)
-data class CloseRequest(val linkId: LinkId)
-
-class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
+class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : AbstractActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(networkConfig: NetworkConfiguration): Props {
@@ -23,18 +20,17 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         val linkIdCounter = AtomicInteger(0)
     }
 
-    internal data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
-    internal data class ConnectResult(val linkId: LinkId, val opened: Boolean)
-    internal data class ConnectionDrop(val initiatorLinkId: LinkId)
+    private data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
+    private data class ConnectResult(val linkId: LinkId, val opened: Boolean)
+    private data class ConnectionDrop(val initiatorLinkId: LinkId)
 
-    internal val networkId get() = networkConfig.networkId
-    internal val owners = mutableSetOf<ActorRef>()
+    private val networkId get() = networkConfig.networkId
+    private val owners = mutableSetOf<ActorRef>()
 
-    internal val links = mutableMapOf<LinkId, LinkInfo>()
-    internal val targets = mutableMapOf<LinkId, ActorRef>()
-    internal val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end
-    internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end
-    internal val addresses = mutableMapOf<Address, LinkId>() // prefers active over passive links
+    private val links = mutableMapOf<LinkId, LinkInfo>()
+    private val targets = mutableMapOf<LinkId, ActorRef>()
+    private val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end initiator to local
+    private val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
 
     private val dnsSelector = context.actorSelection("/user/Dns")
 
@@ -96,12 +92,6 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         if (linkInfo != null) {
             val newLinkInfo = linkInfo.copy(status = newStatus)
             links[linkId] = newLinkInfo
-            val currentLinkForAddress = addresses[newLinkInfo.route.to]
-            if (currentLinkForAddress == null ||
-                links[currentLinkForAddress]!!.status < newLinkInfo.status
-            ) {
-                addresses[newLinkInfo.route.to] = linkId
-            }
             if (linkInfo.status != newLinkInfo.status) {
                 for (owner in owners) {
                     owner.tell(newLinkInfo, self)
@@ -120,16 +110,6 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             if (reverseForeignLink != null) {
                 foreignLinks -= reverseForeignLink
             }
-            val currentLinkForAddress = addresses[newLinkInfo.route.to]
-            if (currentLinkForAddress == linkId) {
-                addresses -= newLinkInfo.route.to
-                for (link in links.values) {
-                    if (link.status > linkInfo.status && link.route.to == linkInfo.route.to) {
-                        addresses[link.route.to] = link.linkId
-                        break
-                    }
-                }
-            }
             if (linkInfo.status != newLinkInfo.status) {
                 for (owner in owners) {
                     owner.tell(newLinkInfo, self)
@@ -140,13 +120,6 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     private fun onOpenRequest(request: OpenRequest) {
         //log().info("OpenRequest $request")
-        val existingLink = addresses[request.remoteNetworkId]
-        if (existingLink != null) {
-            val linkInfo = links[existingLink]
-            if (linkInfo?.status?.active == true) {
-                return
-            }
-        }
         val newLinkId = createLink(request.remoteNetworkId)
         dnsSelector.tell(DnsLookup(request.remoteNetworkId, newLinkId), self)
     }
@@ -157,22 +130,21 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         if (dnsResponse.actorRef == null) {
             log().error("Couldn't find Dns for ${linkInfo.route.to}")
         } else {
-            if (!linkInfo.status.active) {
-                targets[linkInfo.linkId] = dnsResponse.actorRef
-                context.watch(dnsResponse.actorRef)
-                dnsResponse.actorRef.tell(ConnectRequest(networkId, linkInfo.linkId), self)
-            }
+            targets[linkInfo.linkId] = dnsResponse.actorRef
+            context.watch(dnsResponse.actorRef)
+            dnsResponse.actorRef.tell(ConnectRequest(networkId, linkInfo.linkId), self)
         }
     }
 
     private fun onCloseRequest(request: CloseRequest) {
-        //log().info("CloseRequest $request")
+        //log().info("CloseRequest $request ${links[request.linkId]}")
         val existingConnection = links[request.linkId] ?: return
         if (existingConnection.status.active) {
-            log().info("Closing $existingConnection")
-            val target = targets[existingConnection.linkId]
+            //log().info("Closing ${request.linkId} $existingConnection")
+            val target = targets[request.linkId]
             val closeLinkId = reverseForeignLinks[request.linkId] ?: request.linkId
             closeLink(request.linkId)
+            //log().info("drop sent on ${request.linkId} to $closeLinkId ${target}")
             target?.tell(ConnectionDrop(closeLinkId), ActorRef.noSender())
         }
     }
@@ -186,6 +158,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
             val linkId = createLink(request.sourceNetworkId)
             targets[linkId] = sender
             context.watch(sender)
+            //log().info("ConnectRequest ${request.linkId}->$linkId")
             foreignLinks[request.linkId] = linkId
             reverseForeignLinks[linkId] = request.linkId
             enableLink(linkId, LinkStatus.LINK_UP_PASSIVE)
@@ -207,7 +180,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         val activeLink = foreignLinks[drop.initiatorLinkId] ?: drop.initiatorLinkId
         val existingConnection = links[activeLink]
         if (existingConnection != null) {
-            log().info("Dropping $existingConnection")
+            //log().info("Dropping ${foreignLinks[drop.initiatorLinkId]} ${drop.initiatorLinkId}")
             closeLink(activeLink)
         }
     }
@@ -217,7 +190,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
         owners -= death.actor
         val relevantLinks = targets.filter { it.value == death.actor }.map { it.key }
         for (link in relevantLinks) {
-            log().info("Dropping ${links[link]}")
+            //log().info("Dropping ${links[link]}")
             closeLink(link)
         }
     }

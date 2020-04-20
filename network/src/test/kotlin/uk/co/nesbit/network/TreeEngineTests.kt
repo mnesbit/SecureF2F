@@ -45,11 +45,12 @@ class TreeEngineTests {
     @Test
     fun `TreeState message test`() {
         val keyService = KeyServiceImpl(maxVersion = 64)
-        val id1 = keyService.generateNetworkID("1")
+        val keys = (0..2).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
         val linkId12 = keyService.random.generateSeed(16)
-        val id2 = keyService.generateNetworkID("2")
+        val id2 = keys[1]
         val linkId23 = keyService.random.generateSeed(16)
-        val id3 = keyService.generateNetworkID("3")
+        val id3 = keys[2]
         val fixedClock = TestClock()
         val treeRootTo1 = TreeState.createTreeState(
             null,
@@ -57,13 +58,13 @@ class TreeEngineTests {
             keyService.getVersion(id1),
             keyService.getVersion(id2),
             keyService,
-            fixedClock
+            fixedClock.instant()
         )
-        treeRootTo1.verify(linkId12, keyService.getVersion(id2), fixedClock)
+        treeRootTo1.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
         val treeRootTo1Serialized = treeRootTo1.serialize()
         val treeRootTo1Deserialized = TreeState.deserialize(treeRootTo1Serialized)
         assertEquals(treeRootTo1, treeRootTo1Deserialized)
-        treeRootTo1Deserialized.verify(linkId12, keyService.getVersion(id2), fixedClock)
+        treeRootTo1Deserialized.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
 
         val tree1To2 = TreeState.createTreeState(
             treeRootTo1,
@@ -71,31 +72,32 @@ class TreeEngineTests {
             keyService.getVersion(id2),
             keyService.getVersion(id3),
             keyService,
-            fixedClock
+            fixedClock.instant()
         )
-        tree1To2.verify(linkId23, keyService.getVersion(id3), fixedClock)
+        tree1To2.verify(linkId23, keyService.getVersion(id3), fixedClock.instant())
         val tree1To2Serialized = tree1To2.serialize()
         val tree1To2Deserialized = TreeState.deserialize(tree1To2Serialized)
         assertEquals(tree1To2, tree1To2Deserialized)
-        tree1To2Deserialized.verify(linkId23, keyService.getVersion(id3), fixedClock)
+        tree1To2Deserialized.verify(linkId23, keyService.getVersion(id3), fixedClock.instant())
 
         assertFailsWith<SignatureException> {
-            tree1To2.verify(linkId12, keyService.getVersion(id3), fixedClock)
+            tree1To2.verify(linkId12, keyService.getVersion(id3), fixedClock.instant())
         }
 
         assertFailsWith<SignatureException> {
-            tree1To2.verify(linkId23, keyService.getVersion(id2), fixedClock)
+            tree1To2.verify(linkId23, keyService.getVersion(id2), fixedClock.instant())
         }
     }
 
     @Test
     fun `TreeState time test`() {
         val keyService = KeyServiceImpl(maxVersion = 64)
-        val id1 = keyService.generateNetworkID("1")
+        val keys = (0..2).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
         val linkId12 = keyService.random.generateSeed(16)
-        val id2 = keyService.generateNetworkID("2")
+        val id2 = keys[2]
         val linkId23 = keyService.random.generateSeed(16)
-        val id3 = keyService.generateNetworkID("3")
+        val id3 = keys[1]
         val skipClock = TestClock(1L, TreeState.TimeErrorPerHop / 2L)
         val treeRootTo1 = TreeState.createTreeState(
             null,
@@ -103,7 +105,7 @@ class TreeEngineTests {
             keyService.getVersion(id1),
             keyService.getVersion(id2),
             keyService,
-            skipClock
+            skipClock.instant()
         )
         val tree1To2 = TreeState.createTreeState(
             treeRootTo1,
@@ -111,11 +113,11 @@ class TreeEngineTests {
             keyService.getVersion(id2),
             keyService.getVersion(id3),
             keyService,
-            skipClock
+            skipClock.instant()
         )
-        tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock)
+        tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
         assertFailsWith<IllegalArgumentException> {
-            tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock)
+            tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
         }
     }
 
@@ -124,6 +126,7 @@ class TreeEngineTests {
         val N = 9
         val keyService = KeyServiceImpl(maxVersion = 64)
         val ids = (0..N).map { Pair(keyService.generateNetworkID(it.toString()), keyService.random.generateSeed(16)) }
+            .sortedBy { it.first }
         var currTree: TreeState? = null
         for (i in 0 until N) {
             val curr = ids[i]
@@ -134,22 +137,23 @@ class TreeEngineTests {
                 keyService.getVersion(curr.first),
                 keyService.getVersion(next.first),
                 keyService,
-                Clock.systemUTC()
+                Clock.systemUTC().instant()
             )
         }
-        currTree!!.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC())
+        currTree!!.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC().instant())
         val serialized = currTree.serialize()
         val deserialized = TreeState.deserialize(serialized)
         assertEquals(currTree, deserialized)
-        deserialized.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC())
+        deserialized.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC().instant())
 
     }
 
     @Test
     fun `OneHopMessage test`() {
         val keyService = KeyServiceImpl(maxVersion = 64)
-        val id1 = keyService.generateNetworkID("1")
-        val id2 = keyService.generateNetworkID("2")
+        val keys = (0..1).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
+        val id2 = keys[1]
         val helloMessage = Hello.createHello(id2, keyService)
         val treeStateMessage = TreeState.createTreeState(
             null,
@@ -157,7 +161,7 @@ class TreeEngineTests {
             keyService.getVersion(id1),
             keyService.getVersion(id2),
             keyService,
-            Clock.systemUTC()
+            Clock.systemUTC().instant()
         )
         val oneHopMessage1 = OneHopMessage.createOneHopMessage(helloMessage)
         val oneHopMessage1Serialized = oneHopMessage1.serialize()
