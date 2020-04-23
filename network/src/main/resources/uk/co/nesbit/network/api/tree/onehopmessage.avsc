@@ -4,6 +4,14 @@
   "type": "record",
   "fields": [
     {
+      "name": "seqNum",
+      "type": "int"
+    },
+    {
+      "name": "ackSeqNum",
+      "type": "int"
+    },
+    {
       "name": "schemaFingerprint",
       "type": {
         "name": "sha256",

@@ -129,6 +129,9 @@ class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : A
         val linkInfo = links[dnsResponse.linkId]!!
         if (dnsResponse.actorRef == null) {
             log().error("Couldn't find Dns for ${linkInfo.route.to}")
+            for (owner in owners) {
+                owner.tell(linkInfo, self)
+            }
         } else {
             targets[linkInfo.linkId] = dnsResponse.actorRef
             context.watch(dnsResponse.actorRef)

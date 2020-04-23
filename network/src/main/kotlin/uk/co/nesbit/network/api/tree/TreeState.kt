@@ -29,8 +29,8 @@ class TreeState(
             )
 
     companion object {
-        const val BaseTimeError = 60000L
-        const val TimeErrorPerHop = 60000L
+        const val BaseTimeError = 10000L
+        const val TimeErrorPerHop = 200000L
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val treeStateSchema: Schema = Schema.Parser()
@@ -96,7 +96,7 @@ class TreeState(
             if (timeDiff < -BaseTimeError) {
                 return true
             }
-            if (timeDiff > BaseTimeError + index * TimeErrorPerHop) {
+            if (timeDiff > BaseTimeError + (1 + index) * TimeErrorPerHop) {
                 return true
             }
         }
@@ -133,7 +133,7 @@ class TreeState(
             require(timeDiff >= -BaseTimeError) {
                 "Time too far in future $timeDiff ms"
             }
-            require(timeDiff <= BaseTimeError + index * TimeErrorPerHop) {
+            require(timeDiff <= BaseTimeError + (1 + index) * TimeErrorPerHop) {
                 "Time difference too great $timeDiff ms"
             }
             val prevTimestampBytes = timestamp.toEpochMilli().toByteArray()

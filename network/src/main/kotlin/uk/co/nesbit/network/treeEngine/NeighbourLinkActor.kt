@@ -44,12 +44,16 @@ class NeighbourLinkActor(
         }
 
         const val LINK_CHECK_INTERVAL_MS = 5000L
+        const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
+        const val MAX_LINK_CAPACITY = 3
     }
 
     private class CheckStaticLinks(val first: Boolean)
     private class LinkState(
         val linkId: LinkId,
         val receiveSecureId: ByteArray,
+        var seqNum: Int = 0,
+        var ackSeqNum: Int = -1,
         var identity: VersionedIdentity? = null,
         var sendSecureId: ByteArray? = null,
         var treeState: TreeState? = null
@@ -61,6 +65,7 @@ class NeighbourLinkActor(
 
     private val owners = mutableSetOf<ActorRef>()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
+    private val linkRequestPending = mutableSetOf<Address>()
     private val addresses = mutableMapOf<SecureHash, LinkId>()
     private val linkStates = mutableMapOf<LinkId, LinkState>()
 
@@ -111,23 +116,26 @@ class NeighbourLinkActor(
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
         if (check.first) {
             //log().info("Parent changed to self root $networkId ${keyService.getVersion(networkId).identity.publicAddress}")
-            timers.startTimerAtFixedRate(
+            timers.startTimerWithFixedDelay(
                 "staticLinkPoller",
                 CheckStaticLinks(false),
                 LINK_CHECK_INTERVAL_MS.millis()
             )
         }
-        for (expectedLink in networkConfig.staticRoutes) {
-            if (!staticLinkStatus.containsKey(expectedLink)) {
-                log().info("open static link to $expectedLink")
-                physicalNetworkActor.tell(OpenRequest(expectedLink), self)
+        if (linkRequestPending.isEmpty()) {
+            for (expectedLink in networkConfig.staticRoutes) {
+                if (!staticLinkStatus.containsKey(expectedLink)) {
+                    log().info("open static link to $expectedLink")
+                    linkRequestPending += expectedLink
+                    physicalNetworkActor.tell(OpenRequest(expectedLink), self)
+                }
             }
         }
 
         calcParent()
         val now = Clock.systemUTC().instant()
         val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
-        val heartbeat = ChronoUnit.MILLIS.between(lastSent, now) >= TreeState.TimeErrorPerHop / 2L
+        val heartbeat = ChronoUnit.MILLIS.between(lastSent, now) >= HEARTBEAT_INTERVAL_MS
         val expired = ChronoUnit.MILLIS.between(lastSent, now) >= TreeState.TimeErrorPerHop
         if (parentTree == null && heartbeat) {
             changed = true
@@ -197,7 +205,11 @@ class NeighbourLinkActor(
     private fun sendTreeForLink(now: Instant, linkId: LinkId) {
         val linkState = linkStates[linkId]
         if (linkState?.identity == null) {
-            log().info("handshake not complete $linkId")
+            //log().info("handshake not complete $linkId")
+            return
+        }
+        if (linkState.ackSeqNum + MAX_LINK_CAPACITY < linkState.seqNum) {
+            //log().info("link capacity $linkId exhausted skip ${linkState.seqNum} ${linkState.ackSeqNum}")
             return
         }
         val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
@@ -209,7 +221,8 @@ class NeighbourLinkActor(
             keyService,
             now
         )
-        val oneHopMessage = OneHopMessage.createOneHopMessage(treeState)
+        //log().info("send ${linkState.linkId} ${linkState.seqNum} ${linkState.ackSeqNum}")
+        val oneHopMessage = OneHopMessage.createOneHopMessage(linkState.seqNum++, linkState.ackSeqNum, treeState)
         val sendMessage = LinkSendMessage(linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(sendMessage, self)
     }
@@ -227,11 +240,14 @@ class NeighbourLinkActor(
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
         val linkId = linkInfo.linkId
         //log().info("onLinkStatusChange $linkId $linkInfo")
+        linkRequestPending -= linkInfo.route.to
         if (linkInfo.status.active) {
             if (linkInfo.route.to in networkConfig.staticRoutes) {
                 val prevLink = staticLinkStatus[linkInfo.route.to]
                 if (prevLink != null) {
-                    if (keyService.random.nextBoolean()) {
+                    val from = linkInfo.route.to as NetworkAddress
+                    val preferActive = (from.id >= networkConfig.networkId.id)
+                    if (preferActive xor (linkInfo.status == LinkStatus.LINK_UP_PASSIVE)) {
                         log().warning("close duplicate link $linkId")
                         physicalNetworkActor.tell(CloseRequest(linkId), self)
                         return
@@ -261,26 +277,34 @@ class NeighbourLinkActor(
     private fun sendHello(linkId: LinkId) {
         //log().info("Send hello message to $linkId")
         val helloMessage = Hello.createHello(networkId, keyService)
-        linkStates[linkId] = LinkState(linkId, helloMessage.secureLinkId)
-        val oneHopMessage = OneHopMessage.createOneHopMessage(helloMessage)
+        val linkState = LinkState(linkId, helloMessage.secureLinkId)
+        linkStates[linkId] = linkState
+        val oneHopMessage = OneHopMessage.createOneHopMessage(linkState.seqNum++, linkState.ackSeqNum, helloMessage)
         val networkMessage = LinkSendMessage(linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {
         //log().info("onLinkReceivedMessage $message")
-        val payloadMessage = try {
-            OneHopMessage.deserializePayload(message.msg)
+        val oneHopMessage = try {
+            OneHopMessage.deserialize(message.msg)
         } catch (ex: Exception) {
             log().error("Bad OneHopMessage ${ex.message}")
             physicalNetworkActor.tell(CloseRequest(message.linkId), self)
             return
         }
+        val payloadMessage = oneHopMessage.payloadMessage
         when (payloadMessage) {
             is Hello -> processHelloMessage(message.linkId, payloadMessage)
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
-            else -> log().error("Unknown message type $payloadMessage")
+            else -> log().error("Unknown message type $message")
         }
+        val linkState = linkStates[message.linkId]
+        if (linkState != null) {
+            linkState.ackSeqNum = oneHopMessage.seqNum
+            //log().info("receive ${linkState.linkId} ${linkState.seqNum} ${linkState.ackSeqNum}")
+        }
+
 //        val address = links[message.linkId]
 //        if (address != null) {
 //            val onwardMessage = NeighbourReceivedMessage(address.identity, message.msg)
@@ -306,7 +330,8 @@ class NeighbourLinkActor(
             return
         }
         //log().info("process hello message from $sourceLink")
-        if (addresses.containsKey(hello.sourceId.id)) {
+        val prevAddress = addresses[hello.sourceId.id]
+        if (prevAddress != null && prevAddress != sourceLink) {
             log().info("link from duplicate address closing")
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)
             return

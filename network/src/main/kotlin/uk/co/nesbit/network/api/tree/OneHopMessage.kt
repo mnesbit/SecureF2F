@@ -8,11 +8,15 @@ import uk.co.nesbit.network.api.Message
 
 
 class OneHopMessage private constructor(
+    val seqNum: Int,
+    val ackSeqNum: Int,
     private val schemaType: ByteArray,
     private val payload: ByteArray
 ) : Message {
     constructor(oneHopMessageRecord: GenericRecord) :
             this(
+                oneHopMessageRecord.getTyped("seqNum"),
+                oneHopMessageRecord.getTyped("ackSeqNum"),
                 oneHopMessageRecord.getTyped("schemaFingerprint"),
                 oneHopMessageRecord.getTyped("payload")
             )
@@ -34,10 +38,10 @@ class OneHopMessage private constructor(
             )
         )
 
-        fun createOneHopMessage(value: Message): OneHopMessage {
+        fun createOneHopMessage(seqNum: Int, ackSeqNum: Int, value: Message): OneHopMessage {
             val record = value.toGenericRecord()
             val hash = schemas.safeRegisterDeserializer(value.javaClass, record.schema)
-            return OneHopMessage(hash, record.serialize())
+            return OneHopMessage(seqNum, ackSeqNum, hash, record.serialize())
         }
 
         fun deserialize(bytes: ByteArray): OneHopMessage {
@@ -45,14 +49,20 @@ class OneHopMessage private constructor(
             return OneHopMessage(routeTableRecord)
         }
 
-        fun deserializePayload(bytes: ByteArray): Any {
+        fun deserializePayload(bytes: ByteArray): Message {
             val message = deserialize(bytes)
-            return schemas.deserialize(message.schemaType, message.payload)
+            return message.payloadMessage
         }
+    }
+
+    val payloadMessage: Message by lazy {
+        schemas.deserialize(schemaType, payload) as Message
     }
 
     override fun toGenericRecord(): GenericRecord {
         val routeTableRecord = GenericData.Record(oneHopMessageSchema)
+        routeTableRecord.putTyped("seqNum", seqNum)
+        routeTableRecord.putTyped("ackSeqNum", ackSeqNum)
         routeTableRecord.putTyped("schemaFingerprint", schemaType)
         routeTableRecord.putTyped("payload", payload)
         return routeTableRecord
@@ -64,6 +74,8 @@ class OneHopMessage private constructor(
 
         other as OneHopMessage
 
+        if (seqNum != other.seqNum) return false
+        if (ackSeqNum != other.ackSeqNum) return false
         if (!schemaType.contentEquals(other.schemaType)) return false
         if (!payload.contentEquals(other.payload)) return false
 
@@ -71,9 +83,10 @@ class OneHopMessage private constructor(
     }
 
     override fun hashCode(): Int {
-        var result = schemaType.contentHashCode()
+        var result = seqNum
+        result = 31 * result + ackSeqNum
+        result = 31 * result + schemaType.contentHashCode()
         result = 31 * result + payload.contentHashCode()
         return result
     }
-
 }
