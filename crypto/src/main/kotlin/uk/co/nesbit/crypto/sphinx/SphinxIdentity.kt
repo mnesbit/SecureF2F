@@ -29,6 +29,7 @@ class SphinxPublicIdentity(
 
     companion object {
         const val ID_HASH_ALGORITHM = "SHA-256"
+
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sphinxIdentitySchema: Schema = Schema.Parser()
             .addTypes(

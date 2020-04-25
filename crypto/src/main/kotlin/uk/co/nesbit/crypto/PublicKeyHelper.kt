@@ -76,6 +76,10 @@ object PublicKeyHelper {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 Curve25519PublicKey(publicKeyBytes)
             }
+            "TinkEd25519" -> {
+                require(keyFormat == "RAW") { "Don't know how to deserialize" }
+                TinkEd25519PublicKey(publicKeyBytes)
+            }
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }
     }

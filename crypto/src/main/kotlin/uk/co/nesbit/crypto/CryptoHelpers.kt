@@ -1,5 +1,6 @@
 package uk.co.nesbit.crypto
 
+import com.google.crypto.tink.subtle.Ed25519Sign
 import djb.Curve25519
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair
@@ -29,6 +30,11 @@ fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
         initialize(ecSpec, secureRandom)
         generateKeyPair()
     }
+}
+
+fun generateTinkEd25519KeyPair(): KeyPair {
+    val keyGen = Ed25519Sign.KeyPair.newKeyPair()
+    return KeyPair(TinkEd25519PublicKey(keyGen.publicKey), TinkEd25519PrivateKey(keyGen.privateKey))
 }
 
 fun generateRSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -80,13 +86,18 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             }
         }
         "EdDSA" -> {
-              return ProviderCache.withEdDSAEngine {
-                  initSign(private)
-                  update(bytes)
-                  val sig = sign()
-                  DigitalSignatureAndKey(algorithm, sig, public)
-              }
+            return ProviderCache.withEdDSAEngine {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
 
+        }
+        "TinkEd25519" -> {
+            val signer = Ed25519Sign(private.encoded)
+            val sig = signer.sign(bytes)
+            return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }

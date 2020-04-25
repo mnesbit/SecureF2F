@@ -1,5 +1,7 @@
 package uk.co.nesbit.crypto
 
+import com.google.crypto.tink.subtle.Ed25519Verify
+import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
@@ -9,6 +11,7 @@ import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
+import java.security.GeneralSecurityException
 import java.security.PublicKey
 import java.security.SignatureException
 import java.util.*
@@ -52,12 +55,32 @@ class DigitalSignature(val signatureAlgorithm: String,
             "NONEwithEdDSA" -> {
                 ProviderCache.withEdDSAEngine {
                     require(signatureAlgorithm == algorithm) { "Signature algorithm not EdDSA" }
-                    initVerify(publicKey)
+                    if (publicKey is EdDSAPublicKey) {
+                        initVerify(publicKey)
+                    } else if (publicKey is TinkEd25519PublicKey) {
+                        initVerify(publicKey.toI2PPublicKey())
+                    } else {
+                        initVerify(publicKey)
+                    }
                     update(bytes)
                     if (!verify(signature))
                         throw SignatureException("Signature did not match")
                 }
 
+            }
+            "NONEwithTinkEd25519" -> {
+                val verifier = if (publicKey is TinkEd25519PublicKey) {
+                    Ed25519Verify(publicKey.keyBytes)
+                } else if (publicKey is EdDSAPublicKey) {
+                    Ed25519Verify(publicKey.abyte)
+                } else {
+                    Ed25519Verify(publicKey.encoded)
+                }
+                try {
+                    verifier.verify(signature, bytes)
+                } catch (ex: GeneralSecurityException) {
+                    throw SignatureException("Signature did not match")
+                }
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")
         }
