@@ -1,0 +1,11 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "EncryptedSecurePathItem",
+  "type": "record",
+  "fields": [
+    {
+      "name": "encryptedItem",
+      "type": "bytes"
+    }
+  ]
+}

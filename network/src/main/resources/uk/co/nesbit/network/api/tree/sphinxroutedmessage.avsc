@@ -1,0 +1,11 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "SphinxRoutedMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "messageBytes",
+      "type": "bytes"
+    }
+  ]
+}

@@ -34,7 +34,9 @@ class OneHopMessage private constructor(
             listOf(
                 Pair(OneHopMessage::class.java, oneHopMessageSchema),
                 Pair(Hello::class.java, Hello.helloSchema),
-                Pair(TreeState::class.java, TreeState.treeStateSchema)
+                Pair(TreeState::class.java, TreeState.treeStateSchema),
+                Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
+                Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema)
             )
         )
 
