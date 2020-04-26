@@ -18,7 +18,7 @@ data class SecureVersion(
     constructor(versionRecord: GenericRecord) :
             this(
                 versionRecord.getTyped("version"),
-                versionRecord.getTyped("chainHash", ::SecureHash),
+                versionRecord.getTyped("chainHash"),
                 versionRecord.getTyped("maxVersion"),
                 versionRecord.getTyped("minVersion")
             )
@@ -66,7 +66,7 @@ class HashChainPublic(
     constructor(chainRecord: GenericRecord) :
             this(
                 chainRecord.getTyped<ByteArray>("chainKey"),
-                chainRecord.getTyped("targetHash", ::SecureHash),
+                chainRecord.getTyped("targetHash"),
                 chainRecord.getTyped("maxChainLength"),
                 chainRecord.getTyped("minChainLength")
             )

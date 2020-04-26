@@ -14,9 +14,11 @@ class RoutedMessage private constructor(val replyTo: SphinxAddress,
                                         val payloadSchemaId: ByteArray,
                                         val payload: ByteArray) : AvroConvertible {
     constructor(routedMessageRecord: GenericRecord) :
-            this(SphinxAddress(routedMessageRecord.getTyped("replyTo", ::SphinxPublicIdentity)),
-                    routedMessageRecord.getTyped("payloadSchemaId"),
-                    routedMessageRecord.getTyped("payload"))
+            this(
+                SphinxAddress(routedMessageRecord.getTyped("replyTo")),
+                routedMessageRecord.getTyped("payloadSchemaId"),
+                routedMessageRecord.getTyped("payload")
+            )
 
     init {
         require(payloadSchemaId.size == 32) { "Invalid payloadSchemaId" }

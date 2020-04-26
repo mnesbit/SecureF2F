@@ -15,9 +15,11 @@ data class SessionIdentityProof(val identityInfo: VersionedIdentity,
                                 val sessionBindingSignature: DigitalSignature,
                                 val identityMAC: SecureHash) : AvroConvertible {
     constructor(sessionIdentityProofRecord: GenericRecord) :
-            this(sessionIdentityProofRecord.getTyped("identityInfo", ::VersionedIdentity),
-                    sessionIdentityProofRecord.getTyped("sessionBindingSignature", ::DigitalSignature),
-                    sessionIdentityProofRecord.getTyped("identityMAC", ::SecureHash))
+            this(
+                sessionIdentityProofRecord.getTyped("identityInfo"),
+                sessionIdentityProofRecord.getTyped("sessionBindingSignature"),
+                sessionIdentityProofRecord.getTyped("identityMAC")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")

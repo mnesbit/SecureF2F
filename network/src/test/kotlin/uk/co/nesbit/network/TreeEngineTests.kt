@@ -2,63 +2,176 @@ package uk.co.nesbit.network
 
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.newSecureRandom
-import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
+import uk.co.nesbit.network.api.tree.Hello
+import uk.co.nesbit.network.api.tree.OneHopMessage
 import uk.co.nesbit.network.api.tree.TreeState
-import uk.co.nesbit.network.api.tree.TreeStatus
-import kotlin.experimental.xor
+import uk.co.nesbit.network.engineOld.KeyServiceImpl
+import java.security.SignatureException
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class TreeEngineTests {
-    @Test
-    fun `TreeState tests`() {
-        val random = newSecureRandom()
-        val sphinxIdentityKeyPair1 = SphinxIdentityKeyPair.generateKeyPair(random)
-        val sphinxIdentityKeyPair2 = SphinxIdentityKeyPair.generateKeyPair(random)
-        val ids = listOf(sphinxIdentityKeyPair1.public, sphinxIdentityKeyPair2.public)
-        for (state in TreeStatus.values()) {
-            for (len in 0 until ids.size) {
-                val treeState = TreeState(1L, 2L, state, ids.take(len))
-                assertEquals(len, treeState.depth)
-                val serialized = treeState.serialize()
-                val deserialized = TreeState.deserialize(serialized)
-                assertEquals(treeState, deserialized)
-                val deserialized2 = TreeState.tryDeserialize(serialized)
-                assertEquals(treeState, deserialized2)
-                serialized[0] = serialized[0] xor 1
-                assertNull(TreeState.tryDeserialize(serialized))
-                val treeState2 = TreeState(3L, null, state, ids.take(len))
-                assertEquals(len, treeState2.depth)
-                val serialized2 = treeState2.serialize()
-                val deserialized3 = TreeState.deserialize(serialized2)
-                assertEquals(treeState2, deserialized3)
-            }
+    private class TestClock(var time: Long = 1L, val step: Long = 0L) : Clock() {
+        override fun withZone(zone: ZoneId?): Clock {
+            throw NotImplementedError()
+        }
+
+        override fun getZone(): ZoneId {
+            throw NotImplementedError()
+        }
+
+        override fun instant(): Instant {
+            val now = Instant.ofEpochMilli(time)
+            time += step
+            return now
         }
     }
 
     @Test
-    fun `test path compare`() {
-        val random = newSecureRandom()
-        val ids = (0..4).map { SphinxIdentityKeyPair.generateKeyPair(random).public }.sortedByDescending { it.id }
-        val list1 = listOf(ids[0])
-        val list2 = listOf(ids[1])
-        val list3 = listOf(ids[0], ids[1])
-        val list4 = listOf(ids[0], ids[2])
-        val list5 = listOf(ids[1], ids[2])
-        val list6 = listOf(ids[1], ids[2], ids[3])
-        val list7 = listOf(ids[1], ids[3], ids[2])
-        val list8 = listOf(ids[0], ids[1], ids[2])
-        assertEquals(0, TreeState.comparePath(list1, list1))
-        assertEquals(0, TreeState.comparePath(list2, list2))
-        assertEquals(0, TreeState.comparePath(list7, list7))
-        assertTrue(TreeState.comparePath(list1, list2) > 0) // best id
-        assertTrue(TreeState.comparePath(list3, list4) > 0) // best id
-        assertTrue(TreeState.comparePath(list6, list7) > 0) // best id
-        assertTrue(TreeState.comparePath(list1, list3) > 0) // shorter same root
-        assertTrue(TreeState.comparePath(list5, list6) > 0) // shorter same root
-        assertTrue(TreeState.comparePath(list8, list2) > 0) // better root
-        assertTrue(TreeState.comparePath(list4, list5) > 0) // better root
+    fun `Hello message test`() {
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val id = keyService.generateNetworkID("1")
+        val hello = Hello.createHello(id, keyService)
+        hello.verify()
+        val serialized = hello.serialize()
+        val deserialized = Hello.deserialize(serialized)
+        assertEquals(hello, deserialized)
+        deserialized.verify()
+    }
+
+    @Test
+    fun `TreeState message test`() {
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val keys = (0..2).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
+        val linkId12 = keyService.random.generateSeed(16)
+        val id2 = keys[1]
+        val linkId23 = keyService.random.generateSeed(16)
+        val id3 = keys[2]
+        val fixedClock = TestClock()
+        val treeRootTo1 = TreeState.createTreeState(
+            null,
+            linkId12,
+            keyService.getVersion(id1),
+            keyService.getVersion(id2),
+            keyService,
+            fixedClock.instant()
+        )
+        treeRootTo1.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
+        val treeRootTo1Serialized = treeRootTo1.serialize()
+        val treeRootTo1Deserialized = TreeState.deserialize(treeRootTo1Serialized)
+        assertEquals(treeRootTo1, treeRootTo1Deserialized)
+        treeRootTo1Deserialized.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
+
+        val tree1To2 = TreeState.createTreeState(
+            treeRootTo1,
+            linkId23,
+            keyService.getVersion(id2),
+            keyService.getVersion(id3),
+            keyService,
+            fixedClock.instant()
+        )
+        tree1To2.verify(linkId23, keyService.getVersion(id3), fixedClock.instant())
+        val tree1To2Serialized = tree1To2.serialize()
+        val tree1To2Deserialized = TreeState.deserialize(tree1To2Serialized)
+        assertEquals(tree1To2, tree1To2Deserialized)
+        tree1To2Deserialized.verify(linkId23, keyService.getVersion(id3), fixedClock.instant())
+
+        assertFailsWith<SignatureException> {
+            tree1To2.verify(linkId12, keyService.getVersion(id3), fixedClock.instant())
+        }
+
+        assertFailsWith<SignatureException> {
+            tree1To2.verify(linkId23, keyService.getVersion(id2), fixedClock.instant())
+        }
+    }
+
+    @Test
+    fun `TreeState time test`() {
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val keys = (0..2).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
+        val linkId12 = keyService.random.generateSeed(16)
+        val id2 = keys[2]
+        val linkId23 = keyService.random.generateSeed(16)
+        val id3 = keys[1]
+        val skipClock = TestClock(1L, TreeState.TimeErrorPerHop / 2L)
+        val treeRootTo1 = TreeState.createTreeState(
+            null,
+            linkId12,
+            keyService.getVersion(id1),
+            keyService.getVersion(id2),
+            keyService,
+            skipClock.instant()
+        )
+        val tree1To2 = TreeState.createTreeState(
+            treeRootTo1,
+            linkId23,
+            keyService.getVersion(id2),
+            keyService.getVersion(id3),
+            keyService,
+            skipClock.instant()
+        )
+        tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
+        assertFailsWith<IllegalArgumentException> {
+            tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
+        }
+    }
+
+    @Test
+    fun `Long path test`() {
+        val N = 9
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val ids = (0..N).map { Pair(keyService.generateNetworkID(it.toString()), keyService.random.generateSeed(16)) }
+            .sortedBy { it.first }
+        var currTree: TreeState? = null
+        for (i in 0 until N) {
+            val curr = ids[i]
+            val next = ids[i + 1]
+            currTree = TreeState.createTreeState(
+                currTree,
+                curr.second,
+                keyService.getVersion(curr.first),
+                keyService.getVersion(next.first),
+                keyService,
+                Clock.systemUTC().instant()
+            )
+        }
+        currTree!!.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC().instant())
+        val serialized = currTree.serialize()
+        val deserialized = TreeState.deserialize(serialized)
+        assertEquals(currTree, deserialized)
+        deserialized.verify(ids[N - 1].second, keyService.getVersion(ids[N].first), Clock.systemUTC().instant())
+
+    }
+
+    @Test
+    fun `OneHopMessage test`() {
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val keys = (0..1).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keys[0]
+        val id2 = keys[1]
+        val helloMessage = Hello.createHello(id2, keyService)
+        val treeStateMessage = TreeState.createTreeState(
+            null,
+            helloMessage.secureLinkId,
+            keyService.getVersion(id1),
+            keyService.getVersion(id2),
+            keyService,
+            Clock.systemUTC().instant()
+        )
+        val oneHopMessage1 = OneHopMessage.createOneHopMessage(1, 0, helloMessage)
+        val oneHopMessage1Serialized = oneHopMessage1.serialize()
+        val oneHopMessage1Deserialized = OneHopMessage.deserialize(oneHopMessage1Serialized)
+        assertEquals(oneHopMessage1, oneHopMessage1Deserialized)
+        assertEquals(helloMessage, OneHopMessage.deserializePayload(oneHopMessage1Serialized))
+        val oneHopMessage2 = OneHopMessage.createOneHopMessage(2, 1, treeStateMessage)
+        val oneHopMessage2Serialized = oneHopMessage2.serialize()
+        val oneHopMessage2Deserialized = OneHopMessage.deserialize(oneHopMessage2Serialized)
+        assertEquals(oneHopMessage2, oneHopMessage2Deserialized)
+        assertEquals(treeStateMessage, OneHopMessage.deserializePayload(oneHopMessage2Serialized))
     }
 }

@@ -101,6 +101,10 @@ fun Schema.deserialize(bytes: ByteArray): GenericRecord {
 inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     val value = this.get(fieldName) ?: return null as T
     val clazz = T::class.java
+    if (AvroConvertible::class.java.isAssignableFrom(clazz)) {
+        val constructor = clazz.getConstructor(GenericRecord::class.java)
+        return constructor.newInstance(value)
+    }
     val pluginHandlers = AvroTypeHelpers.helpers[clazz]
     if (pluginHandlers != null) {
         return pluginHandlers.dec(value as GenericRecord) as T

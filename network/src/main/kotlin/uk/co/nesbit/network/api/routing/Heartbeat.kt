@@ -19,10 +19,12 @@ class Heartbeat private constructor(private val schemaId: SecureHash,
                                     val versionedRouteSignature: DigitalSignature,
                                     val nextExpectedNonce: ByteArray) : AvroConvertible {
     constructor(heartbeat: GenericRecord) :
-            this(SecureHash("SHA-256", heartbeat.getTyped("schemaFingerprint")),
-                    heartbeat.getTyped("currentVersion", ::SecureVersion),
-                    heartbeat.getTyped("versionedRouteSignature", ::DigitalSignature),
-                    heartbeat.getTyped("nextExpectedNonce"))
+            this(
+                SecureHash("SHA-256", heartbeat.getTyped("schemaFingerprint")),
+                heartbeat.getTyped("currentVersion"),
+                heartbeat.getTyped("versionedRouteSignature"),
+                heartbeat.getTyped("nextExpectedNonce")
+            )
 
     constructor (currentVersion: SecureVersion,
                  versionedRouteSignature: DigitalSignature,
@@ -62,7 +64,7 @@ class Heartbeat private constructor(private val schemaId: SecureHash,
                 return null
             }
             return try {
-                val heartbeat = Heartbeat.deserialize(bytes)
+                val heartbeat = deserialize(bytes)
                 val reserialized = heartbeat.serialize()
                 if (Arrays.equals(bytes, reserialized)) {
                     heartbeat

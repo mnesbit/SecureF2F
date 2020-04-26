@@ -1,0 +1,14 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "SecurePath",
+  "type": "record",
+  "fields": [
+    {
+      "name": "path",
+      "type": {
+        "type": "array",
+        "items": "SecurePathItem"
+      }
+    }
+  ]
+}

@@ -14,10 +14,12 @@ class Routes(val from: VersionedIdentity,
              val toSignatures: List<DigitalSignature>,
              val fromSignature: DigitalSignature) : AvroConvertible {
     constructor(routes: GenericRecord) :
-            this(routes.getTyped("from", ::VersionedIdentity),
-                    routes.getObjectArray("entries", ::RouteEntry),
-                    routes.getObjectArray("toSignatures", ::DigitalSignature),
-                    routes.getTyped("fromSignature", ::DigitalSignature))
+            this(
+                routes.getTyped("from"),
+                routes.getObjectArray("entries", ::RouteEntry),
+                routes.getObjectArray("toSignatures", ::DigitalSignature),
+                routes.getTyped("fromSignature")
+            )
 
     init {
         require(entries.isNotEmpty() && (entries.size == toSignatures.size)) { "Invalid number of route entries" }

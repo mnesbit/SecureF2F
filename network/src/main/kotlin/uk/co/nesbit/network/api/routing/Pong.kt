@@ -21,8 +21,8 @@ class Pong private constructor(
     constructor(pong: GenericRecord) :
             this(
                 SecureHash("SHA-256", pong.getTyped("schemaFingerprint")),
-                pong.getTyped("identity", ::VersionedIdentity),
-                pong.getTyped("signature", ::DigitalSignature)
+                pong.getTyped("identity"),
+                pong.getTyped("signature")
             )
 
     init {

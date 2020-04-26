@@ -1,5 +1,6 @@
 package uk.co.nesbit.crypto
 
+import java.nio.ByteBuffer
 import kotlin.experimental.xor
 
 
@@ -42,4 +43,10 @@ fun byteArrayFromInts(vararg values: Int): ByteArray = ByteArray(values.size) { 
 
 fun Int.toByteArray(): ByteArray {
     return byteArrayOf((this shr 24).toByte(), (this shr 16).toByte(), (this shr 8).toByte(), this.toByte())
+}
+
+fun Long.toByteArray(): ByteArray {
+    val buffer = ByteBuffer.allocate(java.lang.Long.BYTES)
+    buffer.putLong(this)
+    return buffer.array()
 }

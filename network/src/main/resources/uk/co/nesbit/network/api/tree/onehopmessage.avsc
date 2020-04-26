@@ -1,0 +1,27 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "OneHopMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "seqNum",
+      "type": "int"
+    },
+    {
+      "name": "ackSeqNum",
+      "type": "int"
+    },
+    {
+      "name": "schemaFingerprint",
+      "type": {
+        "name": "sha256",
+        "type": "fixed",
+        "size": 32
+      }
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    }
+  ]
+}

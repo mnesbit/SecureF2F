@@ -7,6 +7,7 @@ dependencies {
 
     // Java ed25519 implementation. See https://github.com/str4d/ed25519-java/
     implementation "net.i2p.crypto:eddsa:${eddsa_version}"
+    implementation "com.google.crypto.tink:tink:${tink_version}"
 
     implementation "org.zeromq:curve25519-java:0.1.0"
 

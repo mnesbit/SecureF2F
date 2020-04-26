@@ -20,11 +20,13 @@ class SessionBinding(private val protocolVersion: Int,
                      private val ownDHPublicKey: PublicKey,
                      private val identityInfo: VersionedIdentity) : AvroConvertible {
     constructor(sessionBindingRecord: GenericRecord) :
-            this(sessionBindingRecord.getTyped("protocolVersion"),
-                    sessionBindingRecord.getTyped("otherPartyNonce"),
-                    sessionBindingRecord.getTyped("ownNonce"),
-                    sessionBindingRecord.getTyped("ownDHPublicKey"),
-                    sessionBindingRecord.getTyped("identityInfo", ::VersionedIdentity))
+            this(
+                sessionBindingRecord.getTyped("protocolVersion"),
+                sessionBindingRecord.getTyped("otherPartyNonce"),
+                sessionBindingRecord.getTyped("ownNonce"),
+                sessionBindingRecord.getTyped("ownDHPublicKey"),
+                sessionBindingRecord.getTyped("identityInfo")
+            )
 
     init {
         require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }

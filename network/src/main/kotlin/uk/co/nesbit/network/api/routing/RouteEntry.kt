@@ -12,8 +12,10 @@ import java.util.*
 class RouteEntry(val nonce: ByteArray,
                  val to: VersionedIdentity) : AvroConvertible {
     constructor(versionedRoute: GenericRecord) :
-            this(versionedRoute.getTyped("nonce"),
-                    versionedRoute.getTyped("to", ::VersionedIdentity))
+            this(
+                versionedRoute.getTyped("nonce"),
+                versionedRoute.getTyped("to")
+            )
 
     init {
         require(nonce.size == NONCE_SIZE)

@@ -8,17 +8,19 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.*
-import uk.co.nesbit.network.api.routing.Ping
-import uk.co.nesbit.network.api.routing.Pong
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.api.tree.Hello
+import uk.co.nesbit.network.api.tree.OneHopMessage
 import uk.co.nesbit.network.api.tree.TreeState
-import uk.co.nesbit.network.api.tree.TreeStatus
+import uk.co.nesbit.network.mocknet.CloseRequest
 import uk.co.nesbit.network.mocknet.OpenRequest
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.security.SignatureException
+import java.time.Clock
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class NeighbourSendMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
 class NeighbourReceivedMessage(val networkAddress: SphinxPublicIdentity, val msg: ByteArray)
@@ -42,30 +44,36 @@ class NeighbourLinkActor(
         }
 
         const val LINK_CHECK_INTERVAL_MS = 5000L
+        const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
+        const val MAX_LINK_CAPACITY = 3
     }
 
     private class CheckStaticLinks(val first: Boolean)
+    private class LinkState(
+        val linkId: LinkId,
+        val receiveSecureId: ByteArray,
+        var seqNum: Int = 0,
+        var ackSeqNum: Int = -1,
+        var identity: VersionedIdentity? = null,
+        var sendSecureId: ByteArray? = null,
+        var treeState: TreeState? = null
+    )
 
     private val networkId: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
         keyService.generateNetworkID(networkConfig.networkId.toString())
     }
 
-    private val networkAddress: SphinxPublicIdentity by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        keyService.getVersion(networkId).identity
-    }
-
     private val owners = mutableSetOf<ActorRef>()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
-    private val linkProbes = mutableMapOf<LinkId, Pair<Ping, Boolean>>()
-    private val links = mutableMapOf<LinkId, VersionedIdentity>()
+    private val linkRequestPending = mutableSetOf<Address>()
     private val addresses = mutableMapOf<SecureHash, LinkId>()
-    private var localState: TreeState = TreeState(
-        keyService.random.nextLong(),
-        null,
-        TreeStatus.Isolated,
-        listOf(networkAddress)
-    )
-    private val neighbourStates = mutableMapOf<SecureHash, TreeState>()
+    private val linkStates = mutableMapOf<LinkId, LinkState>()
+
+    private var parent: LinkId? = null
+    private var startPoint: Int = 0
+    private var lastDepth: Int = 0
+    private var changed: Boolean = true
+    private var lastSent: Instant = Instant.ofEpochMilli(0L)
 
     override fun preStart() {
         super.preStart()
@@ -107,247 +115,268 @@ class NeighbourLinkActor(
 
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
         if (check.first) {
-            timers.startTimerAtFixedRate(
+            //log().info("Parent changed to self root $networkId ${keyService.getVersion(networkId).identity.publicAddress}")
+            timers.startTimerWithFixedDelay(
                 "staticLinkPoller",
                 CheckStaticLinks(false),
                 LINK_CHECK_INTERVAL_MS.millis()
             )
         }
-        for (expectedLink in networkConfig.staticRoutes) {
-            if (!staticLinkStatus.containsKey(expectedLink)) {
-                log().info("open static link to $expectedLink")
-                physicalNetworkActor.tell(OpenRequest(expectedLink), self)
-            }
-        }
-        sendTreeState()
-    }
-
-    private fun sendTreeState() {
-        for (neighbour in addresses) {
-            val previous = neighbourStates[neighbour.key]
-            val treeState = localState.copy(replySeqNo = previous?.currentSeqNo)
-            val sendTree = LinkSendMessage(neighbour.value, treeState.serialize())
-            physicalNetworkActor.tell(sendTree, self)
-        }
-    }
-
-    private fun parentState(): TreeState? {
-        val parent = localState.parent ?: return null
-        val parentState = neighbourStates[parent] ?: return null
-        if (parentState.replySeqNo != localState.currentSeqNo) {
-            return null
-        }
-        return parentState
-    }
-
-    private fun consistentStates(): List<TreeState> {
-        return neighbourStates.values.filter { it.replySeqNo == localState.currentSeqNo }
-    }
-
-    private fun canBeRoot(): Boolean {
-        return true
-    }
-
-    private fun predicateRoot(): Boolean {
-        return canBeRoot()
-                && localState.status == TreeStatus.Correct
-                && localState.pathToRoot == listOf(networkAddress)
-    }
-
-    private fun predicateAbnormalRoot(): Boolean {
-        val parentState = parentState()
-        return !predicateRoot()
-                && localState.status != TreeStatus.Isolated
-                && (parentState == null
-                || TreeState.comparePath(localState.pathToRoot, parentState.pathToRoot + listOf(networkAddress)) > 0
-                || (localState.status != parentState.status && parentState.status != TreeStatus.ErrorBroadcast))
-    }
-
-    private fun predicateReset(): Boolean {
-        return localState.status == TreeStatus.ErrorFeedback
-                && predicateAbnormalRoot()
-    }
-
-    private fun predicateUpdateNode(): Boolean {
-        for (neighbourState in consistentStates()) {
-            if (neighbourState.status == TreeStatus.Correct
-                && neighbourState.pathToRoot.isNotEmpty()
-            ) {
-                val comp =
-                    TreeState.comparePath(localState.pathToRoot, neighbourState.pathToRoot + listOf(networkAddress))
-                if (comp < 0) {
-                    return true
+        if (linkRequestPending.isEmpty()) {
+            for (expectedLink in networkConfig.staticRoutes) {
+                if (!staticLinkStatus.containsKey(expectedLink)) {
+                    log().info("open static link to $expectedLink")
+                    linkRequestPending += expectedLink
+                    physicalNetworkActor.tell(OpenRequest(expectedLink), self)
                 }
             }
         }
-        return false
-    }
 
-    private fun predicateUpdateRoot(): Boolean {
-        return canBeRoot()
-                && (TreeState.comparePath(listOf(networkAddress), localState.pathToRoot) > 0)
-    }
-
-    private fun predicateNodeImprovement(): Boolean {
-        return predicateUpdateNode() || predicateUpdateRoot()
-    }
-
-    private fun children(): List<TreeState> {
-        return consistentStates().filter {
-            it.status != TreeStatus.Isolated
-                    && it.parent == networkId
-                    && TreeState.comparePath(it.pathToRoot, localState.pathToRoot + it.pathToRoot.last()) >= 0
-                    && (it.status == localState.status || localState.status == TreeStatus.ErrorBroadcast)
+        calcParent()
+        val now = Clock.systemUTC().instant()
+        val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
+        val heartbeat = ChronoUnit.MILLIS.between(lastSent, now) >= HEARTBEAT_INTERVAL_MS
+        val expired = ChronoUnit.MILLIS.between(lastSent, now) >= TreeState.TimeErrorPerHop
+        if (parentTree == null && heartbeat) {
+            changed = true
+        } else if (expired) {
+            for (linkState in linkStates.values) {
+                val treeState = linkState.treeState
+                if (treeState != null && treeState.stale(now)) {
+                    linkState.treeState = null
+                }
+            }
+            calcParent()
+        }
+        if (changed) {
+            sendTreeStatus(now)
         }
     }
 
-    private fun beRoot() {
-        localState = localState.copy(status = TreeStatus.Correct, pathToRoot = listOf(networkAddress))
-    }
-
-    private fun computePath() {
-        val correctNeighbours = consistentStates().filter { it.status == TreeStatus.Correct }
-        if (correctNeighbours.isNotEmpty()) {
-            val bestNeighbour = correctNeighbours.max()!!
-            val newPath = bestNeighbour.pathToRoot + listOf(networkAddress)
-            localState = localState.copy(status = TreeStatus.Correct, pathToRoot = newPath)
-            if (predicateUpdateRoot()) {
-                beRoot()
+    private fun calcParent() {
+        val valid = linkStates.values
+            .filter { it.treeState != null }
+            .filter { entry -> entry.treeState!!.shortPath.none { it.id == networkId } }
+        if (valid.isEmpty()) {
+            if (parent != null) {
+                parent = null
+                changed = true
+                lastDepth = 0
             }
-        } else {
-            beRoot()
+            startPoint = 0
+            return
+        }
+        val minRoot = valid.map { it.treeState!!.root }.min()!!
+        if (minRoot > networkId) {
+            if (parent != null) {
+                parent = null
+                changed = true
+                lastDepth = 0
+            }
+            return
+        }
+        val withBestRoot = valid.filter { it.treeState!!.root == minRoot }
+        val minDepth = withBestRoot.map { it.treeState!!.depth }.min()!!
+        if (lastDepth != minDepth) {
+            changed = true
+            lastDepth = minDepth
+        }
+        startPoint = startPoint.rem(withBestRoot.size)
+        var parentSeen = false
+        for (i in withBestRoot.indices) {
+            val j = (i + startPoint).rem(withBestRoot.size)
+            if (parent != withBestRoot[j].linkId) {
+                parentSeen = true
+            }
+            val currentDepth = withBestRoot[j].treeState!!.depth
+            if (currentDepth == minDepth) {
+                if (parent != withBestRoot[j].linkId) {
+                    changed = true
+                }
+                parent = withBestRoot[j].linkId
+                if (parentSeen) {
+                    startPoint = j
+                }
+                break
+            }
         }
     }
 
-    private fun updateTreeState() {
-        if (consistentStates().size == addresses.size) {
-            if (localState.status == TreeStatus.Correct && predicateNodeImprovement()) {
-                val oldPath = localState.pathToRoot
-                computePath()
-                log().info("Improve ${localState.pathToRoot.map { it.id }} from ${oldPath.map { it.id }}")
-            } else if (localState.status == TreeStatus.Correct
-                && !predicateNodeImprovement()
-                && (predicateAbnormalRoot() || parentState()?.status == TreeStatus.ErrorBroadcast)
-            ) {
-                log().error("Bad root")
-                localState = localState.copy(status = TreeStatus.ErrorBroadcast)
-            } else if (localState.status == TreeStatus.ErrorBroadcast
-                && children().all { it.status == TreeStatus.ErrorFeedback }
-            ) {
-                log().info("Children reset")
-                localState = localState.copy(status = TreeStatus.ErrorFeedback)
-            } else if (predicateReset() && !canBeRoot() && !consistentStates().any { it.status == TreeStatus.Correct }) {
-                log().info("Isolated")
-                localState = localState.copy(status = TreeStatus.Isolated)
-            } else if ((predicateReset() || localState.status == TreeStatus.Isolated)
-                && (canBeRoot() || consistentStates().any { it.status == TreeStatus.Correct })
-            ) {
-                log().info("Now have valid neighbour")
-                computePath()
-            }
-            localState = localState.copy(currentSeqNo = localState.currentSeqNo + 1L)
-            log().info("State ${localState.status} ${localState.pathToRoot.map { it.publicAddress }}")
+    private fun sendTreeForLink(now: Instant, linkId: LinkId) {
+        val linkState = linkStates[linkId]
+        if (linkState?.identity == null) {
+            //log().info("handshake not complete $linkId")
+            return
+        }
+        if (linkState.ackSeqNum + MAX_LINK_CAPACITY < linkState.seqNum) {
+            //log().info("link capacity $linkId exhausted skip ${linkState.seqNum} ${linkState.ackSeqNum}")
+            return
+        }
+        val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
+        val treeState = TreeState.createTreeState(
+            parentTree,
+            linkState.receiveSecureId,
+            keyService.getVersion(networkId),
+            linkState.identity!!,
+            keyService,
+            now
+        )
+        //log().info("send ${linkState.linkId} ${linkState.seqNum} ${linkState.ackSeqNum}")
+        val oneHopMessage = OneHopMessage.createOneHopMessage(linkState.seqNum++, linkState.ackSeqNum, treeState)
+        val sendMessage = LinkSendMessage(linkId, oneHopMessage.serialize())
+        physicalNetworkActor.tell(sendMessage, self)
+    }
+
+    private fun sendTreeStatus(now: Instant) {
+        val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
+        log().info("tree ${parentTree?.root ?: networkId} ${parentTree?.depth ?: 0}")
+        changed = false
+        lastSent = now
+        for (neighbour in linkStates.values) {
+            sendTreeForLink(now, neighbour.linkId)
         }
     }
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
-        //log().info("onLinkStatusChange $linkInfo")
+        val linkId = linkInfo.linkId
+        //log().info("onLinkStatusChange $linkId $linkInfo")
+        linkRequestPending -= linkInfo.route.to
         if (linkInfo.status.active) {
             if (linkInfo.route.to in networkConfig.staticRoutes) {
-                staticLinkStatus[linkInfo.route.to] = linkInfo.linkId
-            }
-            sendPing(linkInfo)
-        } else {
-            staticLinkStatus.remove(linkInfo.route.to)
-            linkProbes.remove(linkInfo.linkId)
-            val oldAddress = links.remove(linkInfo.linkId)
-            if (oldAddress != null) {
-                neighbourStates.remove(oldAddress.id)
-                addresses.remove(oldAddress.id, linkInfo.linkId)
-                for (link in links) {
-                    if (link.value.id == oldAddress.id) {
-                        addresses[link.value.id] = link.key
+                val prevLink = staticLinkStatus[linkInfo.route.to]
+                if (prevLink != null) {
+                    val from = linkInfo.route.to as NetworkAddress
+                    val preferActive = (from.id >= networkConfig.networkId.id)
+                    if (preferActive xor (linkInfo.status == LinkStatus.LINK_UP_PASSIVE)) {
+                        log().warning("close duplicate link $linkId")
+                        physicalNetworkActor.tell(CloseRequest(linkId), self)
+                        return
+                    } else {
+                        log().warning("close duplicate link $prevLink")
+                        physicalNetworkActor.tell(CloseRequest(prevLink), self)
                     }
                 }
+                staticLinkStatus[linkInfo.route.to] = linkId
             }
-            updateTreeState()
-            val update = NeighbourUpdate(keyService.getVersion(networkId), addresses.values.mapNotNull { links[it] })
-            for (owner in owners) {
-                owner.tell(update, self)
+            sendHello(linkId)
+        } else {
+            log().info("Link lost $linkInfo")
+            staticLinkStatus.remove(linkInfo.route.to, linkId)
+            val oldState = linkStates.remove(linkId)
+            if (oldState?.identity != null) {
+                addresses.remove(oldState.identity!!.id)
+            }
+
+            calcParent()
+            if (changed) {
+                sendTreeStatus(Clock.systemUTC().instant())
             }
         }
     }
 
-    private fun sendPing(linkInfo: LinkInfo) {
-        val ping = Ping.createPing(keyService)
-        linkProbes[linkInfo.linkId] = Pair(ping, linkInfo.status == LinkStatus.LINK_UP_ACTIVE)
-        val sendPing = LinkSendMessage(linkInfo.linkId, ping.serialize())
-        sender.tell(sendPing, self)
+    private fun sendHello(linkId: LinkId) {
+        //log().info("Send hello message to $linkId")
+        val helloMessage = Hello.createHello(networkId, keyService)
+        val linkState = LinkState(linkId, helloMessage.secureLinkId)
+        linkStates[linkId] = linkState
+        val oneHopMessage = OneHopMessage.createOneHopMessage(linkState.seqNum++, linkState.ackSeqNum, helloMessage)
+        val networkMessage = LinkSendMessage(linkId, oneHopMessage.serialize())
+        physicalNetworkActor.tell(networkMessage, self)
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {
         //log().info("onLinkReceivedMessage $message")
-        if (processPing(message)) return
-        if (linkProbes.containsKey(message.linkId)) {
-            if (processPong(message)) return
+        val oneHopMessage = try {
+            OneHopMessage.deserialize(message.msg)
+        } catch (ex: Exception) {
+            log().error("Bad OneHopMessage ${ex.message}")
+            physicalNetworkActor.tell(CloseRequest(message.linkId), self)
+            return
         }
-        if (processTreeState(message)) return
-        val address = links[message.linkId]
-        if (address != null) {
-            val onwardMessage = NeighbourReceivedMessage(address.identity, message.msg)
-            for (owner in owners) {
-                owner.tell(onwardMessage, self)
-            }
-        } else {
-            log().warning("Drop message for unlabelled link ${message.linkId}")
+        val payloadMessage = oneHopMessage.payloadMessage
+        when (payloadMessage) {
+            is Hello -> processHelloMessage(message.linkId, payloadMessage)
+            is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
+            else -> log().error("Unknown message type $message")
         }
+        val linkState = linkStates[message.linkId]
+        if (linkState != null) {
+            linkState.ackSeqNum = oneHopMessage.seqNum
+            //log().info("receive ${linkState.linkId} ${linkState.seqNum} ${linkState.ackSeqNum}")
+        }
+
+//        val address = links[message.linkId]
+//        if (address != null) {
+//            val onwardMessage = NeighbourReceivedMessage(address.identity, message.msg)
+//            for (owner in owners) {
+//                owner.tell(onwardMessage, self)
+//            }
+//        } else {
+//            log().warning("Drop message for unlabelled link ${message.linkId}")
+//        }
     }
 
-    private fun processPing(message: LinkReceivedMessage): Boolean {
-        val ping = Ping.tryDeserialize(message.msg)
-        if (ping != null) {
-            val pong = Pong.createPong(ping, networkId, keyService)
-            sender.tell(LinkSendMessage(message.linkId, pong.serialize()), self)
-            return true
+    private fun processHelloMessage(sourceLink: LinkId, hello: Hello) {
+        val linkState = linkStates[sourceLink]
+        if (linkState == null) {
+            log().error("LinkId not known $sourceLink")
+            return
         }
-        return false
+        try {
+            hello.verify()
+        } catch (ex: Exception) {
+            log().error("Bad Hello message")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
+        }
+        //log().info("process hello message from $sourceLink")
+        val prevAddress = addresses[hello.sourceId.id]
+        if (prevAddress != null && prevAddress != sourceLink) {
+            log().info("link from duplicate address closing")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
+        }
+        linkState.identity = hello.sourceId
+        linkState.sendSecureId = hello.secureLinkId
+        addresses[hello.sourceId.id] = sourceLink
+        calcParent()
+        sendTreeForLink(Clock.systemUTC().instant(), sourceLink)
     }
 
-    private fun processPong(message: LinkReceivedMessage): Boolean {
-        val pong = Pong.tryDeserialize(message.msg)
-        if (pong != null) {
-            val ping = linkProbes.remove(message.linkId)!!
-            try {
-                val remoteIdentity = pong.verify(ping.first)
-                //log().info("received valid pong on link ${message.linkId} from ${pong.identity}")
-                links[message.linkId] = remoteIdentity
-                if (!addresses.containsKey(remoteIdentity.id) || ping.second) { // favour active links
-                    addresses[remoteIdentity.id] = message.linkId
-                }
-                val update =
-                    NeighbourUpdate(keyService.getVersion(networkId), addresses.values.mapNotNull { links[it] })
-                for (owner in owners) {
-                    owner.tell(update, self)
-                }
-            } catch (ex: SignatureException) {
-                log().error("Bad Pong signature", ex)
-            }
-            return true
+    private fun processTreeStateMessage(sourceLink: LinkId, tree: TreeState) {
+        //log().info("process tree message")
+        val now = Clock.systemUTC().instant()
+        val linkState = linkStates[sourceLink]
+        if (linkState?.identity == null) {
+            log().error("No hello yet received on $sourceLink")
+            return
         }
-        return false
-    }
-
-    private fun processTreeState(message: LinkReceivedMessage): Boolean {
-        val treeState = TreeState.tryDeserialize(message.msg)
-        if (treeState != null) {
-            val address = links[message.linkId]
-            if (address != null) {
-                neighbourStates[address.id] = treeState
-            }
-            updateTreeState()
-            return true
+        linkState.treeState = null
+        try {
+            tree.verify(linkState.sendSecureId!!, keyService.getVersion(networkId), now)
+        } catch (ex: Exception) {
+            log().error("Bad Tree message ${ex.message}")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
         }
-        return false
+        val neighbour = tree.path.path.last().identity
+        if (linkState.identity!!.id != neighbour.id) {
+            log().error("Neighbour on $sourceLink doesn't match")
+            return
+        }
+        if (linkState.identity!!.currentVersion.version > neighbour.currentVersion.version) {
+            log().error("Neighbour on $sourceLink has stale version")
+            return
+        }
+        linkState.identity = neighbour
+        linkState.treeState = tree
+        calcParent()
+        if (parent == sourceLink) {
+            changed = true
+        }
+        if (changed) {
+            sendTreeStatus(now)
+        }
     }
 
     private fun onNeighbourSendMessage(message: NeighbourSendMessage) {
