@@ -12,8 +12,8 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 5
-    val N = 10000
+    val degree = 3
+    val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     //println("Network diameter: ${diameter(simNetwork)}")

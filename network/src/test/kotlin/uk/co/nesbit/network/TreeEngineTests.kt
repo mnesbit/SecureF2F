@@ -187,10 +187,11 @@ class TreeEngineTests {
         val id1 = keyService.getVersion(keys[0])
         val id2 = keyService.getVersion(keys[1])
         val id3 = keyService.getVersion(keys[2])
+        val node3Address = NetworkAddressInfo(id3, listOf(id1.id, id2.id, id3.id))
         val message = "1234567890".toByteArray(Charsets.UTF_8)
         val linkId12 = keyService.random.generateSeed(NONCE_SIZE)
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
-            listOf(id1, id2, id3),
+            node3Address,
             message,
             linkId12,
             id1,
@@ -223,6 +224,19 @@ class TreeEngineTests {
         assertEquals(greedyRoutedMessage2, deserialized2)
         val result2 = deserialized2.verify(id3.id, linkId23, id2, keyService, Clock.systemUTC().instant())
         assertEquals(listOf(id2, id1), result2)
+    }
+
+    @Test
+    fun `NetworkAddressInfo test`() {
+        val keyService = KeyServiceImpl(maxVersion = 64)
+        val keys = (0..2).map { keyService.generateNetworkID(it.toString()) }.sorted()
+        val id1 = keyService.getVersion(keys[0])
+        val id2 = keyService.getVersion(keys[1])
+        val id3 = keyService.getVersion(keys[2])
+        val address = NetworkAddressInfo(id3, listOf(id1.id, id2.id, id3.id))
+        val serialized = address.serialize()
+        val deserialized = NetworkAddressInfo.deserialize(serialized)
+        assertEquals(address, deserialized)
     }
 
     @Test

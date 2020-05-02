@@ -1,0 +1,18 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "NetworkAddressInfo",
+  "type": "record",
+  "fields": [
+    {
+      "name": "identity",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "treeAddress",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    }
+  ]
+}

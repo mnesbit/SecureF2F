@@ -1,0 +1,33 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "DhtRequest",
+  "type": "record",
+  "fields": [
+    {
+      "name": "requestId",
+      "type": "long"
+    },
+    {
+      "name": "key",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sourceAddress",
+      "type": "NetworkAddressInfo"
+    },
+    {
+      "name": "push",
+      "type": {
+        "type": "array",
+        "items": "NetworkAddressInfo"
+      }
+    },
+    {
+      "name": "data",
+      "type": [
+        "null",
+        "bytes"
+      ]
+    }
+  ]
+}

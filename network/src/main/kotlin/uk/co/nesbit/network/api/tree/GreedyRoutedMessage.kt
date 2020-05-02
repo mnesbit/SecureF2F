@@ -16,7 +16,6 @@ import uk.co.nesbit.network.api.tree.Hello.Companion.NONCE_SIZE
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-
 class GreedyRoutedMessage private constructor(
     val destination: SphinxPublicIdentity,
     val treeAddress: List<SecureHash>,
@@ -77,7 +76,7 @@ class GreedyRoutedMessage private constructor(
         }
 
         fun createGreedRoutedMessage(
-            destination: List<VersionedIdentity>,
+            destination: NetworkAddressInfo,
             payload: ByteArray,
             linkId: ByteArray,
             from: VersionedIdentity,
@@ -85,27 +84,26 @@ class GreedyRoutedMessage private constructor(
             keyService: KeyService,
             now: Instant
         ): GreedyRoutedMessage {
-            val finalDestination = destination.last().identity
-            val treeAddress = destination.map { it.identity.id }
+            val finalDestination = destination.identity
             val path = SecurePath.createEncryptedSecurePathList(
                 null,
                 from,
                 nextHop,
-                finalDestination,
+                finalDestination.identity,
                 keyService,
                 now
             )
             val linkSignOver = createLinkSignatureBytes(
-                finalDestination,
-                treeAddress,
+                finalDestination.identity,
+                destination.treeAddress,
                 payload,
                 path,
                 linkId
             )
             val linkSignature = keyService.sign(from.id, linkSignOver).toDigitalSignature()
             return GreedyRoutedMessage(
-                finalDestination,
-                treeAddress,
+                finalDestination.identity,
+                destination.treeAddress,
                 payload,
                 path,
                 linkSignature

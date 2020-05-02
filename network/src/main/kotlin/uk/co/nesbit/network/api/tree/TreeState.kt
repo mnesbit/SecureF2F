@@ -68,6 +68,10 @@ class TreeState(
         path.shortPath
     }
 
+    val treeAddress: NetworkAddressInfo by lazy {
+        NetworkAddressInfo(path.path.last().identity, path.path.map { it.identity.id })
+    }
+
     val root: SecureHash by lazy {
         path.path.first().identity.id
     }

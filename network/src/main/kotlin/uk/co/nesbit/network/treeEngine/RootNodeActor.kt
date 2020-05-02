@@ -20,7 +20,8 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
 
     private val physicalNetworkActor: ActorRef =
         context.actorOf(
-            PhysicalNetworkActor2.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"), "net"
+            PhysicalNetworkActor2.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+            "net"
         )
 
     private val neighbourLinkActor: ActorRef =
@@ -30,6 +31,15 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
                 networkConfig,
                 physicalNetworkActor
             ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
+        )
+
+    private val hopRoutingActor: ActorRef =
+        context.actorOf(
+            HopRoutingActor.getProps(
+                keyService,
+                networkConfig,
+                neighbourLinkActor
+            ).withDispatcher("akka.fixed-dispatcher"), "route"
         )
 
     override fun preStart() {
