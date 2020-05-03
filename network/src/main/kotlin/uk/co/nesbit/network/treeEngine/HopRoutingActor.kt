@@ -17,10 +17,12 @@ import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.lang.Integer.min
+import java.lang.Long.max
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.experimental.xor
 
 class HopRoutingActor(
@@ -40,9 +42,10 @@ class HopRoutingActor(
             return createProps(javaClass.enclosingClass, keyService, networkConfig, neighbourLinkActor)
         }
 
-        const val ROUTE_CHECK_INTERVAL_MS = 30000L
+        const val ROUTE_CHECK_INTERVAL_MS = 15000L
         const val ALPHA = 3
         const val K = 15
+        const val NODES_COUNT = 4000
 
         @JvmStatic
         fun xorDistance(x: SecureHash, y: SecureHash): Int {
@@ -62,6 +65,7 @@ class HopRoutingActor(
         }
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
+        val gapZero = AtomicInteger(0)
     }
 
     private class CheckRoutes(val first: Boolean)
@@ -77,13 +81,15 @@ class HopRoutingActor(
     private val owners = mutableSetOf<ActorRef>()
     private var networkAddress: NetworkAddressInfo? = null
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
-    private val sphinxEncoder = Sphinx(keyService.random, 10, 1024)
+    private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
     private val kbuckets = mutableListOf(KBucket(0, 257))
     private var bucketRefresh: Int = 0
     private var foundNearest: Boolean = false
+    private var round: Int = 0
+    private var gapZeroDone = false
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
-    private var requestTimeout: Long = 120000L
+    private var requestTimeout: Long = ROUTE_CHECK_INTERVAL_MS
     private val data = mutableMapOf<SecureHash, ByteArray>()
 
     override fun preStart() {
@@ -143,11 +149,14 @@ class HopRoutingActor(
                 //log().info("stale request")
                 requestItr.remove()
                 val bucket = findBucket(request.value.request.key)
-                bucket.nodes.remove(request.value.target)
+                if (bucket.nodes.remove(request.value.target)) {
+                    bucket.nodes.add(request.value.target)
+                }
                 requestTimeout += 1000L
             }
         }
         if (outstandingRequests.isEmpty()) {
+            round++
             var distMin = 258
             if (!foundNearest) {
                 for (key in bestDist.keys()) {
@@ -156,7 +165,7 @@ class HopRoutingActor(
                         distMin = min(dist, distMin)
                     }
                 }
-                foundNearest = (bestDist.size == 1000)
+                foundNearest = (bestDist.size == 4000)
                 if (!bestDist.containsKey(networkAddress!!.identity.id)
                     || bestDist[networkAddress!!.identity.id] != distMin
                 ) {
@@ -173,7 +182,11 @@ class HopRoutingActor(
             //log().info("nearest distances ${nearest.joinToString { xorDistance(it.identity.id,networkAddress!!.identity.id).toString() }} best $distMin")
             if (foundNearest && nearest.isNotEmpty()) {
                 val gap = xorDistance(nearest.first().identity.id, networkAddress!!.identity.id) - distMin
-                log().info("gap $gap ${kbuckets.joinToString { "${it.xorDistanceMin}:${it.xorDistanceMax}:${it.nodes.size}" }}")
+                if (gap == 0 && !gapZeroDone) {
+                    gapZero.incrementAndGet()
+                    gapZeroDone = true
+                }
+                log().info("gap $gap $round ${(100 * gapZero.get()) / NODES_COUNT}")
             }
             for (near in nearest) {
                 val nearestTo = findNearest(near.identity.id, ALPHA)
@@ -361,7 +374,7 @@ class HopRoutingActor(
         val originalRequest = outstandingRequests.remove(response.requestId)
         if (originalRequest != null) {
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
-            requestTimeout = (requestTimeout + 2L * replyTime) / 2L
+            requestTimeout = max((requestTimeout + 2L * replyTime) / 2L, ROUTE_CHECK_INTERVAL_MS)
             if (response.data != null) {
                 data[originalRequest.request.key] = response.data
             }
