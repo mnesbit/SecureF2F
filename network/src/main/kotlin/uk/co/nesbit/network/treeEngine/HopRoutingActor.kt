@@ -189,7 +189,7 @@ class HopRoutingActor(
                 log().info("gap $gap $round ${(100 * gapZero.get()) / NODES_COUNT}")
             }
             for (near in nearest) {
-                val nearestTo = findNearest(near.identity.id, ALPHA)
+                val nearestTo = findNearest(near.identity.id, K)
                 val request = DhtRequest(
                     requestId++,
                     networkAddress!!.identity.id,
@@ -205,7 +205,7 @@ class HopRoutingActor(
             bucketRefresh = (bucketRefresh + 1).rem(kbuckets.size)
             if (randomBucket.nodes.isNotEmpty()) {
                 val target = randomBucket.nodes[keyService.random.nextInt(randomBucket.nodes.size)]
-                val nearestTo = findNearest(target.identity.id, ALPHA)
+                val nearestTo = findNearest(target.identity.id, K)
                 val request = DhtRequest(
                     requestId++,
                     networkAddress!!.identity.id,
@@ -261,7 +261,7 @@ class HopRoutingActor(
         val bucket = findBucket(node.identity.id)
         bucket.nodes.removeIf { it.identity.id == node.identity.id }
         if (bucket.nodes.size >= K) {
-            bucket.nodes.add(node)
+            bucket.nodes.add(0, node)
             if (bucket.xorDistanceMax - bucket.xorDistanceMin > 1) {
                 val sorted = bucket.nodes.sortedBy {
                     xorDistance(networkAddress!!.identity.id, it.identity.id)
@@ -294,7 +294,7 @@ class HopRoutingActor(
                 bucket.nodes.removeAt(bucket.nodes.size - 1)
             }
         } else {
-            bucket.nodes.add(node)
+            bucket.nodes.add(0, node)
         }
     }
 

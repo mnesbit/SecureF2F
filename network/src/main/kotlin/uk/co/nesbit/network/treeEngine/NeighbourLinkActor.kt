@@ -254,7 +254,6 @@ class NeighbourLinkActor(
             log().info("link capacity $linkId exhausted skip ${linkState.seqNum} ${linkState.confirmedSeqNum}")
             return
         }
-        linkState.linkCapacity++
         val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
         val treeState = TreeState.createTreeState(
             parentTree,
@@ -352,6 +351,7 @@ class NeighbourLinkActor(
         if (linkState != null) {
             linkState.ackSeqNum = oneHopMessage.seqNum
             linkState.confirmedSeqNum = oneHopMessage.ackSeqNum
+            linkState.linkCapacity++
         }
     }
 
@@ -385,6 +385,7 @@ class NeighbourLinkActor(
     private fun processTreeStateMessage(sourceLink: LinkId, tree: TreeState) {
         //log().info("process tree message")
         val now = Clock.systemUTC().instant()
+        //log().info("tree delay ${ChronoUnit.MILLIS.between(tree.path.path.last().timestamp,now)}")
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
             log().error("No hello yet received on $sourceLink")
@@ -504,7 +505,6 @@ class NeighbourLinkActor(
                 log().info("link capacity ${best.linkId} exhausted skip forward ${best.seqNum} ${best.confirmedSeqNum}")
                 return
             }
-            best.linkCapacity++
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
                 payloadMessage,
                 best.sendSecureId!!,
@@ -528,7 +528,6 @@ class NeighbourLinkActor(
             log().info("link capacity ${nextHop.linkId} exhausted skip greedy send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
             return
         }
-        nextHop.linkCapacity++
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
             messageRequest.networkAddress,
             messageRequest.payload,
@@ -557,7 +556,6 @@ class NeighbourLinkActor(
             log().info("link capacity ${nextHop.linkId} exhausted skip sphinx send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
             return
         }
-        nextHop.linkCapacity++
         sendMessageToLink(nextHop, messageRequest.message)
     }
 }
