@@ -5,9 +5,11 @@ import akka.actor.Props
 import akka.event.LoggingAdapter
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import scala.PartialFunction
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration.FiniteDuration
 import scala.jdk.javaapi.CollectionConverters
+import scala.runtime.BoxedUnit
 import java.util.concurrent.TimeUnit
 
 fun Int.seconds(): FiniteDuration =
@@ -59,4 +61,22 @@ abstract class AbstractActorWithLoggingAndTimers() : AbstractActorWithTimers() {
 // TODO This works around a stupid error highlighting bug in Idea, hopefully will get fixed
 fun createProps(clazz: Class<*>, vararg inputs: Any): Props {
     return Props.create(clazz, CollectionConverters.asScala(inputs.iterator()).toSeq())
+}
+
+class ScalaPartialFuncAdaptor(val block: (Any) -> Unit) : PartialFunction<Any, BoxedUnit> {
+    override fun apply(input: Any): BoxedUnit {
+        block(input)
+        return BoxedUnit.UNIT
+    }
+
+    override fun isDefinedAt(x: Any): Boolean = true
+}
+
+// Scala based receiver builder can build up unnecessary complexity and stack depth
+abstract class UntypedBaseActorWithLoggingAndTimers : AbstractActorWithLoggingAndTimers() {
+
+    override fun createReceive(): Receive = Receive(ScalaPartialFuncAdaptor { msg -> onReceive(msg) })
+
+    abstract fun onReceive(message: Any)
+
 }

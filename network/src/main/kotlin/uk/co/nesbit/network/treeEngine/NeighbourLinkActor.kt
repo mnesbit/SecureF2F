@@ -2,7 +2,6 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
-import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
@@ -12,7 +11,7 @@ import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.mocknet.CloseRequest
 import uk.co.nesbit.network.mocknet.OpenRequest
 import uk.co.nesbit.network.mocknet.WatchRequest
-import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.lang.Integer.max
@@ -30,7 +29,7 @@ class NeighbourLinkActor(
     private val networkConfig: NetworkConfiguration,
     private val physicalNetworkActor: ActorRef
 ) :
-    AbstractActorWithLoggingAndTimers() {
+    UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -99,15 +98,17 @@ class NeighbourLinkActor(
         //log().info("Restart NeighbourLinkActor")
     }
 
-    override fun createReceive(): Receive =
-        ReceiveBuilder()
-            .match(WatchRequest::class.java) { onWatchRequest() }
-            .match(CheckStaticLinks::class.java, ::onCheckStaticLinks)
-            .match(LinkInfo::class.java, ::onLinkStatusChange)
-            .match(LinkReceivedMessage::class.java, ::onLinkReceivedMessage)
-            .match(NeighbourSendGreedyMessage::class.java, ::onSendGreedyMessage)
-            .match(NeighbourSendSphinxMessage::class.java, ::onSendSphinxMessage)
-            .build()
+    override fun onReceive(message: Any) {
+        when (message) {
+            is WatchRequest -> onWatchRequest()
+            is CheckStaticLinks -> onCheckStaticLinks(message)
+            is LinkInfo -> onLinkStatusChange(message)
+            is LinkReceivedMessage -> onLinkReceivedMessage(message)
+            is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
+            is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
+            else -> throw IllegalArgumentException("Unknown message type")
+        }
+    }
 
     private fun onWatchRequest() {
         //log().info("WatchRequest from $sender")
@@ -173,7 +174,17 @@ class NeighbourLinkActor(
                 it.path.path.last().identity,
                 it.shortPath.map { it.id })
         }
-        val neighbourUpdate = NeighbourUpdate(localAddress, neighbours)
+        val upstream = mutableListOf<NetworkAddressInfo>()
+        if (parent != null) {
+            val parentTree = linkStates[parent!!]?.treeState?.path?.path
+            if (parentTree != null) {
+                val hashes = parentTree.map { it.identity.id }
+                for (index in parentTree.indices) {
+                    upstream += NetworkAddressInfo(parentTree[index].identity, hashes.take(index + 1))
+                }
+            }
+        }
+        val neighbourUpdate = NeighbourUpdate(localAddress, upstream + neighbours)
         for (owner in owners) {
             owner.tell(neighbourUpdate, self)
         }
@@ -352,6 +363,10 @@ class NeighbourLinkActor(
             linkState.ackSeqNum = oneHopMessage.seqNum
             linkState.confirmedSeqNum = oneHopMessage.ackSeqNum
             linkState.linkCapacity++
+            if (linkState.ackSeqNum - linkState.ackSent >= MIN_WINDOW_SIZE) {
+                sendMessageToLink(linkState, AckMessage())
+                --linkState.seqNum
+            }
         }
     }
 

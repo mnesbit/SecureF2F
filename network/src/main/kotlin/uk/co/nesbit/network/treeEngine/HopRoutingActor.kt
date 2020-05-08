@@ -2,7 +2,6 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
-import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.Ecies
 import uk.co.nesbit.crypto.SecureHash
@@ -13,11 +12,11 @@ import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.mocknet.WatchRequest
-import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.lang.Integer.min
 import java.lang.Long.max
+import java.lang.Long.min
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -30,7 +29,7 @@ class HopRoutingActor(
     private val networkConfig: NetworkConfiguration,
     private val neighbourLinkActor: ActorRef
 ) :
-    AbstractActorWithLoggingAndTimers() {
+    UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -43,9 +42,11 @@ class HopRoutingActor(
         }
 
         const val ROUTE_CHECK_INTERVAL_MS = 15000L
+        const val ROUTE_CHECK_INTERVAL_MAX_MS = 120000L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 1000L
+        const val GAP_CALC_STABLE = 3
         const val ALPHA = 3
         const val K = 15
-        const val NODES_COUNT = 4000
 
         @JvmStatic
         fun xorDistance(x: SecureHash, y: SecureHash): Int {
@@ -84,8 +85,9 @@ class HopRoutingActor(
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
     private val kbuckets = mutableListOf(KBucket(0, 257))
     private var bucketRefresh: Int = 0
-    private var foundNearest: Boolean = false
     private var round: Int = 0
+    private var gapNEstimate: Int = 0
+    private var gapCalcStable: Int = 0
     private var gapZeroDone = false
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
@@ -113,14 +115,16 @@ class HopRoutingActor(
         //log().info("Restart NeighbourLinkActor")
     }
 
-    override fun createReceive(): Receive =
-        ReceiveBuilder()
-            .match(CheckRoutes::class.java, ::onCheckRoutes)
-            .match(WatchRequest::class.java) { onWatchRequest() }
-            .match(NeighbourUpdate::class.java, ::onNeighbourUpdate)
-            .match(NeighbourReceivedGreedyMessage::class.java, ::onNeighbourReceivedGreedyMessage)
-            .match(SphinxRoutedMessage::class.java, ::onSphinxRoutedMessage)
-            .build()
+    override fun onReceive(message: Any) {
+        when (message) {
+            is CheckRoutes -> onCheckRoutes()
+            is WatchRequest -> onWatchRequest()
+            is NeighbourUpdate -> onNeighbourUpdate(message)
+            is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
+            is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
+            else -> throw IllegalArgumentException("Unknown message type")
+        }
+    }
 
     private fun onWatchRequest() {
         //log().info("WatchRequest from $sender")
@@ -130,17 +134,16 @@ class HopRoutingActor(
         }
     }
 
-    private fun onCheckRoutes(check: CheckRoutes) {
-        if (check.first) {
-            timers.startTimerWithFixedDelay(
-                "routeScanningPoller",
-                CheckRoutes(false),
-                ROUTE_CHECK_INTERVAL_MS.millis()
-            )
-        }
+    private fun onCheckRoutes() {
+        timers.startSingleTimer(
+            "routeScanningPoller",
+            CheckRoutes(false),
+            (min(requestTimeout / 2L, ROUTE_CHECK_INTERVAL_MAX_MS)).millis()
+        )
         if (networkAddress == null) {
             return
         }
+        val distMin = calcNearestNodeGap()
         val now = Clock.systemUTC().instant()
         val requestItr = outstandingRequests.iterator()
         while (requestItr.hasNext()) {
@@ -152,49 +155,21 @@ class HopRoutingActor(
                 if (bucket.nodes.remove(request.value.target)) {
                     bucket.nodes.add(request.value.target)
                 }
-                requestTimeout += 1000L
+                requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
             }
         }
         if (outstandingRequests.isEmpty()) {
+            val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
-            var distMin = 258
-            if (!foundNearest) {
-                for (key in bestDist.keys()) {
-                    val dist = xorDistance(networkAddress!!.identity.id, key)
-                    if (dist != 0) {
-                        distMin = min(dist, distMin)
-                    }
-                }
-                foundNearest = (bestDist.size == 4000)
-                if (!bestDist.containsKey(networkAddress!!.identity.id)
-                    || bestDist[networkAddress!!.identity.id] != distMin
-                ) {
-                    bestDist[networkAddress!!.identity.id] = distMin
-                    foundNearest = false
-                }
-            } else {
-                distMin = bestDist[networkAddress!!.identity.id]!!
-            }
-            val nearest = findNearest(
-                networkAddress!!.identity.id,
-                ALPHA + 1
-            ).filterNot { it.identity.id == networkAddress!!.identity.id }
-            //log().info("nearest distances ${nearest.joinToString { xorDistance(it.identity.id,networkAddress!!.identity.id).toString() }} best $distMin")
-            if (foundNearest && nearest.isNotEmpty()) {
-                val gap = xorDistance(nearest.first().identity.id, networkAddress!!.identity.id) - distMin
-                if (gap == 0 && !gapZeroDone) {
-                    gapZero.incrementAndGet()
-                    gapZeroDone = true
-                }
-                log().info("gap $gap $round ${(100 * gapZero.get()) / NODES_COUNT}")
-            }
+
+            logNearestNodeGap(nearest, distMin)
             for (near in nearest) {
-                val nearestTo = findNearest(near.identity.id, K)
+                val nearestTo = findBucket(near.identity.id)
                 val request = DhtRequest(
                     requestId++,
                     networkAddress!!.identity.id,
                     networkAddress!!,
-                    nearestTo,
+                    nearestTo.nodes,
                     networkAddress!!.serialize()
                 )
                 outstandingRequests[request.requestId] = RequestTracker(request, now, near)
@@ -205,18 +180,56 @@ class HopRoutingActor(
             bucketRefresh = (bucketRefresh + 1).rem(kbuckets.size)
             if (randomBucket.nodes.isNotEmpty()) {
                 val target = randomBucket.nodes[keyService.random.nextInt(randomBucket.nodes.size)]
-                val nearestTo = findNearest(target.identity.id, K)
+                val nearestTo = findBucket(target.identity.id)
                 val request = DhtRequest(
                     requestId++,
                     networkAddress!!.identity.id,
                     networkAddress!!,
-                    nearestTo,
+                    nearestTo.nodes,
                     networkAddress!!.serialize()
                 )
                 outstandingRequests[request.requestId] = RequestTracker(request, now, target)
                 sendGreedyMessage(target, request)
             }
         }
+    }
+
+    private fun logNearestNodeGap(
+        nearest: List<NetworkAddressInfo>,
+        distMin: Int
+    ) {
+        if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
+            val gap = xorDistance(nearest.first().identity.id, networkAddress!!.identity.id) - distMin
+            if (gap == 0 && !gapZeroDone) {
+                gapZero.incrementAndGet()
+                gapZeroDone = true
+            }
+            log().info("gap $gap $round ${(100 * gapZero.get()) / gapNEstimate}")
+        }
+    }
+
+    private fun calcNearestNodeGap(): Int {
+        var distMin = 258
+        if (gapCalcStable < GAP_CALC_STABLE) {
+            gapCalcStable++
+            for (key in bestDist.keys()) {
+                val dist = xorDistance(networkAddress!!.identity.id, key)
+                if (dist != 0) {
+                    distMin = kotlin.math.min(dist, distMin)
+                }
+            }
+            if (!bestDist.containsKey(networkAddress!!.identity.id)
+                || gapNEstimate != bestDist.size
+                || bestDist[networkAddress!!.identity.id] != distMin
+            ) {
+                bestDist[networkAddress!!.identity.id] = distMin
+                gapCalcStable = 0
+                gapNEstimate = bestDist.size
+            }
+        } else {
+            distMin = bestDist[networkAddress!!.identity.id]!!
+        }
+        return distMin
     }
 
     private fun sendGreedyMessage(
@@ -256,6 +269,9 @@ class HopRoutingActor(
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
         if (node.treeAddress.first() != networkAddress!!.treeAddress.first()) {
+            return
+        }
+        if (node.identity.id == networkAddress?.identity?.id) {
             return
         }
         val bucket = findBucket(node.identity.id)
@@ -307,7 +323,6 @@ class HopRoutingActor(
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
         //log().info("neighbour update")
         networkAddress = neighbourUpdate.localId
-        addToKBuckets(neighbourUpdate.localId)
         neighbours.clear()
         for (neighbour in neighbourUpdate.addresses) {
             neighbours[neighbour.identity.id] = neighbour
@@ -349,12 +364,12 @@ class HopRoutingActor(
 
     private fun processDhtRequest(request: DhtRequest, replyPath: List<VersionedIdentity>) {
         //log().info("got DhtRequest")
+        val nearest = findBucket(request.key)
         addToKBuckets(request.sourceAddress)
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
         }
-        val nearest = findNearest(request.key, K)
-        val response = DhtResponse(request.requestId, nearest, data[request.key])
+        val response = DhtResponse(request.requestId, nearest.nodes, data[request.key])
         if (request.data != null) {
             data[request.key] = request.data
         }
@@ -365,7 +380,6 @@ class HopRoutingActor(
         }
     }
 
-
     private fun processDhtResponse(response: DhtResponse) {
         //log().info("got DhtResponse")
         for (node in response.nearestPaths) {
@@ -373,6 +387,7 @@ class HopRoutingActor(
         }
         val originalRequest = outstandingRequests.remove(response.requestId)
         if (originalRequest != null) {
+            addToKBuckets(originalRequest.target)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
             requestTimeout = max((requestTimeout + 2L * replyTime) / 2L, ROUTE_CHECK_INTERVAL_MS)
             if (response.data != null) {
