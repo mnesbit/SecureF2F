@@ -2,6 +2,7 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
+import com.github.benmanes.caffeine.cache.Caffeine
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.Ecies
 import uk.co.nesbit.crypto.SecureHash
@@ -16,7 +17,6 @@ import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.lang.Long.max
-import java.lang.Long.min
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -42,7 +42,6 @@ class HopRoutingActor(
         }
 
         const val ROUTE_CHECK_INTERVAL_MS = 15000L
-        const val ROUTE_CHECK_INTERVAL_MAX_MS = 120000L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 1000L
         const val GAP_CALC_STABLE = 3
         const val ALPHA = 3
@@ -92,6 +91,7 @@ class HopRoutingActor(
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private var requestTimeout: Long = ROUTE_CHECK_INTERVAL_MS
+    private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = mutableMapOf<SecureHash, ByteArray>()
 
     override fun preStart() {
@@ -117,7 +117,7 @@ class HopRoutingActor(
 
     override fun onReceive(message: Any) {
         when (message) {
-            is CheckRoutes -> onCheckRoutes()
+            is CheckRoutes -> onCheckRoutes(message)
             is WatchRequest -> onWatchRequest()
             is NeighbourUpdate -> onNeighbourUpdate(message)
             is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
@@ -134,12 +134,14 @@ class HopRoutingActor(
         }
     }
 
-    private fun onCheckRoutes() {
-        timers.startSingleTimer(
-            "routeScanningPoller",
-            CheckRoutes(false),
-            (min(requestTimeout / 2L, ROUTE_CHECK_INTERVAL_MAX_MS)).millis()
-        )
+    private fun onCheckRoutes(check: CheckRoutes) {
+        if (check.first) {
+            timers.startTimerWithFixedDelay(
+                "routeScanningPoller",
+                CheckRoutes(false),
+                ROUTE_CHECK_INTERVAL_MS.millis()
+            )
+        }
         if (networkAddress == null) {
             return
         }
@@ -152,9 +154,10 @@ class HopRoutingActor(
                 //log().info("stale request")
                 requestItr.remove()
                 val bucket = findBucket(request.value.request.key)
-                if (bucket.nodes.remove(request.value.target)) {
+                if (bucket.nodes.remove(request.value.target)) { // move to end
                     bucket.nodes.add(request.value.target)
                 }
+                routeCache.invalidate(request.value.target.identity.id) // don't trust sphinx route
                 requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
             }
         }
@@ -236,6 +239,11 @@ class HopRoutingActor(
         destination: NetworkAddressInfo,
         message: Message
     ) {
+        val cachedPrivateRoute = routeCache.getIfPresent(destination.identity.id)
+        if (cachedPrivateRoute != null) {
+            sendSphinxMessage(cachedPrivateRoute, message)
+            return
+        }
         val wrapper = OneHopMessage.createOneHopMessage(0, 0, message)
         val encrypted = Ecies.encryptMessage(
             wrapper.serialize(),
@@ -355,16 +363,19 @@ class HopRoutingActor(
             log().error("bad inner payload")
             return
         }
+        val replyRoute = payloadMessage.replyPath
+        if (replyRoute.size <= sphinxEncoder.maxRouteLength) {
+            routeCache.put(replyRoute.last().id, replyRoute)
+        }
         when (payload.javaClass) {
-            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, payloadMessage.replyPath)
+            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, replyRoute)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
             else -> log().error("Unknown message type")
         }
     }
 
-    private fun processDhtRequest(request: DhtRequest, replyPath: List<VersionedIdentity>) {
-        //log().info("got DhtRequest")
-        val nearest = findBucket(request.key)
+    private fun processDhtRequestInternal(request: DhtRequest): DhtResponse {
+        val nearest = findBucket(request.key) // query then merge to ensure newscast style
         addToKBuckets(request.sourceAddress)
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
@@ -373,10 +384,27 @@ class HopRoutingActor(
         if (request.data != null) {
             data[request.key] = request.data
         }
+        return response
+    }
+
+    private fun processDhtRequest(request: DhtRequest, replyPath: List<VersionedIdentity>) {
+        //log().info("got DhtRequest")
+        val response = processDhtRequestInternal(request)
         if (replyPath.size > sphinxEncoder.maxRouteLength) {
             sendGreedyMessage(request.sourceAddress, response)
         } else {
             sendSphinxMessage(replyPath, response)
+        }
+    }
+
+    private fun processDhtRequest(request: DhtRequest) {
+        //log().info("got DhtRequest")
+        val response = processDhtRequestInternal(request)
+        val knownPath = routeCache.getIfPresent(request.sourceAddress.identity.id)
+        if (knownPath == null) {
+            sendGreedyMessage(request.sourceAddress, response)
+        } else {
+            sendSphinxMessage(knownPath, response)
         }
     }
 
@@ -412,6 +440,7 @@ class HopRoutingActor(
                     return
                 }
                 when (payload.javaClass) {
+                    DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
                     DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
                     else -> log().error("Unknown message type")
                 }

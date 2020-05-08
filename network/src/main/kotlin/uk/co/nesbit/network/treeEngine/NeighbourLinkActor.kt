@@ -44,21 +44,21 @@ class NeighbourLinkActor(
         const val LINK_CHECK_INTERVAL_MS = 5000L
         const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
         const val MIN_WINDOW_SIZE = 5
+        const val MAX_BUFFERED_MESSAGES = 5
     }
 
     private class CheckStaticLinks(val first: Boolean)
-    private class LinkState(
-        val linkId: LinkId,
-        val receiveSecureId: ByteArray,
-        var seqNum: Int = 0,
-        var ackSeqNum: Int = -1,
-        var confirmedSeqNum: Int = 0,
-        var ackSent: Int = -1,
-        var linkCapacity: Int = MIN_WINDOW_SIZE,
-        var identity: VersionedIdentity? = null,
-        var sendSecureId: ByteArray? = null,
+    private class LinkState(val linkId: LinkId, val receiveSecureId: ByteArray) {
+        var seqNum: Int = 0
+        var ackSeqNum: Int = -1
+        var confirmedSeqNum: Int = 0
+        var ackSent: Int = -1
+        var linkCapacity: Int = MIN_WINDOW_SIZE
+        val bufferedMessages = java.util.ArrayDeque<Message>()
+        var identity: VersionedIdentity? = null
+        var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
-    )
+    }
 
     private val networkId: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
         keyService.generateNetworkID(networkConfig.networkId.toString())
@@ -268,7 +268,7 @@ class NeighbourLinkActor(
         val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
         val treeState = TreeState.createTreeState(
             parentTree,
-            linkState.receiveSecureId,
+            linkState.sendSecureId!!,
             keyService.getVersion(networkId),
             linkState.identity!!,
             keyService,
@@ -358,11 +358,23 @@ class NeighbourLinkActor(
             }
             else -> log().error("Unknown message type $message")
         }
-        val linkState = linkStates[message.linkId]
+        updateCongestionControl(message.linkId, oneHopMessage)
+    }
+
+    private fun updateCongestionControl(
+        fromLink: LinkId,
+        oneHopMessage: OneHopMessage
+    ) {
+        val linkState = linkStates[fromLink]
         if (linkState != null) {
             linkState.ackSeqNum = oneHopMessage.seqNum
             linkState.confirmedSeqNum = oneHopMessage.ackSeqNum
             linkState.linkCapacity++
+            while (linkState.confirmedSeqNum + linkState.linkCapacity >= linkState.seqNum
+                && linkState.bufferedMessages.isNotEmpty()
+            ) {
+                sendMessageToLink(linkState, linkState.bufferedMessages.poll())
+            }
             if (linkState.ackSeqNum - linkState.ackSent >= MIN_WINDOW_SIZE) {
                 sendMessageToLink(linkState, AckMessage())
                 --linkState.seqNum
@@ -414,7 +426,7 @@ class NeighbourLinkActor(
             return
         }
         try {
-            tree.verify(linkState.sendSecureId!!, keyService.getVersion(networkId), now)
+            tree.verify(linkState.receiveSecureId, keyService.getVersion(networkId), now)
         } catch (ex: Exception) {
             log().error("Bad Tree message ${ex.message}")
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)
@@ -517,7 +529,11 @@ class NeighbourLinkActor(
             }
             if (best.confirmedSeqNum + best.linkCapacity + 2 < best.seqNum) {
                 best.linkCapacity = max((best.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-                log().info("link capacity ${best.linkId} exhausted skip forward ${best.seqNum} ${best.confirmedSeqNum}")
+                best.bufferedMessages.offer(payloadMessage)
+                if (best.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
+                    best.bufferedMessages.removeFirst()
+                    log().info("link capacity ${best.linkId} exhausted drop forward ${best.seqNum} ${best.confirmedSeqNum}")
+                }
                 return
             }
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
@@ -538,11 +554,6 @@ class NeighbourLinkActor(
             log().warning("Unable to route to ${messageRequest.networkAddress.treeAddress}")
             return
         }
-        if (nextHop.confirmedSeqNum + nextHop.linkCapacity + 1 < nextHop.seqNum) {
-            nextHop.linkCapacity = max((nextHop.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-            log().info("link capacity ${nextHop.linkId} exhausted skip greedy send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
-            return
-        }
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
             messageRequest.networkAddress,
             messageRequest.payload,
@@ -552,6 +563,15 @@ class NeighbourLinkActor(
             keyService,
             Clock.systemUTC().instant()
         )
+        if (nextHop.confirmedSeqNum + nextHop.linkCapacity + 1 < nextHop.seqNum) {
+            nextHop.linkCapacity = max((nextHop.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
+            nextHop.bufferedMessages.offer(greedyRoutedMessage)
+            if (nextHop.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
+                nextHop.bufferedMessages.removeFirst()
+                log().info("link capacity ${nextHop.linkId} exhausted drop greedy send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
+            }
+            return
+        }
         sendMessageToLink(nextHop, greedyRoutedMessage)
     }
 
@@ -568,7 +588,11 @@ class NeighbourLinkActor(
         }
         if (nextHop.confirmedSeqNum + nextHop.linkCapacity + 1 < nextHop.seqNum) {
             nextHop.linkCapacity = max((nextHop.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-            log().info("link capacity ${nextHop.linkId} exhausted skip sphinx send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
+            nextHop.bufferedMessages.offer(messageRequest.message)
+            if (nextHop.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
+                nextHop.bufferedMessages.removeFirst()
+                log().info("link capacity ${nextHop.linkId} exhausted drop sphinx send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
+            }
             return
         }
         sendMessageToLink(nextHop, messageRequest.message)

@@ -13,6 +13,7 @@ import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.Hello.Companion.NONCE_SIZE
+import java.security.SignatureException
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -181,7 +182,11 @@ class GreedyRoutedMessage private constructor(
             pathInfo,
             linkId
         )
-        lastLinkSignature.verify(prevNode.identity.signingPublicKey, linkSignOver)
+        try {
+            lastLinkSignature.verify(prevNode.identity.signingPublicKey, linkSignOver)
+        } catch (ex: SignatureException) {
+            throw SignatureException("Bad link signature")
+        }
         if (destination.id == self) {
             val nowRounded = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
             val securePathList = pathInfo.map { it.decrypt(self, keyService) }
@@ -202,7 +207,11 @@ class GreedyRoutedMessage private constructor(
                 }
                 val prevTimestampBytes = timestamp.toEpochMilli().toByteArray()
                 val pathSignOverNext = concatByteArrays(prevTimestampBytes, next.id.serialize())
-                curr.signatureOverNext.verify(curr.identity.identity.signingPublicKey, pathSignOverNext)
+                try {
+                    curr.signatureOverNext.verify(curr.identity.identity.signingPublicKey, pathSignOverNext)
+                } catch (ex: SignatureException) {
+                    throw SignatureException("Bad path signature")
+                }
             }
             return securePathList.map { it.identity }.reversed()
         }

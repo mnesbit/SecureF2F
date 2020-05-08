@@ -12,6 +12,8 @@ dependencies {
     implementation "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
     implementation "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
 
+    implementation "com.github.ben-manes.caffeine:caffeine:${caffeine_version}"
+
     api project(':avro')
     api project(':crypto')
 }
