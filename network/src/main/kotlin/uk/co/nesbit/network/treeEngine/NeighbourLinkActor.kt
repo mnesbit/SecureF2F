@@ -137,6 +137,11 @@ class NeighbourLinkActor(
             }
         }
         for (linkState in linkStates.values) {
+            while (linkState.confirmedSeqNum + linkState.linkCapacity >= linkState.seqNum
+                && linkState.bufferedMessages.isNotEmpty()
+            ) {
+                sendMessageToLink(linkState, linkState.bufferedMessages.poll())
+            }
             if (linkState.ackSeqNum - linkState.ackSent > 0) {
                 sendMessageToLink(linkState, AckMessage())
                 --linkState.seqNum
@@ -201,6 +206,9 @@ class NeighbourLinkActor(
                 selfAddress = listOf(networkId)
                 changed = true
                 lastDepth = 0
+                for (linkState in linkStates.values) {
+                    linkState.bufferedMessages.clear()
+                }
             }
             startPoint = 0
             return
@@ -213,6 +221,9 @@ class NeighbourLinkActor(
                 selfAddress = listOf(networkId)
                 changed = true
                 lastDepth = 0
+                for (linkState in linkStates.values) {
+                    linkState.bufferedMessages.clear()
+                }
             }
             return
         }
@@ -226,13 +237,16 @@ class NeighbourLinkActor(
         var parentSeen = false
         for (i in withBestRoot.indices) {
             val j = (i + startPoint).rem(withBestRoot.size)
-            if (parent != withBestRoot[j].linkId) {
+            if (parent == withBestRoot[j].linkId) {
                 parentSeen = true
             }
             val currentDepth = withBestRoot[j].treeState!!.depth
             if (currentDepth == minDepth) {
                 if (parent != withBestRoot[j].linkId) {
                     changed = true
+                    for (linkState in linkStates.values) {
+                        linkState.bufferedMessages.clear()
+                    }
                 }
                 parent = withBestRoot[j].linkId
                 selfAddress = withBestRoot[j].treeState!!.shortPath.map { it.id } + networkId
@@ -385,7 +399,7 @@ class NeighbourLinkActor(
     private fun processHelloMessage(sourceLink: LinkId, hello: Hello) {
         val linkState = linkStates[sourceLink]
         if (linkState == null) {
-            log().error("LinkId not known $sourceLink")
+            log().warning("LinkId not known $sourceLink")
             return
         }
         try {
@@ -490,7 +504,7 @@ class NeighbourLinkActor(
                 && neighbourState.identity != null
                 && neighbourState.sendSecureId != null
                 && neighbourState.treeState != null
-                && neighbourState.confirmedSeqNum + neighbourState.linkCapacity + 1 >= neighbourState.seqNum
+                && neighbourState.confirmedSeqNum + neighbourState.linkCapacity + 2 >= neighbourState.seqNum
             ) {
                 val hopCount = calcHopDist(neighbourState, treeAddress)
                 if (bestDistance >= hopCount) {

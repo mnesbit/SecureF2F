@@ -17,6 +17,7 @@ import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
 import java.lang.Long.max
+import java.lang.Long.min
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -43,7 +44,8 @@ class HopRoutingActor(
 
         const val ROUTE_CHECK_INTERVAL_MS = 15000L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 1000L
-        const val GAP_CALC_STABLE = 3
+        const val REQUEST_TIMEOUT_MAX_MS = 120000L
+        const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 15
 
@@ -92,7 +94,7 @@ class HopRoutingActor(
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private var requestTimeout: Long = ROUTE_CHECK_INTERVAL_MS
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
-    private val data = mutableMapOf<SecureHash, ByteArray>()
+    private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
 
     override fun preStart() {
         super.preStart()
@@ -161,6 +163,10 @@ class HopRoutingActor(
                 requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
             }
         }
+        for (neighbour in neighbours.values) {
+            neighbours[neighbour.identity.id] = neighbour
+            addToKBuckets(neighbour)
+        }
         if (outstandingRequests.isEmpty()) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
@@ -182,7 +188,7 @@ class HopRoutingActor(
             val randomBucket = kbuckets[bucketRefresh]
             bucketRefresh = (bucketRefresh + 1).rem(kbuckets.size)
             if (randomBucket.nodes.isNotEmpty()) {
-                val target = randomBucket.nodes[keyService.random.nextInt(randomBucket.nodes.size)]
+                val target = randomBucket.nodes.removeAt(randomBucket.nodes.size - 1)
                 val nearestTo = findBucket(target.identity.id)
                 val request = DhtRequest(
                     requestId++,
@@ -312,10 +318,20 @@ class HopRoutingActor(
                     kbuckets.add(rightBucket)
                     kbuckets.sortBy { it.xorDistanceMin }
                 } else {
-                    bucket.nodes.removeAt(bucket.nodes.size - 1)
+                    val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
+                    if (lastUncached != null) {
+                        bucket.nodes.remove(lastUncached)
+                    } else {
+                        bucket.nodes.removeAt(bucket.nodes.size - 1)
+                    }
                 }
             } else {
-                bucket.nodes.removeAt(bucket.nodes.size - 1)
+                val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
+                if (lastUncached != null) {
+                    bucket.nodes.remove(lastUncached)
+                } else {
+                    bucket.nodes.removeAt(bucket.nodes.size - 1)
+                }
             }
         } else {
             bucket.nodes.add(0, node)
@@ -380,9 +396,9 @@ class HopRoutingActor(
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
         }
-        val response = DhtResponse(request.requestId, nearest.nodes, data[request.key])
+        val response = DhtResponse(request.requestId, nearest.nodes, data.getIfPresent(request.key))
         if (request.data != null) {
-            data[request.key] = request.data
+            data.put(request.key, request.data)
         }
         return response
     }
@@ -417,9 +433,10 @@ class HopRoutingActor(
         if (originalRequest != null) {
             addToKBuckets(originalRequest.target)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
-            requestTimeout = max((requestTimeout + 2L * replyTime) / 2L, ROUTE_CHECK_INTERVAL_MS)
+            requestTimeout =
+                min(max((requestTimeout + 2L * replyTime) / 2L, ROUTE_CHECK_INTERVAL_MS), REQUEST_TIMEOUT_MAX_MS)
             if (response.data != null) {
-                data[originalRequest.request.key] = response.data
+                data.put(originalRequest.request.key, response.data)
             }
         }
     }
