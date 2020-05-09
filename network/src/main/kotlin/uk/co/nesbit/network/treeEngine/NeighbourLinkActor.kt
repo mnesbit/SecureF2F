@@ -455,6 +455,22 @@ class NeighbourLinkActor(
         }
     }
 
+    private fun calcHopDist(
+        neighbourState: LinkState,
+        treeAddress: List<SecureHash>
+    ): Int {
+        val neighbourAddress = neighbourState.treeState!!.treeAddress.treeAddress
+        var prefixLength = 0
+        while (prefixLength < treeAddress.size
+            && prefixLength < neighbourAddress.size
+            && treeAddress[prefixLength] == neighbourAddress[prefixLength]
+        ) {
+            ++prefixLength
+        }
+        val hopCount = treeAddress.size + neighbourAddress.size - 2 * prefixLength + 1
+        return hopCount
+    }
+
     private fun findGreedyNextHop(
         treeAddress: List<SecureHash>,
         sourceLink: LinkId
@@ -476,22 +492,30 @@ class NeighbourLinkActor(
                 && neighbourState.treeState != null
                 && neighbourState.confirmedSeqNum + neighbourState.linkCapacity + 1 >= neighbourState.seqNum
             ) {
-                val neighbourAddress = neighbourState.treeState!!.treeAddress.treeAddress
-                var prefixLength = 0
-                while (prefixLength < treeAddress.size
-                    && prefixLength < neighbourAddress.size
-                    && treeAddress[prefixLength] == neighbourAddress[prefixLength]
-                ) {
-                    ++prefixLength
-                }
-                val hopCount = treeAddress.size + neighbourAddress.size - 2 * prefixLength + 1
+                val hopCount = calcHopDist(neighbourState, treeAddress)
                 if (bestDistance >= hopCount) {
                     bestDistance = hopCount
                     best = neighbourState
                 }
             }
         }
-        return best
+        if (best != null) {
+            return best // best non-congested link
+        }
+        for (neighbourState in linkStates.values) {
+            if (neighbourState.linkId != sourceLink
+                && neighbourState.identity != null
+                && neighbourState.sendSecureId != null
+                && neighbourState.treeState != null
+            ) {
+                val hopCount = calcHopDist(neighbourState, treeAddress)
+                if (bestDistance >= hopCount) {
+                    bestDistance = hopCount
+                    best = neighbourState
+                }
+            }
+        }
+        return best // best of congested links
     }
 
     private fun processGreedyRoutedMessage(sourceLink: LinkId, payloadMessage: GreedyRoutedMessage) {
@@ -524,16 +548,6 @@ class NeighbourLinkActor(
             val best: LinkState? = findGreedyNextHop(payloadMessage.treeAddress, sourceLink)
             if (best == null) {
                 log().warning("No forward route found dropping message to ${payloadMessage.treeAddress} from $selfAddress")
-                findGreedyNextHop(payloadMessage.treeAddress, sourceLink)
-                return
-            }
-            if (best.confirmedSeqNum + best.linkCapacity + 2 < best.seqNum) {
-                best.linkCapacity = max((best.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-                best.bufferedMessages.offer(payloadMessage)
-                if (best.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
-                    best.bufferedMessages.removeFirst()
-                    log().info("link capacity ${best.linkId} exhausted drop forward ${best.seqNum} ${best.confirmedSeqNum}")
-                }
                 return
             }
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
@@ -544,6 +558,15 @@ class NeighbourLinkActor(
                 keyService,
                 now
             )
+            if (best.confirmedSeqNum + best.linkCapacity + 2 < best.seqNum) {
+                best.linkCapacity = max((best.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
+                best.bufferedMessages.offer(forwardMessage)
+                if (best.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
+                    best.bufferedMessages.removeFirst()
+                    log().info("link capacity ${best.linkId} exhausted drop forward ${best.seqNum} ${best.confirmedSeqNum}")
+                }
+                return
+            }
             sendMessageToLink(best, forwardMessage)
         }
     }
