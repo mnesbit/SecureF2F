@@ -1,5 +1,6 @@
 package uk.co.nesbit.crypto
 
+import java.lang.management.ManagementFactory
 import java.nio.ByteBuffer
 import kotlin.experimental.xor
 
@@ -49,4 +50,15 @@ fun Long.toByteArray(): ByteArray {
     val buffer = ByteBuffer.allocate(java.lang.Long.BYTES)
     buffer.putLong(this)
     return buffer.array()
+}
+
+fun getGCStats(): Long {
+    var totalGarbageCollections: Long = 0
+    for (gc in ManagementFactory.getGarbageCollectorMXBeans()) {
+        val count = gc.collectionCount
+        if (count >= 0) {
+            totalGarbageCollections += count
+        }
+    }
+    return totalGarbageCollections
 }

@@ -14,7 +14,6 @@ import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.lang.Integer.max
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -43,18 +42,11 @@ class NeighbourLinkActor(
 
         const val LINK_CHECK_INTERVAL_MS = 5000L
         const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
-        const val MIN_WINDOW_SIZE = 5
-        const val MAX_BUFFERED_MESSAGES = 5
     }
 
     private class CheckStaticLinks(val first: Boolean)
     private class LinkState(val linkId: LinkId, val receiveSecureId: ByteArray) {
-        var seqNum: Int = 0
-        var ackSeqNum: Int = -1
-        var confirmedSeqNum: Int = 0
-        var ackSent: Int = -1
-        var linkCapacity: Int = MIN_WINDOW_SIZE
-        val bufferedMessages = java.util.ArrayDeque<Message>()
+        val flowControl = FlowControlManager()
         var identity: VersionedIdentity? = null
         var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
@@ -120,7 +112,6 @@ class NeighbourLinkActor(
 
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
         if (check.first) {
-            //log().info("Parent changed to self root $networkId ${keyService.getVersion(networkId).identity.publicAddress}")
             timers.startTimerWithFixedDelay(
                 "staticLinkPoller",
                 CheckStaticLinks(false),
@@ -137,14 +128,10 @@ class NeighbourLinkActor(
             }
         }
         for (linkState in linkStates.values) {
-            while (linkState.confirmedSeqNum + linkState.linkCapacity >= linkState.seqNum
-                && linkState.bufferedMessages.isNotEmpty()
-            ) {
-                sendMessageToLink(linkState, linkState.bufferedMessages.poll())
-            }
-            if (linkState.ackSeqNum - linkState.ackSent > 0) {
-                sendMessageToLink(linkState, AckMessage())
-                --linkState.seqNum
+            val replies = linkState.flowControl.sendAck()
+            for (reply in replies) {
+                val networkMessage = LinkSendMessage(linkState.linkId, reply.serialize())
+                physicalNetworkActor.tell(networkMessage, self)
             }
         }
         calcParent()
@@ -160,6 +147,7 @@ class NeighbourLinkActor(
                 if (treeState != null && treeState.stale(now)) {
                     log().info("Stale state")
                     linkState.treeState = null
+                    linkState.flowControl.reduceWindow()
                 }
             }
             calcParent()
@@ -174,10 +162,10 @@ class NeighbourLinkActor(
             keyService.getVersion(networkId),
             selfAddress
         )
-        val neighbours = linkStates.values.mapNotNull { it.treeState }.map {
+        val neighbours = linkStates.values.mapNotNull { it.treeState }.map { treeState ->
             NetworkAddressInfo(
-                it.path.path.last().identity,
-                it.shortPath.map { it.id })
+                treeState.path.path.last().identity,
+                treeState.shortPath.map { it.id })
         }
         val upstream = mutableListOf<NetworkAddressInfo>()
         if (parent != null) {
@@ -207,7 +195,7 @@ class NeighbourLinkActor(
                 changed = true
                 lastDepth = 0
                 for (linkState in linkStates.values) {
-                    linkState.bufferedMessages.clear()
+                    linkState.flowControl.clearBuffer()
                 }
             }
             startPoint = 0
@@ -222,7 +210,7 @@ class NeighbourLinkActor(
                 changed = true
                 lastDepth = 0
                 for (linkState in linkStates.values) {
-                    linkState.bufferedMessages.clear()
+                    linkState.flowControl.clearBuffer()
                 }
             }
             return
@@ -245,7 +233,7 @@ class NeighbourLinkActor(
                 if (parent != withBestRoot[j].linkId) {
                     changed = true
                     for (linkState in linkStates.values) {
-                        linkState.bufferedMessages.clear()
+                        linkState.flowControl.clearBuffer()
                     }
                 }
                 parent = withBestRoot[j].linkId
@@ -262,8 +250,7 @@ class NeighbourLinkActor(
         linkState: LinkState,
         message: Message
     ) {
-        val oneHopMessage = OneHopMessage.createOneHopMessage(linkState.seqNum++, linkState.ackSeqNum, message)
-        linkState.ackSent = linkState.ackSeqNum
+        val oneHopMessage = linkState.flowControl.createOneHopMessage(message)
         val networkMessage = LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
@@ -274,9 +261,8 @@ class NeighbourLinkActor(
             //log().info("handshake not complete $linkId")
             return
         }
-        if (linkState.confirmedSeqNum + linkState.linkCapacity < linkState.seqNum) {
-            linkState.linkCapacity = max((linkState.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-            log().info("link capacity $linkId exhausted skip ${linkState.seqNum} ${linkState.confirmedSeqNum}")
+        if (linkState.flowControl.isCongested(0, null)) {
+            log().info("link capacity $linkId exhausted skip tree")
             return
         }
         val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
@@ -372,26 +358,12 @@ class NeighbourLinkActor(
             }
             else -> log().error("Unknown message type $message")
         }
-        updateCongestionControl(message.linkId, oneHopMessage)
-    }
-
-    private fun updateCongestionControl(
-        fromLink: LinkId,
-        oneHopMessage: OneHopMessage
-    ) {
-        val linkState = linkStates[fromLink]
+        val linkState = linkStates[message.linkId]
         if (linkState != null) {
-            linkState.ackSeqNum = oneHopMessage.seqNum
-            linkState.confirmedSeqNum = oneHopMessage.ackSeqNum
-            linkState.linkCapacity++
-            while (linkState.confirmedSeqNum + linkState.linkCapacity >= linkState.seqNum
-                && linkState.bufferedMessages.isNotEmpty()
-            ) {
-                sendMessageToLink(linkState, linkState.bufferedMessages.poll())
-            }
-            if (linkState.ackSeqNum - linkState.ackSent >= MIN_WINDOW_SIZE) {
-                sendMessageToLink(linkState, AckMessage())
-                --linkState.seqNum
+            val replies = linkState.flowControl.ackMessage(oneHopMessage)
+            for (reply in replies) {
+                val networkMessage = LinkSendMessage(linkState.linkId, reply.serialize())
+                physicalNetworkActor.tell(networkMessage, self)
             }
         }
     }
@@ -436,7 +408,7 @@ class NeighbourLinkActor(
         linkState.treeState = null
         if (tree.stale(now)) {
             log().warning("Discard Stale Tree State")
-            linkState.linkCapacity = max((linkState.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
+            linkState.flowControl.reduceWindow()
             return
         }
         try {
@@ -459,6 +431,7 @@ class NeighbourLinkActor(
         linkState.treeState = tree
         calcParent()
         if (changed || tree.treeAddress != oldState?.treeAddress) {
+            linkState.flowControl.clearBuffer()
             sendNeighbourUpdate()
         }
         if (parent == sourceLink) {
@@ -481,8 +454,7 @@ class NeighbourLinkActor(
         ) {
             ++prefixLength
         }
-        val hopCount = treeAddress.size + neighbourAddress.size - 2 * prefixLength + 1
-        return hopCount
+        return treeAddress.size + neighbourAddress.size - 2 * prefixLength + 1
     }
 
     private fun findGreedyNextHop(
@@ -494,6 +466,7 @@ class NeighbourLinkActor(
             if (neighbour != null) {
                 return linkStates[neighbour]
             }
+            //log().warning("Unmatched root dropping")
             return null
         }
 
@@ -504,7 +477,7 @@ class NeighbourLinkActor(
                 && neighbourState.identity != null
                 && neighbourState.sendSecureId != null
                 && neighbourState.treeState != null
-                && neighbourState.confirmedSeqNum + neighbourState.linkCapacity + 2 >= neighbourState.seqNum
+                && !neighbourState.flowControl.isCongested(2, null)
             ) {
                 val hopCount = calcHopDist(neighbourState, treeAddress)
                 if (bestDistance >= hopCount) {
@@ -548,7 +521,7 @@ class NeighbourLinkActor(
                 now
             )
         } catch (ex: Exception) {
-            linkState.linkCapacity = max((linkState.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
+            linkState.flowControl.reduceWindow()
             log().warning("Bad GreedyRoutedMessage ${ex.message}")
             return
         }
@@ -561,7 +534,7 @@ class NeighbourLinkActor(
         } else {
             val best: LinkState? = findGreedyNextHop(payloadMessage.treeAddress, sourceLink)
             if (best == null) {
-                log().warning("No forward route found dropping message to ${payloadMessage.treeAddress} from $selfAddress")
+                //log().warning("No forward route found dropping message to ${payloadMessage.treeAddress} from $selfAddress")
                 return
             }
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
@@ -572,13 +545,8 @@ class NeighbourLinkActor(
                 keyService,
                 now
             )
-            if (best.confirmedSeqNum + best.linkCapacity + 2 < best.seqNum) {
-                best.linkCapacity = max((best.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-                best.bufferedMessages.offer(forwardMessage)
-                if (best.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
-                    best.bufferedMessages.removeFirst()
-                    log().info("link capacity ${best.linkId} exhausted drop forward ${best.seqNum} ${best.confirmedSeqNum}")
-                }
+            if (best.flowControl.isCongested(2, forwardMessage)) {
+                log().info("link capacity ${best.linkId} exhausted skip greedy forward")
                 return
             }
             sendMessageToLink(best, forwardMessage)
@@ -600,13 +568,8 @@ class NeighbourLinkActor(
             keyService,
             Clock.systemUTC().instant()
         )
-        if (nextHop.confirmedSeqNum + nextHop.linkCapacity + 1 < nextHop.seqNum) {
-            nextHop.linkCapacity = max((nextHop.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-            nextHop.bufferedMessages.offer(greedyRoutedMessage)
-            if (nextHop.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
-                nextHop.bufferedMessages.removeFirst()
-                log().info("link capacity ${nextHop.linkId} exhausted drop greedy send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
-            }
+        if (nextHop.flowControl.isCongested(1, greedyRoutedMessage)) {
+            log().info("link capacity ${nextHop.linkId} exhausted skip greedy send")
             return
         }
         sendMessageToLink(nextHop, greedyRoutedMessage)
@@ -615,21 +578,16 @@ class NeighbourLinkActor(
     private fun onSendSphinxMessage(messageRequest: NeighbourSendSphinxMessage) {
         val nextHopLink = addresses[messageRequest.nextHop]
         if (nextHopLink == null) {
-            log().warning("Unable to route to ${messageRequest.nextHop}")
+            log().warning("Unable to route to neighbour ${messageRequest.nextHop}")
             return
         }
         val nextHop = linkStates[nextHopLink]
         if (nextHop == null) {
-            log().warning("Unable to route to ${messageRequest.nextHop}")
+            log().warning("Unable to route to neighbour ${messageRequest.nextHop}")
             return
         }
-        if (nextHop.confirmedSeqNum + nextHop.linkCapacity + 1 < nextHop.seqNum) {
-            nextHop.linkCapacity = max((nextHop.linkCapacity + 1) / 2, MIN_WINDOW_SIZE)
-            nextHop.bufferedMessages.offer(messageRequest.message)
-            if (nextHop.bufferedMessages.size > MAX_BUFFERED_MESSAGES) {
-                nextHop.bufferedMessages.removeFirst()
-                log().info("link capacity ${nextHop.linkId} exhausted drop sphinx send ${nextHop.seqNum} ${nextHop.confirmedSeqNum}")
-            }
+        if (nextHop.flowControl.isCongested(1, messageRequest.message)) {
+            log().info("link capacity ${nextHop.linkId} exhausted skip sphinx send")
             return
         }
         sendMessageToLink(nextHop, messageRequest.message)

@@ -43,7 +43,8 @@ class HopRoutingActor(
         }
 
         const val ROUTE_CHECK_INTERVAL_MS = 15000L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 1000L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 500L
+        const val REQUEST_TIMEOUT_MIN_MS = 200L
         const val REQUEST_TIMEOUT_MAX_MS = 120000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
@@ -78,7 +79,12 @@ class HopRoutingActor(
         val nodes: MutableList<NetworkAddressInfo> = mutableListOf()
     }
 
-    private class RequestTracker(val request: DhtRequest, val sent: Instant, val target: NetworkAddressInfo)
+    private class RequestTracker(
+        val request: DhtRequest,
+        val sent: Instant,
+        val expire: Instant,
+        val target: NetworkAddressInfo
+    )
 
     private val owners = mutableSetOf<ActorRef>()
     private var networkAddress: NetworkAddressInfo? = null
@@ -92,7 +98,7 @@ class HopRoutingActor(
     private var gapZeroDone = false
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
-    private var requestTimeout: Long = ROUTE_CHECK_INTERVAL_MS
+    private var requestTimeout: Long = 3L * REQUEST_TIMEOUT_MIN_MS
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
 
@@ -152,7 +158,7 @@ class HopRoutingActor(
         val requestItr = outstandingRequests.iterator()
         while (requestItr.hasNext()) {
             val request = requestItr.next()
-            if (ChronoUnit.MILLIS.between(request.value.sent, now) >= requestTimeout) {
+            if (request.value.expire < now) {
                 //log().info("stale request")
                 requestItr.remove()
                 val bucket = findBucket(request.value.request.key)
@@ -167,7 +173,7 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (outstandingRequests.isEmpty()) {
+        if (outstandingRequests.size < (ALPHA + 1) / 2) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
 
@@ -181,7 +187,10 @@ class HopRoutingActor(
                     nearestTo.nodes,
                     networkAddress!!.serialize()
                 )
-                outstandingRequests[request.requestId] = RequestTracker(request, now, near)
+                val hops = estimateMessageHops(near)
+                val expiryInterval = requestTimeout * (hops + 1)
+                val expiry = now.plusMillis(expiryInterval)
+                outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
                 sendGreedyMessage(near, request)
             }
             bucketRefresh = bucketRefresh.rem(kbuckets.size)
@@ -197,7 +206,10 @@ class HopRoutingActor(
                     nearestTo.nodes,
                     networkAddress!!.serialize()
                 )
-                outstandingRequests[request.requestId] = RequestTracker(request, now, target)
+                val hops = estimateMessageHops(target)
+                val expiryInterval = requestTimeout * (hops + 1)
+                val expiry = now.plusMillis(expiryInterval)
+                outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, target)
                 sendGreedyMessage(target, request)
             }
         }
@@ -424,6 +436,27 @@ class HopRoutingActor(
         }
     }
 
+    private fun estimateMessageHops(target: NetworkAddressInfo): Int {
+        val directRoute = routeCache.getIfPresent(target.identity.id)
+        if (directRoute != null) {
+            return directRoute.size
+        } else {
+            if (networkAddress == null) {
+                return 1
+            }
+            val sourceAddress = networkAddress!!.treeAddress
+            val destinationAddress = target.treeAddress
+            var prefixLength = 0
+            while (prefixLength < sourceAddress.size
+                && prefixLength < destinationAddress.size
+                && sourceAddress[prefixLength] == destinationAddress[prefixLength]
+            ) {
+                ++prefixLength
+            }
+            return sourceAddress.size + destinationAddress.size - 2 * prefixLength + 1
+        }
+    }
+
     private fun processDhtResponse(response: DhtResponse) {
         //log().info("got DhtResponse")
         for (node in response.nearestPaths) {
@@ -432,9 +465,11 @@ class HopRoutingActor(
         val originalRequest = outstandingRequests.remove(response.requestId)
         if (originalRequest != null) {
             addToKBuckets(originalRequest.target)
+            val hops = estimateMessageHops(originalRequest.target)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
+            val replyTimePerHop = replyTime / hops
             requestTimeout =
-                min(max((requestTimeout + 2L * replyTime) / 2L, ROUTE_CHECK_INTERVAL_MS), REQUEST_TIMEOUT_MAX_MS)
+                min(max((requestTimeout + replyTimePerHop) / 2L, REQUEST_TIMEOUT_MIN_MS), REQUEST_TIMEOUT_MAX_MS)
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
             }
