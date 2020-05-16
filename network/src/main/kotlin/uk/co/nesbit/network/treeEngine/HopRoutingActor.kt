@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.Ecies
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.crypto.SecureHash.Companion.xorDistance
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.Message
@@ -23,7 +24,6 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.experimental.xor
 
 class HopRoutingActor(
     private val keyService: KeyService,
@@ -45,27 +45,10 @@ class HopRoutingActor(
         const val ROUTE_CHECK_INTERVAL_MS = 15000L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 500L
         const val REQUEST_TIMEOUT_MIN_MS = 200L
-        const val REQUEST_TIMEOUT_MAX_MS = 120000L
+        const val REQUEST_TIMEOUT_MAX_MS = 60000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 15
-
-        @JvmStatic
-        fun xorDistance(x: SecureHash, y: SecureHash): Int {
-            require(x.algorithm == y.algorithm) { "Hashes must be of same type" }
-            val xb = x.bytes
-            val yb = y.bytes
-            var dist = xb.size * 8
-            for (i in xb.indices) {
-                if (xb[i] == yb[i]) {
-                    dist -= 8
-                } else {
-                    val xorx = Integer.numberOfLeadingZeros(java.lang.Byte.toUnsignedInt(xb[i] xor yb[i]))
-                    return dist - xorx + 24
-                }
-            }
-            return dist
-        }
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
         val gapZero = AtomicInteger(0)
@@ -91,6 +74,7 @@ class HopRoutingActor(
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
     private val kbuckets = mutableListOf(KBucket(0, 257))
+    private var unstable = true
     private var bucketRefresh: Int = 0
     private var round: Int = 0
     private var gapNEstimate: Int = 0
@@ -172,6 +156,10 @@ class HopRoutingActor(
         for (neighbour in neighbours.values) {
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
+        }
+        if (unstable) {
+            unstable = false
+            return
         }
         if (outstandingRequests.size < (ALPHA + 1) / 2) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
@@ -316,43 +304,38 @@ class HopRoutingActor(
                 }
                 val mid = sorted[sorted.size / 2]
                 val midDist = xorDistance(networkAddress!!.identity.id, mid.identity.id)
-                val leftBucket = KBucket(bucket.xorDistanceMin, midDist)
-                leftBucket.nodes.addAll(bucket.nodes.filter {
+                val (left, right) = bucket.nodes.partition {
                     xorDistance(
                         networkAddress!!.identity.id,
                         it.identity.id
                     ) < midDist
-                })
-                val rightBucket = KBucket(midDist, bucket.xorDistanceMax)
-                rightBucket.nodes.addAll(bucket.nodes.filter {
-                    xorDistance(
-                        networkAddress!!.identity.id,
-                        it.identity.id
-                    ) >= midDist
-                })
-                if (leftBucket.nodes.isNotEmpty() && rightBucket.nodes.isNotEmpty()) {
+                }
+                if (left.isNotEmpty() && right.isNotEmpty()) {
                     kbuckets.remove(bucket)
+                    val leftBucket = KBucket(bucket.xorDistanceMin, midDist)
+                    leftBucket.nodes.addAll(left)
                     kbuckets.add(leftBucket)
+                    val rightBucket = KBucket(midDist, bucket.xorDistanceMax)
+                    rightBucket.nodes.addAll(right)
                     kbuckets.add(rightBucket)
                     kbuckets.sortBy { it.xorDistanceMin }
                 } else {
-                    val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
-                    if (lastUncached != null) {
-                        bucket.nodes.remove(lastUncached)
-                    } else {
-                        bucket.nodes.removeAt(bucket.nodes.size - 1)
-                    }
+                    dropNode(bucket)
                 }
             } else {
-                val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
-                if (lastUncached != null) {
-                    bucket.nodes.remove(lastUncached)
-                } else {
-                    bucket.nodes.removeAt(bucket.nodes.size - 1)
-                }
+                dropNode(bucket)
             }
         } else {
             bucket.nodes.add(0, node)
+        }
+    }
+
+    private fun dropNode(bucket: KBucket) {
+        val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
+        if (lastUncached != null) {
+            bucket.nodes.remove(lastUncached)
+        } else {
+            bucket.nodes.removeAt(bucket.nodes.size - 1)
         }
     }
 
@@ -364,6 +347,7 @@ class HopRoutingActor(
 
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
         //log().info("neighbour update")
+        unstable = true
         networkAddress = neighbourUpdate.localId
         neighbours.clear()
         for (neighbour in neighbourUpdate.addresses) {
@@ -468,10 +452,12 @@ class HopRoutingActor(
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
             val replyTimePerHop = replyTime / hops
             requestTimeout =
-                min(max((requestTimeout + replyTimePerHop) / 2L, REQUEST_TIMEOUT_MIN_MS), REQUEST_TIMEOUT_MAX_MS)
+                min(max((3L * requestTimeout + replyTimePerHop) / 4L, REQUEST_TIMEOUT_MIN_MS), REQUEST_TIMEOUT_MAX_MS)
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
             }
+        } else {
+            requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
         }
     }
 

@@ -33,9 +33,9 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
 
     init {
         require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
-        require(initiatorNonce.size == NONCE_SIZE)
-        require(schemaId == SecureHash("SHA-256", schemaFingerprint))
-        require(initiatorDHPublicKey.algorithm == "Curve25519")
+        require(initiatorNonce.size == NONCE_SIZE) { "Invalid nonce" }
+        require(schemaId == SecureHash("SHA-256", schemaFingerprint)) { "Schema mismatch" }
+        require(initiatorDHPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     companion object {

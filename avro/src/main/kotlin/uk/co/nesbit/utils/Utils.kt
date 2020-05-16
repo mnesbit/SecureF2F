@@ -27,3 +27,17 @@ fun <R> printTime(str: String, block: () -> R): R {
     println("$str ${(end - start) / 1000L}")
     return result
 }
+
+fun resourceAsBytes(fileName: String, loader: ClassLoader): ByteArray? {
+    loader.getResourceAsStream(fileName).use { input ->
+        if (input == null) return null
+        return input.readBytes()
+    }
+}
+
+fun resourceAsString(fileName: String, loader: ClassLoader, charset: Charset = Charsets.UTF_8): String? {
+    loader.getResourceAsStream(fileName).use { input ->
+        if (input == null) return null
+        return input.readTextAndClose(charset)
+    }
+}

@@ -25,9 +25,9 @@ class ResponderHelloResponse private constructor(private val schemaId: SecureHas
                     responderHelloResponseRecord.getTyped("encryptedPayload"))
 
     init {
-        require(initiatorNonce.size == NONCE_SIZE)
-        require(responderNonce.size == NONCE_SIZE)
-        require(schemaId == SecureHash("SHA-256", schemaFingerprint))
+        require(initiatorNonce.size == NONCE_SIZE) { "Invalid nonce" }
+        require(responderNonce.size == NONCE_SIZE) { "Invalid nonce" }
+        require(schemaId == SecureHash("SHA-256", schemaFingerprint)) { "Schema mismatch" }
     }
 
     companion object {

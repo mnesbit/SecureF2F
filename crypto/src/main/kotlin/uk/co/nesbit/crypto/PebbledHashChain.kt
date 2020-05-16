@@ -93,8 +93,8 @@ class PebbledHashChain private constructor(
         }
 
     override fun getSecureVersion(stepsFromEnd: Int): SecureVersion {
-        require(stepsFromEnd >= minChainLength)
-        require(stepsFromEnd <= maxChainLength)
+        require(stepsFromEnd >= minChainLength) { "Version $stepsFromEnd smaller than min version $minChainLength" }
+        require(stepsFromEnd <= maxChainLength) { "Version $stepsFromEnd greater than max version $maxChainLength" }
         require(stepsFromEnd >= version) { "Version $stepsFromEnd already used. Current version $version" }
         while (version < stepsFromEnd) {
             incrementVersion()

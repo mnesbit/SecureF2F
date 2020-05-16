@@ -6,23 +6,24 @@ import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.mocknet.DnsMockActor
 import uk.co.nesbit.network.treeEngine.TreeNode
+import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
 import java.util.*
 
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 5
-    val N = 10000
-    val simNetwork = makeRandomNetwork(degree, N)
+    //val degree = 3
+    //val N = 1000
+    //val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
+    val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
     val actorSystem = ActorSystem.create("Akka", conf)
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
-    for (nodeAddress in (1..N)) {
-        val networkAddress = NetworkAddress(nodeAddress)
+    for (networkAddress in simNetwork.keys) {
         val links = simNetwork[networkAddress]!!
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
@@ -101,4 +102,27 @@ private fun makeRandomNetwork(minDegree: Int, N: Int): Map<NetworkAddress, Set<N
     }
 
     return simNetwork
+}
+
+private fun makeASNetwork(): Map<NetworkAddress, Set<NetworkAddress>> {
+    val classLoader = ClassLoader.getSystemClassLoader()
+    //From https://snap.stanford.edu/data/as-733.html
+    val networkInfoFile = resourceAsString("./as20000102.txt", classLoader)!!
+    val lines = networkInfoFile.lines()
+    val network = mutableMapOf<NetworkAddress, MutableSet<NetworkAddress>>()
+    for (line in lines) {
+        if (line.startsWith('#')) continue
+        val splits = line.split(' ', ',', '\t')
+        if (splits.size < 2) continue
+        val left = splits[0].toInt()
+        val right = splits[1].toInt()
+        if (left == right) continue
+        val leftNode = NetworkAddress(left)
+        val rightNode = NetworkAddress(right)
+        val linksLeft = network.getOrPut(leftNode) { mutableSetOf() }
+        linksLeft += rightNode
+        val linksRight = network.getOrPut(rightNode) { mutableSetOf() }
+        linksRight += leftNode
+    }
+    return network
 }

@@ -43,7 +43,7 @@ class Sphinx(
     private val alphaCache = mutableSetOf<SecureHash>()
 
     init {
-        require(Curve25519.KEY_SIZE == 2 * SECURITY_PARAMETER) // Ensure sizes align properly
+        require(Curve25519.KEY_SIZE == 2 * SECURITY_PARAMETER) { "Misconfigured Sphinx parameters" }// Ensure sizes align properly
         if (Security.getProvider("BC") == null) {
             Security.addProvider(BouncyCastleProvider())
         }
@@ -137,7 +137,7 @@ class Sphinx(
                                val sharedSecret: PublicKey,
                                val hashes: DerivedHashes) {
         init {
-            require(nextNodeId.bytes.size == ID_HASH_SIZE)
+            require(nextNodeId.bytes.size == ID_HASH_SIZE) { "Hash must be SHA2-256" }
         }
     }
 

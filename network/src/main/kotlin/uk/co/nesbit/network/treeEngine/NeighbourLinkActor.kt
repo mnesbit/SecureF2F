@@ -40,6 +40,7 @@ class NeighbourLinkActor(
             return createProps(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
         }
 
+        const val MAX_CONNECTS = 5
         const val LINK_CHECK_INTERVAL_MS = 5000L
         const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
     }
@@ -119,12 +120,15 @@ class NeighbourLinkActor(
                 LINK_CHECK_INTERVAL_MS.millis()
             )
         }
-        if (linkRequestPending.isEmpty()) {
-            for (expectedLink in networkConfig.staticRoutes) {
-                if (!staticLinkStatus.containsKey(expectedLink)) {
+        if (linkRequestPending.size < MAX_CONNECTS) {
+            for (expectedLink in networkConfig.staticRoutes.shuffled()) {
+                if (!staticLinkStatus.containsKey(expectedLink)
+                    && expectedLink != networkConfig.networkId // no self-links
+                ) {
                     log().info("open static link to $expectedLink")
                     linkRequestPending += expectedLink
                     physicalNetworkActor.tell(OpenRequest(expectedLink), self)
+                    if (linkRequestPending.size >= MAX_CONNECTS) break
                 }
             }
         }
@@ -381,7 +385,7 @@ class NeighbourLinkActor(
         //log().info("process hello message from $sourceLink")
         val prevAddress = addresses[hello.sourceId.id]
         if (prevAddress != null && prevAddress != sourceLink) {
-            log().info("link from duplicate address closing")
+            log().info("close link from duplicate address")
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)
             return
         }

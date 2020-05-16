@@ -30,9 +30,9 @@ class SessionBinding(private val protocolVersion: Int,
 
     init {
         require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
-        require(otherPartyNonce.size == NONCE_SIZE) { "invalid nonce" }
-        require(ownNonce.size == NONCE_SIZE) { "invalid nonce" }
-        require(ownDHPublicKey.algorithm == "Curve25519") { "invalid nonce" }
+        require(otherPartyNonce.size == NONCE_SIZE) { "Invalid nonce" }
+        require(ownNonce.size == NONCE_SIZE) { "Invalid nonce" }
+        require(ownDHPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     companion object {

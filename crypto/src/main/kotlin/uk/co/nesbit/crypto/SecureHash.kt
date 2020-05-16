@@ -9,6 +9,7 @@ import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.utils.printHexBinary
 import java.util.*
+import kotlin.experimental.xor
 
 data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvertible, Comparable<SecureHash> {
     constructor(hashRecord: GenericRecord) :
@@ -25,7 +26,9 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
                 SecureHash(algorithm, digest(bytes))
             }
         }
-        fun secureHash(str: String, algorithm: String = "SHA-256") = secureHash(str.toByteArray(Charsets.UTF_8), algorithm)
+
+        fun secureHash(str: String, algorithm: String = "SHA-256") =
+            secureHash(str.toByteArray(Charsets.UTF_8), algorithm)
 
         fun deserialize(bytes: ByteArray): SecureHash {
             val hashRecord = secureHashSchema.deserialize(bytes)
@@ -33,6 +36,23 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
         }
 
         val EMPTY_HASH = secureHash(ByteArray(0))
+
+        @JvmStatic
+        fun xorDistance(x: SecureHash, y: SecureHash): Int {
+            require(x.algorithm == y.algorithm) { "Hashes must be of same type" }
+            val xb = x.bytes
+            val yb = y.bytes
+            var dist = xb.size * 8
+            for (i in xb.indices) {
+                if (xb[i] == yb[i]) {
+                    dist -= 8
+                } else {
+                    val xorx = Integer.numberOfLeadingZeros(java.lang.Byte.toUnsignedInt(xb[i] xor yb[i]))
+                    return dist - xorx + 24
+                }
+            }
+            return dist
+        }
     }
 
     override fun toGenericRecord(): GenericRecord {
