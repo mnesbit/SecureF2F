@@ -19,6 +19,10 @@
       "type": "bytes"
     },
     {
+      "name": "ttl",
+      "type": "int"
+    },
+    {
       "name": "pathInfo",
       "type": {
         "type": "array",

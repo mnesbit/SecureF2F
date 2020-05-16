@@ -44,6 +44,21 @@ class NetworkAddressInfo(val identity: VersionedIdentity, val treeAddress: List<
         return networkAddressInfoRecord
     }
 
+    fun greedyDist(other: NetworkAddressInfo): Int = greedyDist(other.treeAddress)
+
+    fun greedyDist(
+        other: List<SecureHash>
+    ): Int {
+        var prefixLength = 0
+        while (prefixLength < treeAddress.size
+            && prefixLength < other.size
+            && treeAddress[prefixLength] == other[prefixLength]
+        ) {
+            ++prefixLength
+        }
+        return treeAddress.size + other.size - 2 * prefixLength
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

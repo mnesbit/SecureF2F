@@ -192,6 +192,7 @@ class TreeEngineTests {
         val linkId12 = keyService.random.generateSeed(NONCE_SIZE)
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
             node3Address,
+            6,
             message,
             linkId12,
             id1,

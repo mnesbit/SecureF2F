@@ -20,6 +20,7 @@ import java.time.temporal.ChronoUnit
 class GreedyRoutedMessage private constructor(
     val destination: SphinxPublicIdentity,
     val treeAddress: List<SecureHash>,
+    val ttl: Int,
     val payload: ByteArray,
     val pathInfo: List<EncryptedSecurePathItem>,
     val lastLinkSignature: DigitalSignature
@@ -28,6 +29,7 @@ class GreedyRoutedMessage private constructor(
             this(
                 greedyRoutedRecord.getTyped("destination"),
                 greedyRoutedRecord.getObjectArray("treeAddress", ::SecureHash),
+                greedyRoutedRecord.getTyped("ttl"),
                 greedyRoutedRecord.getTyped("payload"),
                 greedyRoutedRecord.getObjectArray("pathInfo", ::EncryptedSecurePathItem),
                 greedyRoutedRecord.getTyped("lastLinkSignature")
@@ -57,6 +59,7 @@ class GreedyRoutedMessage private constructor(
         private fun createLinkSignatureBytes(
             finalDestination: SphinxPublicIdentity,
             treeAddress: List<SecureHash>,
+            ttl: Int,
             payload: ByteArray,
             path: List<EncryptedSecurePathItem>,
             linkId: ByteArray
@@ -67,6 +70,7 @@ class GreedyRoutedMessage private constructor(
             val dummyObject = GreedyRoutedMessage(
                 finalDestination,
                 treeAddress,
+                ttl,
                 payload,
                 path,
                 DigitalSignature("DUMMY", ByteArray(0))
@@ -78,6 +82,7 @@ class GreedyRoutedMessage private constructor(
 
         fun createGreedRoutedMessage(
             destination: NetworkAddressInfo,
+            ttl: Int,
             payload: ByteArray,
             linkId: ByteArray,
             from: VersionedIdentity,
@@ -97,6 +102,7 @@ class GreedyRoutedMessage private constructor(
             val linkSignOver = createLinkSignatureBytes(
                 finalDestination.identity,
                 destination.treeAddress,
+                ttl,
                 payload,
                 path,
                 linkId
@@ -105,6 +111,7 @@ class GreedyRoutedMessage private constructor(
             return GreedyRoutedMessage(
                 finalDestination.identity,
                 destination.treeAddress,
+                ttl,
                 payload,
                 path,
                 linkSignature
@@ -130,6 +137,7 @@ class GreedyRoutedMessage private constructor(
             val linkSignOver = createLinkSignatureBytes(
                 message.destination,
                 message.treeAddress,
+                message.ttl,
                 message.payload,
                 path,
                 linkId
@@ -138,6 +146,7 @@ class GreedyRoutedMessage private constructor(
             return GreedyRoutedMessage(
                 message.destination,
                 message.treeAddress,
+                message.ttl,
                 message.payload,
                 path,
                 linkSignature
@@ -149,6 +158,7 @@ class GreedyRoutedMessage private constructor(
         val greedyRoutedRecord = GenericData.Record(greedyRoutedSchema)
         greedyRoutedRecord.putTyped("destination", destination)
         greedyRoutedRecord.putObjectArray("treeAddress", treeAddress)
+        greedyRoutedRecord.putTyped("ttl", ttl)
         greedyRoutedRecord.putTyped("payload", payload)
         greedyRoutedRecord.putObjectArray("pathInfo", pathInfo)
         greedyRoutedRecord.putTyped("lastLinkSignature", lastLinkSignature)
@@ -174,10 +184,14 @@ class GreedyRoutedMessage private constructor(
         require(destination.id == treeAddress.last()) {
             "mismatched destination and treeAddress"
         }
+        require(pathInfo.size <= ttl) {
+            "reverse path info longer than allowed ttl"
+        }
         val selfIdentity = keyService.getVersion(self)
         val linkSignOver = createLinkSignatureBytes(
             destination,
             treeAddress,
+            ttl,
             payload,
             pathInfo,
             linkId
@@ -226,6 +240,7 @@ class GreedyRoutedMessage private constructor(
 
         if (destination != other.destination) return false
         if (treeAddress != other.treeAddress) return false
+        if (ttl != other.ttl) return false
         if (!payload.contentEquals(other.payload)) return false
         if (pathInfo != other.pathInfo) return false
         if (lastLinkSignature != other.lastLinkSignature) return false
@@ -236,6 +251,7 @@ class GreedyRoutedMessage private constructor(
     override fun hashCode(): Int {
         var result = destination.hashCode()
         result = 31 * result + treeAddress.hashCode()
+        result = 31 * result + ttl
         result = 31 * result + payload.contentHashCode()
         result = 31 * result + pathInfo.hashCode()
         result = 31 * result + lastLinkSignature.hashCode()

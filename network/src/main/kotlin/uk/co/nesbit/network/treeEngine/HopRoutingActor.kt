@@ -301,6 +301,12 @@ class HopRoutingActor(
             return
         }
         val bucket = findBucket(node.identity.id)
+        val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
+        if (current != null
+            && current.identity.currentVersion.version > node.identity.currentVersion.version
+        ) {
+            return
+        }
         bucket.nodes.removeIf { it.identity.id == node.identity.id }
         if (bucket.nodes.size >= K) {
             bucket.nodes.add(0, node)
@@ -444,28 +450,21 @@ class HopRoutingActor(
             if (networkAddress == null) {
                 return 1
             }
-            val sourceAddress = networkAddress!!.treeAddress
-            val destinationAddress = target.treeAddress
-            var prefixLength = 0
-            while (prefixLength < sourceAddress.size
-                && prefixLength < destinationAddress.size
-                && sourceAddress[prefixLength] == destinationAddress[prefixLength]
-            ) {
-                ++prefixLength
-            }
-            return sourceAddress.size + destinationAddress.size - 2 * prefixLength + 1
+            return networkAddress!!.greedyDist(target)
         }
     }
 
     private fun processDhtResponse(response: DhtResponse) {
         //log().info("got DhtResponse")
-        for (node in response.nearestPaths) {
-            addToKBuckets(node)
-        }
         val originalRequest = outstandingRequests.remove(response.requestId)
         if (originalRequest != null) {
             addToKBuckets(originalRequest.target)
-            val hops = estimateMessageHops(originalRequest.target)
+        }
+        for (node in response.nearestPaths) {
+            addToKBuckets(node)
+        }
+        if (originalRequest != null) {
+            val hops = originalRequest.target.greedyDist(networkAddress!!)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
             val replyTimePerHop = replyTime / hops
             requestTimeout =

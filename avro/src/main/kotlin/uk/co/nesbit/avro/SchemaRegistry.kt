@@ -22,7 +22,7 @@ class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>>
 
     init {
         for (item in preregister) {
-            registerDeserializer(item.first, item.second)
+            safeRegisterDeserializer(item.first, item.second)
         }
     }
 
