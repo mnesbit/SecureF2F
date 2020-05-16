@@ -7,6 +7,8 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.test.assertFailsWith
 
 class SchemaRegistryTest {
@@ -87,5 +89,35 @@ class SchemaRegistryTest {
         assertEquals(test2, deserialized2)
         assertFailsWith<IllegalArgumentException> { registry.deserialize(ByteArray(1), serialized1) }
         assertFailsWith<IllegalArgumentException> { registry.deserialize(registry.getFingeprint(schema3), serialized1) }
+    }
+
+    @Test
+    fun `multi-threaded`() {
+        val registry = SchemaRegistry()
+        val failed = AtomicBoolean(false)
+        val threads = (0..10).map {
+            thread(start = false, name = it.toString()) {
+                try {
+                    for (x in 0 until 100) {
+                        if (it and 1 == 0) {
+                            registry.safeRegisterDeserializer(SchemaTest1::class.java, SchemaTest1.testSchema)
+                            registry.safeRegisterDeserializer(SchemaTest2::class.java, SchemaTest2.testSchema)
+                        } else {
+                            registry.safeRegisterDeserializer(SchemaTest2::class.java, SchemaTest2.testSchema)
+                            registry.safeRegisterDeserializer(SchemaTest1::class.java, SchemaTest1.testSchema)
+                        }
+                    }
+                } catch (ex: Exception) {
+                    failed.set(true)
+                }
+            }
+        }
+        threads.forEach {
+            it.start()
+        }
+        threads.forEach {
+            it.join(10000L)
+        }
+        assertEquals(false, failed.get())
     }
 }
