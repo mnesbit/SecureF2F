@@ -346,7 +346,6 @@ class HopRoutingActor(
     }
 
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
-        //log().info("neighbour update")
         unstable = true
         networkAddress = neighbourUpdate.localId
         neighbours.clear()
@@ -354,6 +353,7 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
+        //log().info("neighbour update with root ${networkAddress!!.treeAddress.first()}")
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
                 it.treeAddress.first() != networkAddress!!.treeAddress.first()

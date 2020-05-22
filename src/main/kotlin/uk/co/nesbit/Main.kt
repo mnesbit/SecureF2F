@@ -13,11 +13,11 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    //val degree = 3
-    //val N = 1000
-    //val simNetwork = makeRandomNetwork(degree, N)
+    val degree = 3
+    val N = 1000
+    val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
-    val simNetwork = makeASNetwork()
+    //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
