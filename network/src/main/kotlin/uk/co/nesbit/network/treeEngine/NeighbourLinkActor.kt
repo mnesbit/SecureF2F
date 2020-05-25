@@ -41,12 +41,13 @@ class NeighbourLinkActor(
         }
 
         const val MAX_CONNECTS = 5
+        const val HELLO_TIMEOUT_MS = 120000L
         const val LINK_CHECK_INTERVAL_MS = 5000L
         const val HEARTBEAT_INTERVAL_MS = 3L * LINK_CHECK_INTERVAL_MS
     }
 
     private class CheckStaticLinks(val first: Boolean)
-    private class LinkState(val linkId: LinkId, val receiveSecureId: ByteArray) {
+    private class LinkState(val linkId: LinkId, val receiveSecureId: ByteArray, val created: Instant) {
         var identity: VersionedIdentity? = null
         var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
@@ -57,6 +58,7 @@ class NeighbourLinkActor(
     }
 
     private val owners = mutableSetOf<ActorRef>()
+    private val clock = Clock.systemUTC()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
     private val linkRequestPending = mutableSetOf<Address>()
     private val addresses = mutableMapOf<SecureHash, LinkId>()
@@ -120,12 +122,22 @@ class NeighbourLinkActor(
             )
         }
         openStaticLinks()
-        val now = Clock.systemUTC().instant()
-        for (linkState in linkStates.values) {
-            val treeState = linkState.treeState
-            if (treeState != null && treeState.stale(now)) {
-                log().info("Stale state")
-                linkState.treeState = null
+        val now = clock.instant()
+        val linkStateIterator = linkStates.iterator()
+        while (linkStateIterator.hasNext()) {
+            val linkState = linkStateIterator.next().value
+            if (linkState.identity == null
+                && ChronoUnit.MILLIS.between(linkState.created, now) > HELLO_TIMEOUT_MS
+            ) {
+                log().error("Hello timed out ${linkState.linkId}")
+                physicalNetworkActor.tell(CloseRequest(linkState.linkId), self)
+                linkStateIterator.remove()
+            } else {
+                val treeState = linkState.treeState
+                if (treeState != null && treeState.stale(now)) {
+                    log().info("Stale state")
+                    linkState.treeState = null
+                }
             }
         }
         calcParent()
@@ -325,7 +337,7 @@ class NeighbourLinkActor(
             calcParent()
             sendNeighbourUpdate()
             if (changed) {
-                sendTreeStatus(Clock.systemUTC().instant())
+                sendTreeStatus(clock.instant())
             }
         }
     }
@@ -333,7 +345,7 @@ class NeighbourLinkActor(
     private fun sendHello(linkId: LinkId) {
         //log().info("Send hello message to $linkId")
         val helloMessage = Hello.createHello(networkId, keyService)
-        val linkState = LinkState(linkId, helloMessage.secureLinkId)
+        val linkState = LinkState(linkId, helloMessage.secureLinkId, clock.instant())
         linkStates[linkId] = linkState
         sendMessageToLink(linkState, helloMessage)
     }
@@ -388,12 +400,12 @@ class NeighbourLinkActor(
         linkState.sendSecureId = hello.secureLinkId
         addresses[hello.sourceId.id] = sourceLink
         calcParent()
-        sendTreeForLink(Clock.systemUTC().instant(), sourceLink)
+        sendTreeForLink(clock.instant(), sourceLink)
     }
 
     private fun processTreeStateMessage(sourceLink: LinkId, tree: TreeState) {
         //log().info("process tree message")
-        val now = Clock.systemUTC().instant()
+        val now = clock.instant()
         //log().info("tree delay ${ChronoUnit.MILLIS.between(tree.path.path.last().timestamp,now)}")
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
@@ -468,7 +480,7 @@ class NeighbourLinkActor(
     }
 
     private fun processGreedyRoutedMessage(sourceLink: LinkId, payloadMessage: GreedyRoutedMessage) {
-        val now = Clock.systemUTC().instant()
+        val now = clock.instant()
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
             log().warning("No hello yet received on $sourceLink for greedy message")
@@ -497,20 +509,20 @@ class NeighbourLinkActor(
                 log().info("Expire message beyond ttl")
                 return
             }
-            val best: LinkState? = findGreedyNextHop(payloadMessage.treeAddress, sourceLink)
-            if (best == null) {
+            val nextHop: LinkState? = findGreedyNextHop(payloadMessage.treeAddress, sourceLink)
+            if (nextHop == null) {
                 //log().warning("No forward route found dropping message to ${payloadMessage.treeAddress} from $selfAddress")
                 return
             }
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
                 payloadMessage,
-                best.sendSecureId!!,
+                nextHop.sendSecureId!!,
                 keyService.getVersion(networkId),
-                best.identity!!,
+                nextHop.identity!!,
                 keyService,
                 now
             )
-            sendMessageToLink(best, forwardMessage)
+            sendMessageToLink(nextHop, forwardMessage)
         }
     }
 
@@ -529,7 +541,7 @@ class NeighbourLinkActor(
             keyService.getVersion(networkId),
             nextHop.identity!!,
             keyService,
-            Clock.systemUTC().instant()
+            clock.instant()
         )
         sendMessageToLink(nextHop, greedyRoutedMessage)
     }

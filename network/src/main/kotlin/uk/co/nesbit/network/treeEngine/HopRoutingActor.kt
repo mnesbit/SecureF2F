@@ -139,6 +139,28 @@ class HopRoutingActor(
         }
         val distMin = calcNearestNodeGap()
         val now = Clock.systemUTC().instant()
+        expireRequests(now)
+        for (neighbour in neighbours.values) {
+            neighbours[neighbour.identity.id] = neighbour
+            addToKBuckets(neighbour)
+        }
+        if (unstable) {
+            unstable = false
+            return
+        }
+        if (outstandingRequests.isEmpty()) {
+            val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
+            round++
+
+            logNearestNodeGap(nearest, distMin)
+            for (near in nearest) {
+                pollChosenNode(near, now)
+            }
+            pollRandomNode(now)
+        }
+    }
+
+    private fun expireRequests(now: Instant?) {
         val requestItr = outstandingRequests.iterator()
         while (requestItr.hasNext()) {
             val request = requestItr.next()
@@ -153,54 +175,32 @@ class HopRoutingActor(
                 requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
             }
         }
-        for (neighbour in neighbours.values) {
-            neighbours[neighbour.identity.id] = neighbour
-            addToKBuckets(neighbour)
-        }
-        if (unstable) {
-            unstable = false
-            return
-        }
-        if (outstandingRequests.size < (ALPHA + 1) / 2) {
-            val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
-            round++
+    }
 
-            logNearestNodeGap(nearest, distMin)
-            for (near in nearest) {
-                val nearestTo = findBucket(near.identity.id)
-                val request = DhtRequest(
-                    requestId++,
-                    networkAddress!!.identity.id,
-                    networkAddress!!,
-                    nearestTo.nodes,
-                    networkAddress!!.serialize()
-                )
-                val hops = estimateMessageHops(near)
-                val expiryInterval = requestTimeout * (hops + 1)
-                val expiry = now.plusMillis(expiryInterval)
-                outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
-                sendGreedyMessage(near, request)
-            }
-            bucketRefresh = bucketRefresh.rem(kbuckets.size)
-            val randomBucket = kbuckets[bucketRefresh]
-            bucketRefresh = (bucketRefresh + 1).rem(kbuckets.size)
-            if (randomBucket.nodes.isNotEmpty()) {
-                val target = randomBucket.nodes.removeAt(randomBucket.nodes.size - 1)
-                val nearestTo = findBucket(target.identity.id)
-                val request = DhtRequest(
-                    requestId++,
-                    networkAddress!!.identity.id,
-                    networkAddress!!,
-                    nearestTo.nodes,
-                    networkAddress!!.serialize()
-                )
-                val hops = estimateMessageHops(target)
-                val expiryInterval = requestTimeout * (hops + 1)
-                val expiry = now.plusMillis(expiryInterval)
-                outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, target)
-                sendGreedyMessage(target, request)
-            }
+    private fun pollRandomNode(now: Instant) {
+        bucketRefresh = bucketRefresh.rem(kbuckets.size)
+        val randomBucket = kbuckets[bucketRefresh]
+        bucketRefresh = (bucketRefresh + 1).rem(kbuckets.size)
+        if (randomBucket.nodes.isNotEmpty()) {
+            val target = randomBucket.nodes.removeAt(randomBucket.nodes.size - 1)
+            pollChosenNode(target, now)
         }
+    }
+
+    private fun pollChosenNode(near: NetworkAddressInfo, now: Instant) {
+        val nearestTo = findBucket(near.identity.id)
+        val request = DhtRequest(
+            requestId++,
+            networkAddress!!.identity.id,
+            networkAddress!!,
+            nearestTo.nodes,
+            networkAddress!!.serialize()
+        )
+        val hops = estimateMessageHops(near)
+        val expiryInterval = requestTimeout * (hops + 1)
+        val expiry = now.plusMillis(expiryInterval)
+        outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
+        sendGreedyMessage(near, request)
     }
 
     private fun logNearestNodeGap(
