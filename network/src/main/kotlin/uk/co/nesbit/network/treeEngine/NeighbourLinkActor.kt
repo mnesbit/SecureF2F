@@ -150,7 +150,7 @@ class NeighbourLinkActor(
             changed = true
         }
         if (changed) {
-            sendTreeStatus(now)
+            sendTreeStatus(now, false)
         }
     }
 
@@ -290,17 +290,19 @@ class NeighbourLinkActor(
         sendMessageToLink(linkState, treeState)
     }
 
-    private fun sendTreeStatus(now: Instant) {
-        val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
-        log().info(
-            "tree ${parentTree?.root ?: networkId} ${parentTree?.treeAddress?.identity?.id} ${parentTree?.depth ?: 0} version ${keyService.getVersion(
-                networkId
-            ).currentVersion.version}"
-        )
-        changed = false
-        lastSent = now
-        for (neighbour in linkStates.values) {
-            sendTreeForLink(now, neighbour.linkId)
+    private fun sendTreeStatus(now: Instant, urgent: Boolean) {
+        if (urgent || ChronoUnit.MILLIS.between(lastSent, now) >= LINK_CHECK_INTERVAL_MS) {
+            val parentTree = if (parent == null) null else linkStates[parent!!]?.treeState
+            log().info(
+                "tree ${parentTree?.root ?: networkId} ${parentTree?.treeAddress?.identity?.id} ${parentTree?.depth ?: 0} version ${keyService.getVersion(
+                    networkId
+                ).currentVersion.version}"
+            )
+            changed = false
+            lastSent = now
+            for (neighbour in linkStates.values) {
+                sendTreeForLink(now, neighbour.linkId)
+            }
         }
     }
 
@@ -337,7 +339,7 @@ class NeighbourLinkActor(
             calcParent()
             sendNeighbourUpdate()
             if (changed) {
-                sendTreeStatus(clock.instant())
+                sendTreeStatus(clock.instant(), true)
             }
         }
     }
@@ -444,7 +446,7 @@ class NeighbourLinkActor(
             changed = true
         }
         if (changed) {
-            sendTreeStatus(now)
+            sendTreeStatus(now, false)
         }
     }
 
