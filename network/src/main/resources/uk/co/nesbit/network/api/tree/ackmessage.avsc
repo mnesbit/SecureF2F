@@ -1,0 +1,11 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "AckMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "ack",
+      "type": "boolean"
+    }
+  ]
+}

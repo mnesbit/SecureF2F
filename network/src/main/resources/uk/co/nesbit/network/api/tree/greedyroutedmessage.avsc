@@ -1,0 +1,37 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "GreedyRoutedMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "destination",
+      "type": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
+    },
+    {
+      "name": "treeAddress",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    },
+    {
+      "name": "ttl",
+      "type": "int"
+    },
+    {
+      "name": "pathInfo",
+      "type": {
+        "type": "array",
+        "items": "EncryptedSecurePathItem"
+      }
+    },
+    {
+      "name": "lastLinkSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

@@ -57,7 +57,7 @@ class SphinxPublicIdentity(
     )
 
     init {
-        require(diffieHellmanPublicKey.algorithm == "Curve25519")
+        require(diffieHellmanPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     override fun toGenericRecord(): GenericRecord {
@@ -125,7 +125,7 @@ class SphinxIdentityKeyPair(
     }
 
     init {
-        require(diffieHellmanKeys.private.algorithm == "Curve25519")
+        require(diffieHellmanKeys.private.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))

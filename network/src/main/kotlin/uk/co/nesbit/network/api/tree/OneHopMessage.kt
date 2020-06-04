@@ -34,7 +34,10 @@ class OneHopMessage private constructor(
             listOf(
                 Pair(OneHopMessage::class.java, oneHopMessageSchema),
                 Pair(Hello::class.java, Hello.helloSchema),
-                Pair(TreeState::class.java, TreeState.treeStateSchema)
+                Pair(TreeState::class.java, TreeState.treeStateSchema),
+                Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
+                Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
+                Pair(AckMessage::class.java, AckMessage.ackMessageSchema)
             )
         )
 
@@ -60,12 +63,12 @@ class OneHopMessage private constructor(
     }
 
     override fun toGenericRecord(): GenericRecord {
-        val routeTableRecord = GenericData.Record(oneHopMessageSchema)
-        routeTableRecord.putTyped("seqNum", seqNum)
-        routeTableRecord.putTyped("ackSeqNum", ackSeqNum)
-        routeTableRecord.putTyped("schemaFingerprint", schemaType)
-        routeTableRecord.putTyped("payload", payload)
-        return routeTableRecord
+        val oneHopMessageRecord = GenericData.Record(oneHopMessageSchema)
+        oneHopMessageRecord.putTyped("seqNum", seqNum)
+        oneHopMessageRecord.putTyped("ackSeqNum", ackSeqNum)
+        oneHopMessageRecord.putTyped("schemaFingerprint", schemaType)
+        oneHopMessageRecord.putTyped("payload", payload)
+        return oneHopMessageRecord
     }
 
     override fun equals(other: Any?): Boolean {

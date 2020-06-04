@@ -61,13 +61,17 @@ class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>>
             return fingerprint.array()
         }
         lock.withLock {
+            val fingerprintOld = fingerprints[schema]
+            if (fingerprintOld != null) {
+                return fingerprintOld.array()
+            }
             return registerDeserializer(convertibleClass, schema)
         }
     }
 
     fun <T : AvroConvertible> registerDeserializer(convertibleClass: Class<T>, schema: Schema): ByteArray {
         return lock.withLock {
-            val fingerprint = getFingeprint(schema)
+            val fingerprint = registerSchema(schema)
             require(!converters.containsKey(ByteBuffer.wrap(fingerprint))) { "Only one class allowed to be registered per schema" }
             val constructor = try {
                 convertibleClass.getConstructor(GenericRecord::class.java)

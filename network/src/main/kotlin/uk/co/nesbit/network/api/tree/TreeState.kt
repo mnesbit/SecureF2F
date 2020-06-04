@@ -55,12 +55,7 @@ class TreeState(
             keyService: KeyService,
             now: Instant
         ): TreeState {
-            val truncatedNow = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
-            val nowBytes = truncatedNow.toEpochMilli().toByteArray()
-            val pathSignOverNext = concatByteArrays(nowBytes, to.id.serialize())
-            val signatureOverNext = keyService.sign(from.id, pathSignOverNext).toDigitalSignature()
-            val prevPath = appendTo?.path?.path ?: emptyList()
-            val pathList = prevPath + SecurePathItem(truncatedNow, from, signatureOverNext)
+            val pathList = SecurePath.createSecurePathList(appendTo?.path?.path, from, to, keyService, now)
             val path = SecurePath(pathList)
             val pathHash = SecureHash.secureHash(path.serialize())
             val linkSignOver = concatByteArrays(linkId, pathHash.bytes)
@@ -71,6 +66,10 @@ class TreeState(
 
     val shortPath: List<SphinxPublicIdentity> by lazy {
         path.shortPath
+    }
+
+    val treeAddress: NetworkAddressInfo by lazy {
+        NetworkAddressInfo(path.path.last().identity, path.path.map { it.identity.id })
     }
 
     val root: SecureHash by lazy {

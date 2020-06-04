@@ -5,6 +5,7 @@ import akka.actor.Props
 import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.crypto.SecureHash.Companion.xorDistance
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
@@ -22,7 +23,6 @@ import java.lang.Integer.min
 import java.time.Duration
 import java.time.Instant
 import java.util.*
-import kotlin.experimental.xor
 
 class ClientDhtRequest(val requestId: Long, val key: SecureHash, val data: ByteArray?)
 class ClientDhtResponse(val requestId: Long, val key: SecureHash, val data: ByteArray?)
@@ -46,23 +46,6 @@ class DhtRoutingActor(
 
         const val ALPHA = 5
         const val K = 15
-
-        @JvmStatic
-        fun xorDistance(x: SecureHash, y: SecureHash): Int {
-            require(x.algorithm == y.algorithm) { "Hashes must be of same type" }
-            val xb = x.bytes
-            val yb = y.bytes
-            var dist = xb.size * 8
-            for (i in xb.indices) {
-                if (xb[i] == yb[i]) {
-                    dist -= 8
-                } else {
-                    val xorx = Integer.numberOfLeadingZeros(java.lang.Byte.toUnsignedInt(xb[i] xor yb[i]))
-                    return dist - xorx + 24
-                }
-            }
-            return dist
-        }
     }
 
     private class Scan

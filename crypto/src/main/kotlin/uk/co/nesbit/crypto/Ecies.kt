@@ -48,8 +48,9 @@ object Ecies {
         targetPublicKey: PublicKey,
         random: SecureRandom = newSecureRandom()
     ): ByteArray {
-        val aadToEncode = aad ?: ByteArray(0)
         val ephemeralKeyPair = generateCurve25519DHKeyPair(random)
+        val aadToEncode =
+            concatByteArrays(aad ?: ByteArray(0), ephemeralKeyPair.public.encoded, targetPublicKey.encoded)
         val sharedSecret = getSharedDHSecret(ephemeralKeyPair, targetPublicKey)
         val (aesKey, aesNonce) = generateKeys(sharedSecret, ephemeralKeyPair.public, targetPublicKey)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
@@ -59,7 +60,6 @@ object Ecies {
             concatByteArrays(ephemeralKeyPair.public.encoded, doFinal(message))
         }
     }
-
 
     fun decryptMessage(
         encryptedMessage: ByteArray,
@@ -83,7 +83,8 @@ object Ecies {
         val splits = encryptedMessage.splitByteArrays(PUBLIC_KEY_SIZE, messageAndTagSize)
         val dhEmphemeralPublicKey = Curve25519PublicKey(splits[0])
         val ciphertextAndTag = splits[1]
-        val aadToValidate = aad ?: ByteArray(0)
+        val aadToValidate =
+            concatByteArrays(aad ?: ByteArray(0), dhEmphemeralPublicKey.encoded, targetPublicKey.encoded)
         val sharedSecret = dhFunction(dhEmphemeralPublicKey)
         val (aesKey, aesNonce) = generateKeys(sharedSecret, dhEmphemeralPublicKey, targetPublicKey)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
