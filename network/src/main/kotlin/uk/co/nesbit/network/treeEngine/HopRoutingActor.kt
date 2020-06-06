@@ -282,7 +282,7 @@ class HopRoutingActor(
     }
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
-        if (node.treeAddress.first() != networkAddress!!.treeAddress.first()) {
+        if (node.roots != networkAddress!!.roots) {
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
@@ -353,10 +353,10 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        //log().info("neighbour update with root ${networkAddress!!.treeAddress.first()}")
+        //log().info("neighbour update with root ${networkAddress!!.roots}")
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
-                it.treeAddress.first() != networkAddress!!.treeAddress.first()
+                it.roots != networkAddress!!.roots
             }
         }
     }

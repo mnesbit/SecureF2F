@@ -4,7 +4,15 @@
   "type": "record",
   "fields": [
     {
-      "name": "path",
+      "name": "path1",
+      "type": "SecurePath"
+    },
+    {
+      "name": "path2",
+      "type": "SecurePath"
+    },
+    {
+      "name": "path3",
       "type": "SecurePath"
     },
     {
