@@ -134,9 +134,7 @@ class NeighbourLinkActor(
         removeStaleInfo(now)
         calcParents()
         //log().info("status changed: $changed parentHeartbeat: $parentHeartbeat neighbourChanged: $neighbourChanged")
-        if (neighbourChanged || changed) {
-            sendNeighbourUpdate(now)
-        }
+        sendNeighbourUpdate(now)
         val heartbeat = ChronoUnit.MILLIS.between(lastTreeSent, now) >= HEARTBEAT_INTERVAL_MS
         if (heartbeat) {
             for (parent in parents) {
@@ -145,9 +143,7 @@ class NeighbourLinkActor(
                 }
             }
         }
-        if (changed || parentHeartbeat) {
-            sendTreeStatus(now)
-        }
+        sendTreeStatus(now)
     }
 
     private fun removeStaleInfo(now: Instant) {
@@ -189,14 +185,16 @@ class NeighbourLinkActor(
     }
 
     private fun sendNeighbourUpdate(now: Instant) {
-        if (ChronoUnit.MILLIS.between(lastNeighbourSent, now) >= LINK_CHECK_INTERVAL_MS) {
-            neighbourChanged = false
-            lastNeighbourSent = now
-            val neighbours = linkStates.values.mapNotNull { it.treeState?.treeAddress }
-            log().info("Send neighbour update")
-            val neighbourUpdate = NeighbourUpdate(selfAddress, neighbours)
-            for (owner in owners) {
-                owner.tell(neighbourUpdate, self)
+        if (changed || neighbourChanged) {
+            if (ChronoUnit.MILLIS.between(lastNeighbourSent, now) >= LINK_CHECK_INTERVAL_MS) {
+                neighbourChanged = false
+                lastNeighbourSent = now
+                val neighbours = linkStates.values.mapNotNull { it.treeState?.treeAddress }
+                log().info("Send neighbour update")
+                val neighbourUpdate = NeighbourUpdate(selfAddress, neighbours)
+                for (owner in owners) {
+                    owner.tell(neighbourUpdate, self)
+                }
             }
         }
     }
@@ -317,14 +315,16 @@ class NeighbourLinkActor(
     }
 
     private fun sendTreeStatus(now: Instant) {
-        if (ChronoUnit.MILLIS.between(lastTreeSent, now) >= LINK_CHECK_INTERVAL_MS) {
-            changed = false
-            parentHeartbeat = false
-            lastTreeSent = now
-            for (neighbour in linkStates.values) {
-                sendTreeForLink(now, neighbour.linkId)
+        if (changed || parentHeartbeat) {
+            if (ChronoUnit.MILLIS.between(lastTreeSent, now) >= LINK_CHECK_INTERVAL_MS) {
+                changed = false
+                parentHeartbeat = false
+                lastTreeSent = now
+                for (neighbour in linkStates.values) {
+                    sendTreeForLink(now, neighbour.linkId)
+                }
+                log().info("tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}")
             }
-            log().info("tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}")
         }
     }
 
@@ -357,12 +357,11 @@ class NeighbourLinkActor(
             if (oldState?.identity != null) {
                 addresses.remove(oldState.identity!!.id)
             }
+            neighbourChanged = true
             calcParents()
             val now = clock.instant()
             sendNeighbourUpdate(now)
-            if (changed) {
-                sendTreeStatus(now)
-            }
+            sendTreeStatus(now)
         }
     }
 
@@ -423,6 +422,7 @@ class NeighbourLinkActor(
         linkState.identity = hello.sourceId
         linkState.sendSecureId = hello.secureLinkId
         addresses[hello.sourceId.id] = sourceLink
+        neighbourChanged = true
         calcParents()
         val now = clock.instant()
         sendNeighbourUpdate(now)
@@ -466,9 +466,7 @@ class NeighbourLinkActor(
         if (tree.treeAddress != oldState?.treeAddress) {
             neighbourChanged = true
         }
-        if (neighbourChanged || changed) {
-            sendNeighbourUpdate(now)
-        }
+        sendNeighbourUpdate(now)
         val parentDists =
             listOf(selfAddress.treeAddress1.size, selfAddress.treeAddress2.size, selfAddress.treeAddress3.size)
         val nearestParent = parentDists.withIndex().minBy { it.value }!!.index
@@ -476,9 +474,7 @@ class NeighbourLinkActor(
             parentHeartbeat = true
         }
         //log().info("status changed: $changed parentHeartbeat: $parentHeartbeat neighbourChanged: $neighbourChanged")
-        if (changed || parentHeartbeat) {
-            sendTreeStatus(now)
-        }
+        sendTreeStatus(now)
     }
 
     private fun findGreedyNextHop(
