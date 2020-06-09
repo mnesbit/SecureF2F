@@ -97,6 +97,10 @@ class NetworkAddressInfo(
         return self.size + other.size - 2 * prefixLength
     }
 
+    override fun toString(): String {
+        return identity.id.toString()
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

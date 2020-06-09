@@ -438,7 +438,20 @@ class NeighbourLinkActor(
             log().error("No hello yet received on $sourceLink")
             return
         }
+        val neighbour = tree.treeAddress
+        if (linkState.identity!!.id != neighbour.identity.id) {
+            log().error("Neighbour on $sourceLink doesn't match")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
+        }
+        if (linkState.identity!!.currentVersion.version > neighbour.identity.currentVersion.version) {
+            log().error("Neighbour on $sourceLink has stale version")
+            return
+        }
         val oldState = linkState.treeState
+        if (oldState == tree) {
+            return
+        }
         linkState.treeState = null
         if (tree.stale(now)) {
             log().warning("Discard Stale Tree State")
@@ -449,15 +462,6 @@ class NeighbourLinkActor(
         } catch (ex: Exception) {
             log().error("Bad Tree message ${ex.message}")
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)
-            return
-        }
-        val neighbour = tree.treeAddress
-        if (linkState.identity!!.id != neighbour.identity.id) {
-            log().error("Neighbour on $sourceLink doesn't match")
-            return
-        }
-        if (linkState.identity!!.currentVersion.version > neighbour.identity.currentVersion.version) {
-            log().error("Neighbour on $sourceLink has stale version")
             return
         }
         linkState.identity = neighbour.identity
