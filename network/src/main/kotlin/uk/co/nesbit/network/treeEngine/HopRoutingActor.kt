@@ -74,7 +74,6 @@ class HopRoutingActor(
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
     private val kbuckets = mutableListOf(KBucket(0, 257))
-    private var unstable = true
     private var bucketRefresh: Int = 0
     private var round: Int = 0
     private var gapNEstimate: Int = 0
@@ -143,10 +142,6 @@ class HopRoutingActor(
         for (neighbour in neighbours.values) {
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
-        }
-        if (unstable) {
-            unstable = false
-            return
         }
         if (outstandingRequests.isEmpty()) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
@@ -346,7 +341,6 @@ class HopRoutingActor(
     }
 
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
-        unstable = true
         networkAddress = neighbourUpdate.localId
         neighbours.clear()
         for (neighbour in neighbourUpdate.addresses) {

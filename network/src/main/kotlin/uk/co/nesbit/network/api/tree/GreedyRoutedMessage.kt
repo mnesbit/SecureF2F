@@ -34,7 +34,7 @@ class GreedyRoutedMessage private constructor(
 
     companion object {
         const val BaseTimeError = 10000L
-        const val TimeErrorPerHop = 200000L
+        const val TimeErrorPerHop = 60000L
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val greedyRoutedSchema: Schema = Schema.Parser()
@@ -196,7 +196,7 @@ class GreedyRoutedMessage private constructor(
                 require(timeDiff >= -BaseTimeError) {
                     "Time too far in future $timeDiff ms"
                 }
-                require(timeDiff <= BaseTimeError + (1 + index) * TimeErrorPerHop) {
+                require(timeDiff <= BaseTimeError + (securePathList.size - index) * TimeErrorPerHop) {
                     "Time difference too great $timeDiff ms"
                 }
                 val prevTimestampBytes = timestamp.toEpochMilli().toByteArray()

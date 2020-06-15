@@ -3,13 +3,14 @@ package uk.co.nesbit.network.mocknet
 import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Terminated
-import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.*
-import uk.co.nesbit.network.util.AbstractActorWithLoggingAndTimers
+import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import java.util.concurrent.atomic.AtomicInteger
 
-class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : AbstractActorWithLoggingAndTimers() {
+class CloseAllRequest
+
+class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(networkConfig: NetworkConfiguration): Props {
@@ -58,19 +59,21 @@ class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : A
         //log().info("Restart PhysicalNetworkActor $networkId")
     }
 
-    override fun createReceive(): Receive =
-        ReceiveBuilder()
-            .match(WatchRequest::class.java) { onWatchRequest() }
-            .match(OpenRequest::class.java, ::onOpenRequest)
-            .match(CloseRequest::class.java, ::onCloseRequest)
-            .match(DnsResponse::class.java, ::onDnsResponse)
-            .match(ConnectRequest::class.java, ::onConnectRequest)
-            .match(ConnectResult::class.java, ::onConnectResult)
-            .match(ConnectionDrop::class.java, ::onConnectionDrop)
-            .match(Terminated::class.java, ::onDeath)
-            .match(LinkReceivedMessage::class.java, ::onWireMessage)
-            .match(LinkSendMessage::class.java, ::onLinkSendMessage)
-            .build()
+    override fun onReceive(message: Any) {
+        when (message) {
+            is WatchRequest -> onWatchRequest()
+            is OpenRequest -> onOpenRequest(message)
+            is CloseRequest -> onCloseRequest(message)
+            is DnsResponse -> onDnsResponse(message)
+            is ConnectRequest -> onConnectRequest(message)
+            is ConnectResult -> onConnectResult(message)
+            is ConnectionDrop -> onConnectionDrop(message)
+            is Terminated -> onDeath(message)
+            is LinkReceivedMessage -> onWireMessage(message)
+            is LinkSendMessage -> onLinkSendMessage(message)
+            is CloseAllRequest -> onCloseAll()
+        }
+    }
 
     private fun onWatchRequest() {
         //log().info("WatchRequest from $sender")
@@ -215,4 +218,9 @@ class PhysicalNetworkActor2(private val networkConfig: NetworkConfiguration) : A
         target?.tell(renumberedMessage, self)
     }
 
+    private fun onCloseAll() {
+        for (linkId in links.keys) {
+            onCloseRequest(CloseRequest(linkId))
+        }
+    }
 }

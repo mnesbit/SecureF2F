@@ -57,6 +57,10 @@ class NetworkAddressInfo(
         listOf(treeAddress1, treeAddress2, treeAddress3)
     }
 
+    val depths: List<Int> by lazy {
+        listOf(treeAddress1.size, treeAddress2.size, treeAddress3.size)
+    }
+
     private fun verifyPath(path: List<SecureHash>, index: Int) {
         require(path.isNotEmpty() && path.last() == identity.id) {
             "Address invalid"
