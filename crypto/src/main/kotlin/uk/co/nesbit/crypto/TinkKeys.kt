@@ -22,6 +22,10 @@ class TinkEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
         return EdDSAPublicKey(EdDSAPublicKeySpec(keyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
     }
 
+    fun toNACLPublicKey(): PublicKey {
+        return NACLEd25519PublicKey(keyBytes)
+    }
+
     override fun toString(): String = "PUBTINK25519:${keyBytes.printHexBinary()}"
 
     override fun equals(other: Any?): Boolean {
@@ -61,6 +65,10 @@ class TinkEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
         return EdDSAPrivateKey(EdDSAPrivateKeySpec(keyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
     }
 
+    fun toNACLPrivateKey(): PrivateKey {
+        return NACLEd25519PrivateKey(keyBytes)
+    }
+
     override fun toString(): String = "PRVTINK25519:${keyBytes.printHexBinary()}"
 
     override fun equals(other: Any?): Boolean {
@@ -88,3 +96,4 @@ class TinkEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
 fun EdDSAPrivateKey.toTinkPrivateKey(): PrivateKey {
     return TinkEd25519PrivateKey(this.seed)
 }
+

@@ -1,6 +1,9 @@
 package uk.co.nesbit.crypto
 
 import com.google.crypto.tink.subtle.Ed25519Sign
+import com.goterl.lazycode.lazysodium.LazySodiumJava
+import com.goterl.lazycode.lazysodium.SodiumJava
+import com.goterl.lazycode.lazysodium.interfaces.Sign.*
 import djb.Curve25519
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair
@@ -35,6 +38,18 @@ fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
 fun generateTinkEd25519KeyPair(): KeyPair {
     val keyGen = Ed25519Sign.KeyPair.newKeyPair()
     return KeyPair(TinkEd25519PublicKey(keyGen.publicKey), TinkEd25519PrivateKey(keyGen.privateKey))
+}
+
+fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
+    val nacl = LazySodiumJava(SodiumJava())
+    val seed = ByteArray(ED25519_SEEDBYTES)
+    secureRandom.nextBytes(seed)
+    val publicKeyBytes = ByteArray(ED25519_PUBLICKEYBYTES)
+    val secretKey = ByteArray(ED25519_SECRETKEYBYTES)
+    nacl.cryptoSignSeedKeypair(publicKeyBytes, secretKey, seed)
+    val privateKey = NACLEd25519PrivateKey(seed)
+    val publicKey = NACLEd25519PublicKey(publicKeyBytes)
+    return KeyPair(publicKey, privateKey)
 }
 
 fun generateRSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -98,6 +113,13 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             val signer = Ed25519Sign(private.encoded)
             val sig = signer.sign(bytes)
             return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
+        }
+        "NACLEd25519" -> {
+            val nacl = LazySodiumJava(SodiumJava())
+            val naclKeys = nacl.cryptoSignSeedKeypair(private.encoded)
+            val signature = ByteArray(BYTES)
+            nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclKeys.secretKey.asBytes)
+            return DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }

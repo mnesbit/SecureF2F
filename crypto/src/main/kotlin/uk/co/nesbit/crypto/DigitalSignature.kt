@@ -1,6 +1,8 @@
 package uk.co.nesbit.crypto
 
 import com.google.crypto.tink.subtle.Ed25519Verify
+import com.goterl.lazycode.lazysodium.LazySodiumJava
+import com.goterl.lazycode.lazysodium.SodiumJava
 import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
@@ -59,6 +61,8 @@ class DigitalSignature(val signatureAlgorithm: String,
                         initVerify(publicKey)
                     } else if (publicKey is TinkEd25519PublicKey) {
                         initVerify(publicKey.toI2PPublicKey())
+                    } else if (publicKey is NACLEd25519PublicKey) {
+                        initVerify(publicKey.toI2PPublicKey())
                     } else {
                         initVerify(publicKey)
                     }
@@ -73,12 +77,27 @@ class DigitalSignature(val signatureAlgorithm: String,
                     Ed25519Verify(publicKey.keyBytes)
                 } else if (publicKey is EdDSAPublicKey) {
                     Ed25519Verify(publicKey.abyte)
+                } else if (publicKey is NACLEd25519PublicKey) {
+                    Ed25519Verify(publicKey.keyBytes)
                 } else {
                     Ed25519Verify(publicKey.encoded)
                 }
                 try {
                     verifier.verify(signature, bytes)
                 } catch (ex: GeneralSecurityException) {
+                    throw SignatureException("Signature did not match")
+                }
+            }
+            "NONEwithNACLEd25519" -> {
+                val publicKeyBytes = if (publicKey is NACLEd25519PublicKey) {
+                    publicKey.keyBytes
+                } else if (publicKey is EdDSAPublicKey) {
+                    publicKey.abyte
+                } else if (publicKey is TinkEd25519PublicKey) {
+                    publicKey.encoded
+                } else throw IllegalArgumentException()
+                val nacl = LazySodiumJava(SodiumJava())
+                if (!nacl.cryptoSignVerifyDetached(signature, bytes, bytes.size, publicKeyBytes)) {
                     throw SignatureException("Signature did not match")
                 }
             }

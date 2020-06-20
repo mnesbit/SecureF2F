@@ -80,6 +80,10 @@ object PublicKeyHelper {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 TinkEd25519PublicKey(publicKeyBytes)
             }
+            "NACLEd25519" -> {
+                require(keyFormat == "RAW") { "Don't know how to deserialize" }
+                NACLEd25519PublicKey(publicKeyBytes)
+            }
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }
     }
