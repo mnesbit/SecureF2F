@@ -1,8 +1,6 @@
 package uk.co.nesbit.crypto
 
 import com.google.crypto.tink.subtle.Ed25519Verify
-import com.goterl.lazycode.lazysodium.LazySodiumJava
-import com.goterl.lazycode.lazysodium.SodiumJava
 import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
@@ -96,7 +94,6 @@ class DigitalSignature(val signatureAlgorithm: String,
                 } else if (publicKey is TinkEd25519PublicKey) {
                     publicKey.encoded
                 } else throw IllegalArgumentException()
-                val nacl = LazySodiumJava(SodiumJava())
                 if (!nacl.cryptoSignVerifyDetached(signature, bytes, bytes.size, publicKeyBytes)) {
                     throw SignatureException("Signature did not match")
                 }

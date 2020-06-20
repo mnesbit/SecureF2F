@@ -100,7 +100,7 @@ dependencies {
     implementation "com.typesafe.akka:akka-actor_2.13:$akka_version"
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
     runtime "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
-    runtime "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
+    runtime "org.apache.logging.log4j:log4j-slf4j18-impl:$log4j2_version"
     // for lock-free logging
     runtime "com.lmax:disruptor:$disruptor_version"
     implementation project(':avro')

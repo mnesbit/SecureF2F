@@ -192,6 +192,7 @@ class TreeEngineTests {
             skipClock.instant()
         )
         tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
+        skipClock.instant()
         assertFailsWith<IllegalArgumentException> {
             tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
         }

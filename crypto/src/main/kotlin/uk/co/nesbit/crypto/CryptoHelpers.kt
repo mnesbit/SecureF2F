@@ -13,6 +13,8 @@ import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+val nacl = LazySodiumJava(SodiumJava())
+
 fun newSecureRandom(): SecureRandom {
     return if (System.getProperty("os.name") == "Linux") {
         SecureRandom.getInstance("NativePRNGNonBlocking")
@@ -41,7 +43,6 @@ fun generateTinkEd25519KeyPair(): KeyPair {
 }
 
 fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val nacl = LazySodiumJava(SodiumJava())
     val seed = ByteArray(ED25519_SEEDBYTES)
     secureRandom.nextBytes(seed)
     val publicKeyBytes = ByteArray(ED25519_PUBLICKEYBYTES)
@@ -115,7 +116,6 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
         }
         "NACLEd25519" -> {
-            val nacl = LazySodiumJava(SodiumJava())
             val naclKeys = nacl.cryptoSignSeedKeypair(private.encoded)
             val signature = ByteArray(BYTES)
             nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclKeys.secretKey.asBytes)
