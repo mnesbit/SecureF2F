@@ -56,6 +56,7 @@ class NeighbourLinkActor(
         var identity: VersionedIdentity? = null
         var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
+        var verified: Boolean = false
     }
 
     private class ParentInfo(
@@ -168,6 +169,7 @@ class NeighbourLinkActor(
                 if (treeState != null && treeState.stale(now)) {
                     log().info("Stale state")
                     linkState.treeState = null
+                    linkState.verified = false
                     neighbourChanged = true
                 }
             }
@@ -280,6 +282,27 @@ class NeighbourLinkActor(
     }
 
     private fun calcParents(now: Instant) {
+        for (linkState in linkStates.values) {
+            val tree = linkState.treeState
+            if (tree != null && !linkState.verified) {
+                try {
+                    tree.verify(linkState.receiveSecureId, keyService.getVersion(networkId), now)
+                    linkState.verified = true
+                    for (path in tree.paths) {
+                        val root = path.path.first()
+                        val prevTimes = rootExpiryCache[root.identity.id]
+                        if (prevTimes == null || prevTimes.first < root.timestamp) {
+                            rootExpiryCache[root.identity.id] = Pair(root.timestamp, now)
+                        }
+                    }
+                } catch (ex: Exception) {
+                    log().error("Bad Tree message ${ex.message}")
+                    linkState.treeState = null
+                    linkState.verified = false
+                    physicalNetworkActor.tell(CloseRequest(linkState.linkId), self)
+                }
+            }
+        }
         calcParent(0, now)
         calcParent(1, now)
         calcParent(2, now)
@@ -469,28 +492,18 @@ class NeighbourLinkActor(
             return
         }
         linkState.treeState = null
+        linkState.verified = false
         if (tree.stale(now)) {
             log().warning("Discard Stale Tree State")
             return
         }
-        try {
-            tree.verify(linkState.receiveSecureId, keyService.getVersion(networkId), now)
-        } catch (ex: Exception) {
-            log().error("Bad Tree message ${ex.message}")
-            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
-            return
-        }
         linkState.identity = neighbour.identity
         linkState.treeState = tree
-        for (path in tree.paths) {
-            val root = path.path.first()
-            val prevTimes = rootExpiryCache[root.identity.id]
-            if (prevTimes == null || prevTimes.first < root.timestamp) {
-                rootExpiryCache[root.identity.id] = Pair(root.timestamp, now)
-            }
-        }
         if (tree.treeAddress != oldState?.treeAddress) {
             neighbourChanged = true
+        }
+        if (changed && ChronoUnit.MILLIS.between(lastTreeSent, now) < HEARTBEAT_INTERVAL_MS / 2L) {
+            return
         }
         calcParents(now)
         sendNeighbourUpdate(now)
