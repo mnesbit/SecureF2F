@@ -81,6 +81,7 @@ class HopRoutingActor(
     private var gapZeroDone = false
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
+    private var paused: Boolean = false
     private var requestTimeout: Long = 3L * REQUEST_TIMEOUT_MIN_MS
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
@@ -144,6 +145,10 @@ class HopRoutingActor(
             addToKBuckets(neighbour)
         }
         if (outstandingRequests.isEmpty()) {
+            if (paused) {
+                paused = false
+                return
+            }
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
 
@@ -152,6 +157,7 @@ class HopRoutingActor(
                 pollChosenNode(near, now)
             }
             pollRandomNode(now)
+            paused = true
         }
     }
 
