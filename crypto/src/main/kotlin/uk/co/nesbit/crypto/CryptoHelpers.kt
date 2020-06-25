@@ -13,7 +13,7 @@ import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-val nacl = LazySodiumJava(SodiumJava())
+val nacl: Native = LazySodiumJava(SodiumJava())
 
 fun newSecureRandom(): SecureRandom {
     return if (System.getProperty("os.name") == "Linux") {
@@ -116,9 +116,11 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
         }
         "NACLEd25519" -> {
-            val naclKeys = nacl.cryptoSignSeedKeypair(private.encoded)
+            val naclPublicKey = ByteArray(PUBLICKEYBYTES)
+            val naclSecretKey = ByteArray(SECRETKEYBYTES)
+            nacl.cryptoSignSeedKeypair(naclPublicKey, naclSecretKey, private.encoded)
             val signature = ByteArray(BYTES)
-            nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclKeys.secretKey.asBytes)
+            nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclSecretKey)
             return DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
