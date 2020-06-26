@@ -110,7 +110,8 @@ class SphinxIdentityKeyPair(
             maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
             minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
         ): SphinxIdentityKeyPair {
-            val signingKeys = generateEdDSAKeyPair(secureRandom)
+            //val signingKeys = generateEdDSAKeyPair(secureRandom)
+            val signingKeys = generateNACLKeyPair(secureRandom)
             val dhKeys = generateCurve25519DHKeyPair(secureRandom)
             val hashChain = PebbledHashChain.generateChain(
                 concatByteArrays(

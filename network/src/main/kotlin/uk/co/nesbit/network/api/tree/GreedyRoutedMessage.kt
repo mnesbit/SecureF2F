@@ -7,7 +7,6 @@ import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
-import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.Message
@@ -18,8 +17,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class GreedyRoutedMessage private constructor(
-    val destination: SphinxPublicIdentity,
-    val treeAddress: List<SecureHash>,
+    val destination: NetworkAddressInfo,
     val ttl: Int,
     val payload: ByteArray,
     val pathInfo: List<EncryptedSecurePathItem>,
@@ -28,7 +26,6 @@ class GreedyRoutedMessage private constructor(
     constructor(greedyRoutedRecord: GenericRecord) :
             this(
                 greedyRoutedRecord.getTyped("destination"),
-                greedyRoutedRecord.getObjectArray("treeAddress", ::SecureHash),
                 greedyRoutedRecord.getTyped("ttl"),
                 greedyRoutedRecord.getTyped("payload"),
                 greedyRoutedRecord.getObjectArray("pathInfo", ::EncryptedSecurePathItem),
@@ -37,13 +34,13 @@ class GreedyRoutedMessage private constructor(
 
     companion object {
         const val BaseTimeError = 10000L
-        const val TimeErrorPerHop = 200000L
+        const val TimeErrorPerHop = 60000L
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val greedyRoutedSchema: Schema = Schema.Parser()
             .addTypes(
                 mapOf(
-                    SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
+                    NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema,
                     SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
                     EncryptedSecurePathItem.encryptedSecurePathItemSchema.fullName to EncryptedSecurePathItem.encryptedSecurePathItemSchema,
                     DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
@@ -57,8 +54,7 @@ class GreedyRoutedMessage private constructor(
         }
 
         private fun createLinkSignatureBytes(
-            finalDestination: SphinxPublicIdentity,
-            treeAddress: List<SecureHash>,
+            finalDestination: NetworkAddressInfo,
             ttl: Int,
             payload: ByteArray,
             path: List<EncryptedSecurePathItem>,
@@ -69,15 +65,13 @@ class GreedyRoutedMessage private constructor(
             }
             val dummyObject = GreedyRoutedMessage(
                 finalDestination,
-                treeAddress,
                 ttl,
                 payload,
                 path,
                 DigitalSignature("DUMMY", ByteArray(0))
             )
             val pathHash = SecureHash.secureHash(dummyObject.serialize())
-            val linkSignOver = concatByteArrays(linkId, pathHash.bytes)
-            return linkSignOver
+            return concatByteArrays(linkId, pathHash.bytes)
         }
 
         fun createGreedRoutedMessage(
@@ -100,8 +94,7 @@ class GreedyRoutedMessage private constructor(
                 now
             )
             val linkSignOver = createLinkSignatureBytes(
-                finalDestination.identity,
-                destination.treeAddress,
+                destination,
                 ttl,
                 payload,
                 path,
@@ -109,8 +102,7 @@ class GreedyRoutedMessage private constructor(
             )
             val linkSignature = keyService.sign(from.id, linkSignOver).toDigitalSignature()
             return GreedyRoutedMessage(
-                finalDestination.identity,
-                destination.treeAddress,
+                destination,
                 ttl,
                 payload,
                 path,
@@ -130,13 +122,12 @@ class GreedyRoutedMessage private constructor(
                 message.pathInfo,
                 from,
                 nextHop,
-                message.destination,
+                message.destination.identity.identity,
                 keyService,
                 now
             )
             val linkSignOver = createLinkSignatureBytes(
                 message.destination,
-                message.treeAddress,
                 message.ttl,
                 message.payload,
                 path,
@@ -145,7 +136,6 @@ class GreedyRoutedMessage private constructor(
             val linkSignature = keyService.sign(from.id, linkSignOver).toDigitalSignature()
             return GreedyRoutedMessage(
                 message.destination,
-                message.treeAddress,
                 message.ttl,
                 message.payload,
                 path,
@@ -157,7 +147,6 @@ class GreedyRoutedMessage private constructor(
     override fun toGenericRecord(): GenericRecord {
         val greedyRoutedRecord = GenericData.Record(greedyRoutedSchema)
         greedyRoutedRecord.putTyped("destination", destination)
-        greedyRoutedRecord.putObjectArray("treeAddress", treeAddress)
         greedyRoutedRecord.putTyped("ttl", ttl)
         greedyRoutedRecord.putTyped("payload", payload)
         greedyRoutedRecord.putObjectArray("pathInfo", pathInfo)
@@ -175,22 +164,13 @@ class GreedyRoutedMessage private constructor(
         require(pathInfo.isNotEmpty()) {
             "Path must not be empty"
         }
-        require(treeAddress.isNotEmpty()) {
-            "Tree address must not be empty"
-        }
-        require(treeAddress.first() == treeAddress.min()) {
-            "invalid root hash"
-        }
-        require(destination.id == treeAddress.last()) {
-            "mismatched destination and treeAddress"
-        }
+        destination.verify()
         require(pathInfo.size <= ttl) {
             "reverse path info longer than allowed ttl"
         }
         val selfIdentity = keyService.getVersion(self)
         val linkSignOver = createLinkSignatureBytes(
             destination,
-            treeAddress,
             ttl,
             payload,
             pathInfo,
@@ -201,7 +181,7 @@ class GreedyRoutedMessage private constructor(
         } catch (ex: SignatureException) {
             throw SignatureException("Bad link signature")
         }
-        if (destination.id == self) {
+        if (destination.identity.id == self) {
             val nowRounded = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
             val securePathList = pathInfo.map { it.decrypt(self, keyService) }
             for (index in securePathList.indices) {
@@ -216,7 +196,7 @@ class GreedyRoutedMessage private constructor(
                 require(timeDiff >= -BaseTimeError) {
                     "Time too far in future $timeDiff ms"
                 }
-                require(timeDiff <= BaseTimeError + (1 + index) * TreeState.TimeErrorPerHop) {
+                require(timeDiff <= BaseTimeError + (securePathList.size - index) * TimeErrorPerHop) {
                     "Time difference too great $timeDiff ms"
                 }
                 val prevTimestampBytes = timestamp.toEpochMilli().toByteArray()
@@ -239,7 +219,6 @@ class GreedyRoutedMessage private constructor(
         other as GreedyRoutedMessage
 
         if (destination != other.destination) return false
-        if (treeAddress != other.treeAddress) return false
         if (ttl != other.ttl) return false
         if (!payload.contentEquals(other.payload)) return false
         if (pathInfo != other.pathInfo) return false
@@ -250,11 +229,12 @@ class GreedyRoutedMessage private constructor(
 
     override fun hashCode(): Int {
         var result = destination.hashCode()
-        result = 31 * result + treeAddress.hashCode()
         result = 31 * result + ttl
         result = 31 * result + payload.contentHashCode()
         result = 31 * result + pathInfo.hashCode()
         result = 31 * result + lastLinkSignature.hashCode()
         return result
     }
+
+
 }

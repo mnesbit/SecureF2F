@@ -74,7 +74,6 @@ class HopRoutingActor(
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
     private val kbuckets = mutableListOf(KBucket(0, 257))
-    private var unstable = true
     private var bucketRefresh: Int = 0
     private var round: Int = 0
     private var gapNEstimate: Int = 0
@@ -82,6 +81,7 @@ class HopRoutingActor(
     private var gapZeroDone = false
     private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
+    private var queryThrottle: Boolean = false
     private var requestTimeout: Long = 3L * REQUEST_TIMEOUT_MIN_MS
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
@@ -144,11 +144,11 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (unstable) {
-            unstable = false
-            return
-        }
         if (outstandingRequests.isEmpty()) {
+            if (queryThrottle) {
+                queryThrottle = false
+                return
+            }
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
 
@@ -157,6 +157,7 @@ class HopRoutingActor(
                 pollChosenNode(near, now)
             }
             pollRandomNode(now)
+            queryThrottle = true
         }
     }
 
@@ -282,7 +283,7 @@ class HopRoutingActor(
     }
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
-        if (node.treeAddress.first() != networkAddress!!.treeAddress.first()) {
+        if (node.roots != networkAddress!!.roots) {
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
@@ -346,17 +347,16 @@ class HopRoutingActor(
     }
 
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
-        unstable = true
         networkAddress = neighbourUpdate.localId
         neighbours.clear()
         for (neighbour in neighbourUpdate.addresses) {
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        //log().info("neighbour update with root ${networkAddress!!.treeAddress.first()}")
+        //log().info("neighbour update with root ${networkAddress!!.roots}")
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
-                it.treeAddress.first() != networkAddress!!.treeAddress.first()
+                it.roots != networkAddress!!.roots
             }
         }
     }

@@ -5,14 +5,7 @@
   "fields": [
     {
       "name": "destination",
-      "type": "uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity"
-    },
-    {
-      "name": "treeAddress",
-      "type": {
-        "type": "array",
-        "items": "uk.co.nesbit.crypto.SecureHash"
-      }
+      "type": "NetworkAddressInfo"
     },
     {
       "name": "payload",

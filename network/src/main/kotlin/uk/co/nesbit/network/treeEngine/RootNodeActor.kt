@@ -1,9 +1,8 @@
 package uk.co.nesbit.network.treeEngine
 
-import akka.actor.AbstractLoggingActor
-import akka.actor.ActorRef
-import akka.actor.Props
+import akka.actor.*
 import akka.japi.pf.ReceiveBuilder
+import scala.concurrent.duration.Duration
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor2
@@ -16,6 +15,17 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return createProps(javaClass.enclosingClass, keyService, networkConfig)
         }
+
+        private val supervisorStrategy: SupervisorStrategy = OneForOneStrategy(
+            -1,
+            Duration.Inf()
+        ) { _ ->
+            SupervisorStrategy.restart() as SupervisorStrategy.Directive?
+        }
+    }
+
+    override fun supervisorStrategy(): SupervisorStrategy {
+        return supervisorStrategy
     }
 
     private val physicalNetworkActor: ActorRef =

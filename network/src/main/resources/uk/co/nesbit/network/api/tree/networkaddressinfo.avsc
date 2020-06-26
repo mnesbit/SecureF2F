@@ -8,7 +8,21 @@
       "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
     },
     {
-      "name": "treeAddress",
+      "name": "treeAddress1",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "treeAddress2",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "treeAddress3",
       "type": {
         "type": "array",
         "items": "uk.co.nesbit.crypto.SecureHash"

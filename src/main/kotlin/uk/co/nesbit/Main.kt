@@ -1,10 +1,12 @@
 package uk.co.nesbit
 
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.mocknet.DnsMockActor
+import uk.co.nesbit.network.treeEngine.Nuke
 import uk.co.nesbit.network.treeEngine.TreeNode
 import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
@@ -13,8 +15,8 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 5
-    val N = 10000
+    val degree = 3
+    val N = 1000
     val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
     //val simNetwork = makeASNetwork()
@@ -28,6 +30,9 @@ fun main(args: Array<String>) {
         val config = NetworkConfiguration(networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
+    val num = Scanner(System.`in`).nextInt()
+    val ref = actorSystem.actorSelection("akka://Akka/user/$num/neighbours")
+    ref.tell(Nuke(), ActorRef.noSender())
     while (System.`in`.read() != 'q'.toInt());
     actorSystem.terminate().value()
 }

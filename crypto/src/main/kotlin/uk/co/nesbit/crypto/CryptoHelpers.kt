@@ -1,6 +1,9 @@
 package uk.co.nesbit.crypto
 
 import com.google.crypto.tink.subtle.Ed25519Sign
+import com.goterl.lazycode.lazysodium.LazySodiumJava
+import com.goterl.lazycode.lazysodium.SodiumJava
+import com.goterl.lazycode.lazysodium.interfaces.Sign.*
 import djb.Curve25519
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair
@@ -9,6 +12,8 @@ import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.spec.SecretKeySpec
+
+val nacl: Native = LazySodiumJava(SodiumJava())
 
 fun newSecureRandom(): SecureRandom {
     return if (System.getProperty("os.name") == "Linux") {
@@ -35,6 +40,17 @@ fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
 fun generateTinkEd25519KeyPair(): KeyPair {
     val keyGen = Ed25519Sign.KeyPair.newKeyPair()
     return KeyPair(TinkEd25519PublicKey(keyGen.publicKey), TinkEd25519PrivateKey(keyGen.privateKey))
+}
+
+fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
+    val seed = ByteArray(ED25519_SEEDBYTES)
+    secureRandom.nextBytes(seed)
+    val publicKeyBytes = ByteArray(ED25519_PUBLICKEYBYTES)
+    val secretKey = ByteArray(ED25519_SECRETKEYBYTES)
+    nacl.cryptoSignSeedKeypair(publicKeyBytes, secretKey, seed)
+    val privateKey = NACLEd25519PrivateKey(seed)
+    val publicKey = NACLEd25519PublicKey(publicKeyBytes)
+    return KeyPair(publicKey, privateKey)
 }
 
 fun generateRSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -98,6 +114,14 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             val signer = Ed25519Sign(private.encoded)
             val sig = signer.sign(bytes)
             return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
+        }
+        "NACLEd25519" -> {
+            val naclPublicKey = ByteArray(PUBLICKEYBYTES)
+            val naclSecretKey = ByteArray(SECRETKEYBYTES)
+            nacl.cryptoSignSeedKeypair(naclPublicKey, naclSecretKey, private.encoded)
+            val signature = ByteArray(BYTES)
+            nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclSecretKey)
+            return DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
     }

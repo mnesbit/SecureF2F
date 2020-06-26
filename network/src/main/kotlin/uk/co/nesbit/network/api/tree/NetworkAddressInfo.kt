@@ -5,20 +5,23 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
+import uk.co.nesbit.crypto.toByteArray
 
-class NetworkAddressInfo(val identity: VersionedIdentity, val treeAddress: List<SecureHash>) : AvroConvertible {
+class NetworkAddressInfo(
+    val identity: VersionedIdentity,
+    val treeAddress1: List<SecureHash>,
+    val treeAddress2: List<SecureHash>,
+    val treeAddress3: List<SecureHash>
+) : AvroConvertible {
     constructor(networkAddressInfoRecord: GenericRecord) :
             this(
                 networkAddressInfoRecord.getTyped("identity"),
-                networkAddressInfoRecord.getObjectArray("treeAddress", ::SecureHash)
+                networkAddressInfoRecord.getObjectArray("treeAddress1", ::SecureHash),
+                networkAddressInfoRecord.getObjectArray("treeAddress2", ::SecureHash),
+                networkAddressInfoRecord.getObjectArray("treeAddress3", ::SecureHash)
             )
-
-    init {
-        require(treeAddress.isNotEmpty() && treeAddress.last() == identity.id) {
-            "Address invalid"
-        }
-    }
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
@@ -40,23 +43,66 @@ class NetworkAddressInfo(val identity: VersionedIdentity, val treeAddress: List<
     override fun toGenericRecord(): GenericRecord {
         val networkAddressInfoRecord = GenericData.Record(networkAddressInfoSchema)
         networkAddressInfoRecord.putTyped("identity", identity)
-        networkAddressInfoRecord.putObjectArray("treeAddress", treeAddress)
+        networkAddressInfoRecord.putObjectArray("treeAddress1", treeAddress1)
+        networkAddressInfoRecord.putObjectArray("treeAddress2", treeAddress2)
+        networkAddressInfoRecord.putObjectArray("treeAddress3", treeAddress3)
         return networkAddressInfoRecord
     }
 
-    fun greedyDist(other: NetworkAddressInfo): Int = greedyDist(other.treeAddress)
+    val roots: List<SecureHash> by lazy {
+        listOf(treeAddress1.first(), treeAddress2.first(), treeAddress3.first())
+    }
 
-    fun greedyDist(
+    val paths: List<List<SecureHash>> by lazy {
+        listOf(treeAddress1, treeAddress2, treeAddress3)
+    }
+
+    val depths: List<Int> by lazy {
+        listOf(treeAddress1.size, treeAddress2.size, treeAddress3.size)
+    }
+
+    private fun verifyPath(path: List<SecureHash>, index: Int) {
+        require(path.isNotEmpty() && path.last() == identity.id) {
+            "Address invalid"
+        }
+        val uniqueIds = path.toSet()
+        require(uniqueIds.size == path.size) {
+            "No circular paths allowed"
+        }
+        val minHash = uniqueIds.minBy { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }
+        require(path.first() == minHash) {
+            "root should always be lowest hash in chain"
+        }
+    }
+
+    fun verify() {
+        verifyPath(treeAddress1, 0)
+        verifyPath(treeAddress2, 1)
+        verifyPath(treeAddress3, 2)
+    }
+
+    fun greedyDist(other: NetworkAddressInfo): Int = minOf(
+        greedyDist(treeAddress1, other.treeAddress1),
+        greedyDist(treeAddress2, other.treeAddress2),
+        greedyDist(treeAddress3, other.treeAddress3)
+    )
+
+    private fun greedyDist(
+        self: List<SecureHash>,
         other: List<SecureHash>
     ): Int {
         var prefixLength = 0
-        while (prefixLength < treeAddress.size
+        while (prefixLength < self.size
             && prefixLength < other.size
-            && treeAddress[prefixLength] == other[prefixLength]
+            && self[prefixLength] == other[prefixLength]
         ) {
             ++prefixLength
         }
-        return treeAddress.size + other.size - 2 * prefixLength
+        return self.size + other.size - 2 * prefixLength
+    }
+
+    override fun toString(): String {
+        return identity.id.toString()
     }
 
     override fun equals(other: Any?): Boolean {
@@ -66,14 +112,19 @@ class NetworkAddressInfo(val identity: VersionedIdentity, val treeAddress: List<
         other as NetworkAddressInfo
 
         if (identity != other.identity) return false
-        if (treeAddress != other.treeAddress) return false
+        if (treeAddress1 != other.treeAddress1) return false
+        if (treeAddress2 != other.treeAddress2) return false
+        if (treeAddress3 != other.treeAddress3) return false
 
         return true
     }
 
     override fun hashCode(): Int {
         var result = identity.hashCode()
-        result = 31 * result + treeAddress.hashCode()
+        result = 31 * result + treeAddress1.hashCode()
+        result = 31 * result + treeAddress2.hashCode()
+        result = 31 * result + treeAddress3.hashCode()
         return result
     }
+
 }
