@@ -12,6 +12,9 @@ import org.junit.Before
 import org.junit.Test
 import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.net.LinkReceivedMessage
+import uk.co.nesbit.network.api.net.LinkSendMessage
+import uk.co.nesbit.network.api.net.OpenRequest
 import uk.co.nesbit.network.mocknet.*
 import uk.co.nesbit.network.util.seconds
 
@@ -91,10 +94,6 @@ class NetworkTest {
                     expectNoMessage()
                     // At end of process state should be well defined
                     assertEquals(expectedLinkInfo, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(
-                        expectedLinkInfo.linkId,
-                        physicalNetworkActor.underlyingActor().addresses.values.single()
-                    )
                     assertEquals(1, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(testActor(), physicalNetworkActor.underlyingActor().targets[expectedLinkInfo.linkId])
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
@@ -137,7 +136,6 @@ class NetworkTest {
                     expectNoMessage()
                     // At end of process state should be well defined
                     assertEquals(updateMessage, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(updateMessage.linkId, physicalNetworkActor.underlyingActor().addresses.values.single())
                     assertEquals(1, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(testActor(), physicalNetworkActor.underlyingActor().targets[updateMessage.linkId])
                     assertEquals(1, physicalNetworkActor.underlyingActor().foreignLinks.size)
@@ -186,7 +184,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent terminate event should do nothing
@@ -234,7 +231,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent drop event should do nothing
@@ -285,7 +281,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent terminate event should do nothing
@@ -333,7 +328,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent drop message should do nothing

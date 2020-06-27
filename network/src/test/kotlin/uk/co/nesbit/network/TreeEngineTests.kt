@@ -8,7 +8,7 @@ import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.api.tree.Hello.Companion.NONCE_SIZE
-import uk.co.nesbit.network.engineOld.KeyServiceImpl
+import uk.co.nesbit.network.services.KeyServiceImpl
 import java.security.SignatureException
 import java.time.Clock
 import java.time.Instant

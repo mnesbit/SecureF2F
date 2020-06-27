@@ -8,11 +8,9 @@ import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
-import uk.co.nesbit.network.mocknet.CloseAllRequest
-import uk.co.nesbit.network.mocknet.CloseRequest
-import uk.co.nesbit.network.mocknet.OpenRequest
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
@@ -321,7 +319,8 @@ class NeighbourLinkActor(
         message: Message
     ) {
         val oneHopMessage = OneHopMessage.createOneHopMessage(0, 0, message)
-        val networkMessage = LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
+        val networkMessage =
+            LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
 
