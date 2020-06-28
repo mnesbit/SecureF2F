@@ -12,6 +12,9 @@ import org.junit.Before
 import org.junit.Test
 import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.net.LinkReceivedMessage
+import uk.co.nesbit.network.api.net.LinkSendMessage
+import uk.co.nesbit.network.api.net.OpenRequest
 import uk.co.nesbit.network.mocknet.*
 import uk.co.nesbit.network.util.seconds
 
@@ -42,7 +45,7 @@ class NetworkTest {
                     // enable watch of any (unexpected) LinkInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // confirm tbe DNS query arrives
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // and then no more messages
                     expectNoMessage()
                 }
@@ -64,7 +67,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query
@@ -91,10 +94,6 @@ class NetworkTest {
                     expectNoMessage()
                     // At end of process state should be well defined
                     assertEquals(expectedLinkInfo, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(
-                        expectedLinkInfo.linkId,
-                        physicalNetworkActor.underlyingActor().addresses.values.single()
-                    )
                     assertEquals(1, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(testActor(), physicalNetworkActor.underlyingActor().targets[expectedLinkInfo.linkId])
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
@@ -117,7 +116,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     physicalNetworkActor.tell(
@@ -137,7 +136,6 @@ class NetworkTest {
                     expectNoMessage()
                     // At end of process state should be well defined
                     assertEquals(updateMessage, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(updateMessage.linkId, physicalNetworkActor.underlyingActor().addresses.values.single())
                     assertEquals(1, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(testActor(), physicalNetworkActor.underlyingActor().targets[updateMessage.linkId])
                     assertEquals(1, physicalNetworkActor.underlyingActor().foreignLinks.size)
@@ -162,7 +160,7 @@ class NetworkTest {
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query
@@ -186,7 +184,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent terminate event should do nothing
@@ -213,7 +210,7 @@ class NetworkTest {
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query and use proxy node
@@ -234,7 +231,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent drop event should do nothing
@@ -263,7 +259,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")
@@ -285,7 +281,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent terminate event should do nothing
@@ -311,7 +306,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")
@@ -333,7 +328,6 @@ class NetworkTest {
                     assertEquals(initialLinkUpMsg.copy(status = LinkStatus.LINK_DOWN), linkDownMsg)
                     // At end of process state should be well defined
                     assertEquals(linkDownMsg, physicalNetworkActor.underlyingActor().links.values.single())
-                    assertEquals(0, physicalNetworkActor.underlyingActor().addresses.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().targets.size)
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent drop message should do nothing

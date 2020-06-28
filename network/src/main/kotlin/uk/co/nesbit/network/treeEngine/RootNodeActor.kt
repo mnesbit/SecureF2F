@@ -5,7 +5,7 @@ import akka.japi.pf.ReceiveBuilder
 import scala.concurrent.duration.Duration
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
-import uk.co.nesbit.network.mocknet.PhysicalNetworkActor2
+import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
 import uk.co.nesbit.network.util.createProps
 
 class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
@@ -30,7 +30,7 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
 
     private val physicalNetworkActor: ActorRef =
         context.actorOf(
-            PhysicalNetworkActor2.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+            PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
             "net"
         )
 

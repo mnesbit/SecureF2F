@@ -1,5 +1,7 @@
 package uk.co.nesbit.network.api
 
-interface LinkId
+interface LinkId {
+    val id: Int
+}
 
-data class SimpleLinkId(val id: Int) : LinkId
+data class SimpleLinkId(override val id: Int) : LinkId

@@ -8,11 +8,9 @@ import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.*
+import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
-import uk.co.nesbit.network.mocknet.CloseAllRequest
-import uk.co.nesbit.network.mocknet.CloseRequest
-import uk.co.nesbit.network.mocknet.OpenRequest
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
@@ -321,7 +319,8 @@ class NeighbourLinkActor(
         message: Message
     ) {
         val oneHopMessage = OneHopMessage.createOneHopMessage(0, 0, message)
-        val networkMessage = LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
+        val networkMessage =
+            LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
 
@@ -370,8 +369,7 @@ class NeighbourLinkActor(
             if (linkInfo.route.to in networkConfig.staticRoutes) {
                 val prevLink = staticLinkStatus[linkInfo.route.to]
                 if (prevLink != null) {
-                    val from = linkInfo.route.to as NetworkAddress
-                    val preferActive = (from.id >= networkConfig.networkId.id)
+                    val preferActive = (linkInfo.route.to.toString() >= networkConfig.networkId.toString())
                     if (preferActive xor (linkInfo.status == LinkStatus.LINK_UP_PASSIVE)) {
                         log().warning("close duplicate link $linkId")
                         physicalNetworkActor.tell(CloseRequest(linkId), self)

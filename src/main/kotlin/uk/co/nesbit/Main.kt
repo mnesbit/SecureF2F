@@ -3,6 +3,7 @@ package uk.co.nesbit
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.typesafe.config.ConfigFactory
+import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.mocknet.DnsMockActor
@@ -15,11 +16,11 @@ import java.util.*
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
-    val degree = 3
-    val N = 1000
-    val simNetwork = makeRandomNetwork(degree, N)
+    //val degree = 3
+    //val N = 1000
+    //val simNetwork = makeRandomNetwork(degree, N)
     //val simNetwork = makeLinearNetwork(N)
-    //val simNetwork = makeASNetwork()
+    val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
@@ -37,7 +38,7 @@ fun main(args: Array<String>) {
     actorSystem.terminate().value()
 }
 
-private fun diameter(graph: Map<NetworkAddress, Set<NetworkAddress>>): Pair<Int, Int> {
+private fun diameter(graph: Map<Address, Set<Address>>): Pair<Int, Int> {
     val INF = 1000000
     val allDistances = Array(graph.size) { IntArray(graph.size) { INF } }
     val idMap = graph.keys.mapIndexed { index, networkAddress -> networkAddress to index }.toMap()
@@ -73,10 +74,10 @@ private fun diameter(graph: Map<NetworkAddress, Set<NetworkAddress>>): Pair<Int,
     return Pair(diameter, (distTotal / linkCount))
 }
 
-private fun makeLinearNetwork(N: Int): MutableMap<NetworkAddress, Set<NetworkAddress>> {
-    val simNetwork = mutableMapOf<NetworkAddress, Set<NetworkAddress>>()
+private fun makeLinearNetwork(N: Int): MutableMap<Address, Set<Address>> {
+    val simNetwork = mutableMapOf<Address, Set<Address>>()
     for (i in (1..N)) {
-        val links = mutableSetOf<NetworkAddress>()
+        val links = mutableSetOf<Address>()
         if (i > 1) {
             links += NetworkAddress(i - 1)
         }
@@ -88,10 +89,10 @@ private fun makeLinearNetwork(N: Int): MutableMap<NetworkAddress, Set<NetworkAdd
     return simNetwork
 }
 
-private fun makeRandomNetwork(minDegree: Int, N: Int): Map<NetworkAddress, Set<NetworkAddress>> {
+private fun makeRandomNetwork(minDegree: Int, N: Int): Map<Address, Set<Address>> {
     // Note this won't be uniform over regular graphs, but that code gets messy
     val rand = Random()
-    val simNetwork = mutableMapOf<NetworkAddress, MutableSet<NetworkAddress>>()
+    val simNetwork = mutableMapOf<Address, MutableSet<Address>>()
 
     for (nodeAddress in (1..N)) {
         val currentNode = NetworkAddress(nodeAddress)
@@ -109,12 +110,12 @@ private fun makeRandomNetwork(minDegree: Int, N: Int): Map<NetworkAddress, Set<N
     return simNetwork
 }
 
-private fun makeASNetwork(): Map<NetworkAddress, Set<NetworkAddress>> {
+private fun makeASNetwork(): Map<Address, Set<Address>> {
     val classLoader = ClassLoader.getSystemClassLoader()
     //From https://snap.stanford.edu/data/as-733.html
     val networkInfoFile = resourceAsString("./as20000102.txt", classLoader)!!
     val lines = networkInfoFile.lines()
-    val network = mutableMapOf<NetworkAddress, MutableSet<NetworkAddress>>()
+    val network = mutableMapOf<Address, MutableSet<Address>>()
     for (line in lines) {
         if (line.startsWith('#')) continue
         val splits = line.split(' ', ',', '\t')
