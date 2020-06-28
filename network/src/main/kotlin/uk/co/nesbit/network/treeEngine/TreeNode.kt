@@ -11,6 +11,6 @@ class TreeNode(private val actorSystem: ActorSystem, networkConfig: NetworkConfi
     val rootNodeActor: ActorRef =
         actorSystem.actorOf(
             RootNodeActor.getProps(keyService, networkConfig),
-            networkConfig.networkId.id.toString()
+            networkConfig.networkId.actorName
         )
 }

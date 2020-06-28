@@ -369,8 +369,7 @@ class NeighbourLinkActor(
             if (linkInfo.route.to in networkConfig.staticRoutes) {
                 val prevLink = staticLinkStatus[linkInfo.route.to]
                 if (prevLink != null) {
-                    val from = linkInfo.route.to as NetworkAddress
-                    val preferActive = (from.id >= networkConfig.networkId.id)
+                    val preferActive = (linkInfo.route.to.toString() >= networkConfig.networkId.toString())
                     if (preferActive xor (linkInfo.status == LinkStatus.LINK_UP_PASSIVE)) {
                         log().warning("close duplicate link $linkId")
                         physicalNetworkActor.tell(CloseRequest(linkId), self)

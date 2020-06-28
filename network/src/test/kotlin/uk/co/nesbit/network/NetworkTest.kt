@@ -45,7 +45,7 @@ class NetworkTest {
                     // enable watch of any (unexpected) LinkInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // confirm tbe DNS query arrives
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // and then no more messages
                     expectNoMessage()
                 }
@@ -67,7 +67,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query
@@ -116,7 +116,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     physicalNetworkActor.tell(
@@ -160,7 +160,7 @@ class NetworkTest {
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query
@@ -210,7 +210,7 @@ class NetworkTest {
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off active link creation
                     physicalNetworkActor.tell(OpenRequest(NetworkAddress(2)), ActorRef.noSender())
                     // confirm onward DNS query and use proxy node
@@ -259,7 +259,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")
@@ -306,7 +306,7 @@ class NetworkTest {
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
-                    expectMsg(DnsRegistration(config.networkId))
+                    expectMsg(DnsRegistration(config.networkId as NetworkAddress))
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")

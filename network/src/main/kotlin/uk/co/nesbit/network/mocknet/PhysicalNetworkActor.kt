@@ -24,7 +24,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     internal data class ConnectResult(val linkId: LinkId, val opened: Boolean)
     internal data class ConnectionDrop(val initiatorLinkId: LinkId)
 
-    private val networkId get() = networkConfig.networkId
+    private val networkId: NetworkAddress get() = networkConfig.networkId as NetworkAddress
     private val owners = mutableSetOf<ActorRef>()
 
     internal val links = mutableMapOf<LinkId, LinkInfo>()
@@ -82,7 +82,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         }
     }
 
-    private fun createLink(remoteAddress: NetworkAddress): LinkId {
+    private fun createLink(remoteAddress: Address): LinkId {
         val newLinkId = SimpleLinkId(linkIdCounter.getAndIncrement())
         val newLinkInfo = LinkInfo(newLinkId, Route(networkId, remoteAddress), LinkStatus.LINK_DOWN)
         links[newLinkId] = newLinkInfo
@@ -123,6 +123,12 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     private fun onOpenRequest(request: OpenRequest) {
         //log().info("OpenRequest $request")
         val newLinkId = createLink(request.remoteNetworkId)
+        if (request.remoteNetworkId !is NetworkAddress) {
+            for (owner in owners) {
+                owner.tell(links[newLinkId]!!, self)
+            }
+            return
+        }
         dnsSelector.tell(DnsLookup(request.remoteNetworkId, newLinkId), self)
     }
 

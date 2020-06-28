@@ -2,9 +2,9 @@ package uk.co.nesbit.network.api
 
 
 data class NetworkConfiguration(
-    val networkId: NetworkAddress,
+    val networkId: Address,
     val allowDynamicRouting: Boolean,
-    val staticRoutes: Set<NetworkAddress>,
-    val blackListedSources: Set<NetworkAddress>
+    val staticRoutes: Set<Address>,
+    val blackListedSources: Set<Address>
 )
 
