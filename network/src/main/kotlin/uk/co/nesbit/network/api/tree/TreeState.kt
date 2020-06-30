@@ -83,26 +83,26 @@ class TreeState(
         }
     }
 
-    val paths: List<SecurePath> by lazy {
+    val paths: List<SecurePath> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(path1, path2, path3)
     }
 
-    val shortPaths: List<List<SphinxPublicIdentity>> by lazy {
+    val shortPaths: List<List<SphinxPublicIdentity>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(path1.shortPath, path2.shortPath, path3.shortPath)
     }
 
-    val treeAddress: NetworkAddressInfo by lazy {
+    val treeAddress: NetworkAddressInfo by lazy(LazyThreadSafetyMode.PUBLICATION) {
         NetworkAddressInfo(path1.path.last().identity,
             path1.path.map { it.identity.id },
             path2.path.map { it.identity.id },
             path3.path.map { it.identity.id })
     }
 
-    val roots: List<SecureHash> by lazy {
+    val roots: List<SecureHash> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(path1.path.first().identity.id, path2.path.first().identity.id, path3.path.first().identity.id)
     }
 
-    val depths: List<Int> by lazy {
+    val depths: List<Int> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(path1.path.size, path2.path.size, path3.path.size)
     }
 

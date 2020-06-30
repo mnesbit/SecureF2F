@@ -49,15 +49,15 @@ class NetworkAddressInfo(
         return networkAddressInfoRecord
     }
 
-    val roots: List<SecureHash> by lazy {
+    val roots: List<SecureHash> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(treeAddress1.first(), treeAddress2.first(), treeAddress3.first())
     }
 
-    val paths: List<List<SecureHash>> by lazy {
+    val paths: List<List<SecureHash>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(treeAddress1, treeAddress2, treeAddress3)
     }
 
-    val depths: List<Int> by lazy {
+    val depths: List<Int> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         listOf(treeAddress1.size, treeAddress2.size, treeAddress3.size)
     }
 

@@ -1,9 +1,6 @@
 description 'Akka based network routing simulator'
 
 dependencies {
-    // RxJava: observable streams of events.
-    api "io.reactivex.rxjava2:rxjava:$rx_version"
-
     // Actor framework
     api "com.typesafe.akka:akka-actor_2.13:$akka_version"
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"

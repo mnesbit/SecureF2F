@@ -69,6 +69,9 @@ class NeighbourLinkActor(
     private val owners = mutableSetOf<ActorRef>()
     private val clock = Clock.systemUTC()
     private val staticLinkStatus = mutableMapOf<Address, LinkId>()
+    private val staticLinkReverseStatus = mutableMapOf<LinkId, Address>()
+    private val staticLinkAlternate = mutableMapOf<Address, LinkId>()
+    private val staticLinkReverseAlternate = mutableMapOf<LinkId, Address>()
     private val linkRequestPending = mutableSetOf<Address>()
     private val addresses = mutableMapOf<SecureHash, LinkId>()
     private val linkStates = mutableMapOf<LinkId, LinkState>()
@@ -178,10 +181,18 @@ class NeighbourLinkActor(
         if (linkRequestPending.size < MAX_CONNECTS) {
             for (expectedLink in networkConfig.staticRoutes.shuffled()) {
                 if (!staticLinkStatus.containsKey(expectedLink)
+                    && !staticLinkAlternate.containsKey(expectedLink)
                     && !linkRequestPending.contains(expectedLink)
                     && expectedLink != networkConfig.networkId // no self-links
                 ) {
-                    log().info("open static link to $expectedLink")
+                    log().info(
+                        "open static link to $expectedLink " +
+                                "expected ${networkConfig.staticRoutes.size} " +
+                                "open ${staticLinkStatus.size} " +
+                                "pending ${linkRequestPending.size} " +
+                                "aliased ${staticLinkAlternate.size} " +
+                                "remaining ${networkConfig.staticRoutes.size - staticLinkStatus.size - staticLinkAlternate.size}"
+                    )
                     linkRequestPending += expectedLink
                     physicalNetworkActor.tell(OpenRequest(expectedLink), self)
                     if (linkRequestPending.size >= MAX_CONNECTS) break
@@ -363,31 +374,40 @@ class NeighbourLinkActor(
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
         val linkId = linkInfo.linkId
-        //log().info("onLinkStatusChange $linkId $linkInfo")
-        linkRequestPending -= linkInfo.route.to
+        log().info("onLinkStatusChange $linkId $linkInfo")
         if (linkInfo.status.active) {
-            if (linkInfo.route.to in networkConfig.staticRoutes) {
+            if (linkInfo.status == LinkStatus.LINK_UP_ACTIVE
+                && linkInfo.route.to in networkConfig.staticRoutes
+            ) {
+                linkRequestPending -= linkInfo.route.to
                 val prevLink = staticLinkStatus[linkInfo.route.to]
                 if (prevLink != null) {
-                    val preferActive = (linkInfo.route.to.toString() >= networkConfig.networkId.toString())
-                    if (preferActive xor (linkInfo.status == LinkStatus.LINK_UP_PASSIVE)) {
-                        log().warning("close duplicate link $linkId")
-                        physicalNetworkActor.tell(CloseRequest(linkId), self)
-                        return
-                    } else {
-                        log().warning("close duplicate link $prevLink")
-                        physicalNetworkActor.tell(CloseRequest(prevLink), self)
-                    }
+                    log().warning("close previous static link $prevLink")
+                    physicalNetworkActor.tell(CloseRequest(prevLink), self)
                 }
                 staticLinkStatus[linkInfo.route.to] = linkId
+                staticLinkReverseStatus[linkId] = linkInfo.route.to
             }
             sendHello(linkId)
         } else {
-            log().info("Link lost $linkInfo")
+            log().info("Link lost $linkId $linkInfo")
+            linkRequestPending -= linkInfo.route.to
             staticLinkStatus.remove(linkInfo.route.to, linkId)
+            staticLinkReverseStatus.remove(linkId)
+            val equivalentAddress = staticLinkReverseAlternate.remove(linkId)
+            if (equivalentAddress != null) {
+                staticLinkAlternate.remove(equivalentAddress)
+            }
             val oldState = linkStates.remove(linkId)
             if (oldState?.identity != null) {
-                addresses.remove(oldState.identity!!.id)
+                if (addresses.remove(oldState.identity!!.id, linkId)) {
+                    for (altLinkState in linkStates.values) {
+                        if (altLinkState.identity?.id == oldState.identity!!.id) {
+                            addresses[altLinkState.identity!!.id] = altLinkState.linkId
+                            break
+                        }
+                    }
+                }
             }
             neighbourChanged = true
             val now = clock.instant()
@@ -395,6 +415,7 @@ class NeighbourLinkActor(
             sendNeighbourUpdate(now)
             sendTreeStatus(now)
         }
+        openStaticLinks()
     }
 
     private fun sendHello(linkId: LinkId) {
@@ -452,18 +473,23 @@ class NeighbourLinkActor(
         //log().info("process hello message from $sourceLink")
         val prevAddress = addresses[hello.sourceId.id]
         if (prevAddress != null && prevAddress != sourceLink) {
-            log().info("close link from duplicate address")
-            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
-            return
+            val prevLink = linkStates[prevAddress]!!
+            if (networkId < hello.sourceId.id) {
+                val staticTarget = staticLinkReverseStatus[sourceLink]
+                if (staticTarget != null) {
+                    log().info("map preferred remote link equivalent $staticTarget via ${prevLink.linkId}")
+                    staticLinkAlternate[staticTarget] = prevLink.linkId
+                    staticLinkReverseAlternate[prevLink.linkId] = staticTarget
+                    log().info("close link $sourceLink from duplicate address")
+                    physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+                    return
+                }
+            }
         }
         linkState.identity = hello.sourceId
         linkState.sendSecureId = hello.secureLinkId
         addresses[hello.sourceId.id] = sourceLink
         neighbourChanged = true
-        val now = clock.instant()
-        calcParents(now)
-        sendNeighbourUpdate(now)
-        sendTreeForLink(now, sourceLink)
     }
 
     private fun processTreeStateMessage(sourceLink: LinkId, tree: TreeState) {
