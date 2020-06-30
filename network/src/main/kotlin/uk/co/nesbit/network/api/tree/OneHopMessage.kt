@@ -58,7 +58,7 @@ class OneHopMessage private constructor(
         }
     }
 
-    val payloadMessage: Message by lazy {
+    val payloadMessage: Message by lazy(LazyThreadSafetyMode.PUBLICATION) {
         schemas.deserialize(schemaType, payload) as Message
     }
 
