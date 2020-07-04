@@ -39,7 +39,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // init basic actor
                     val physicalNetworkActor = actorSystem!!.actorOf(PhysicalNetworkActor.getProps(config))
                     // enable watch of any (unexpected) LinkInfo updates
@@ -60,7 +60,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     val mockDns = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -109,7 +109,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -152,7 +152,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     val mockDns = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -202,7 +202,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     val mockDns = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -252,7 +252,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -299,7 +299,7 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "Dns")
-                    val config = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
+                    val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
@@ -346,8 +346,8 @@ class NetworkTest {
                 within(5.seconds()) {
                     // repoint /user/Dns to main test actor
                     actorSystem!!.actorOf(DnsMockActor.getProps(), "Dns")
-                    val config1 = NetworkConfiguration(NetworkAddress(1), false, setOf(), setOf())
-                    val config2 = NetworkConfiguration(NetworkAddress(2), false, setOf(), setOf())
+                    val config1 = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
+                    val config2 = NetworkConfiguration(NetworkAddress(2), NetworkAddress(2), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor1 =
                         TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config1))
