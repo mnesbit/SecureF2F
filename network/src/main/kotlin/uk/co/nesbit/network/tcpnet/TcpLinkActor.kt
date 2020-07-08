@@ -2,6 +2,7 @@ package uk.co.nesbit.network.tcpnet
 
 import akka.actor.ActorRef
 import akka.actor.Props
+import akka.actor.Terminated
 import akka.io.Tcp
 import akka.io.TcpMessage
 import akka.util.ByteString
@@ -69,6 +70,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
             is Tcp.Event -> onEvent(message)
             is LinkSendMessage -> onLinkSendMessage(message)
             is CloseRequest -> onCloseRequest()
+            is Terminated -> onTerminated(message)
             else -> log().warning("Unrecognised message $message")
         }
     }
@@ -94,6 +96,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
                     "${message.remoteAddress()}"
         )
         tcpActor = sender
+        context.watch(tcpActor)
         sender.tell(TcpMessage.register(self, false, true), self)
         connected = true
         context.parent.tell(
@@ -105,46 +108,60 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
     }
 
     private fun onCloseRequest() {
-        log().info("CloseRequest")
+        //log().info("CloseRequest")
         tcpActor?.tell(TcpMessage.close(), self)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun onClosed(message: Tcp.ConnectionClosed) {
         connected = false
-        log().info("Tcp Connection ${linkId} Closed ${message}")
+        //log().info("Tcp Connection ${linkId} Closed ${message}")
         context.parent.tell(TcpNetworkActor.LinkLost(linkId), self)
         context.stop(self)
+    }
+
+    private fun onTerminated(message: Terminated) {
+        if (message.actor == tcpActor) {
+            //log().warning("Tcp actor exited stopping")
+            context.parent.tell(TcpNetworkActor.LinkLost(linkId), self)
+            context.stop(self)
+        }
     }
 
     private fun onEvent(message: Tcp.Event) {
         //log().info("Received event $message")
         if (message is Ack) {
-            //log().info("Received Ack of ${message.seqNo}")
-            if (ackedSeqNo == message.seqNo) {
-                bufferedWrites.remove()
-                ++ackedSeqNo
-                //log().info("ackedSeqNo $ackedSeqNo buffered ${bufferedWrites.size} current seq ${ackedSeqNo + bufferedWrites.size}")
-            } else {
-                log().error("bad ack ${message.seqNo} expected $ackedSeqNo")
-            }
-            if (writesBlocked) {
-                if (message.seqNo >= nackedSeqNo) {
-                    if (leadIn > 0) {
-                        //log().info("send single $ackedSeqNo")
-                        tcpActor!!.tell(TcpMessage.write(bufferedWrites.peek(), Ack(ackedSeqNo)), self)
-                        --leadIn
-                    } else {
-                        //log().info("send all")
-                        for ((offset, data) in bufferedWrites.withIndex()) {
-                            tcpActor!!.tell(TcpMessage.write(data, Ack(ackedSeqNo + offset)), self)
-                        }
-                        writesBlocked = false
-                    }
-                }
-            }
+            processAck(message)
         } else if (message is Tcp.WritingResumed) {
+            //log().info("writing resumed $linkId ${bufferedWrites.size}")
             //log().info("send single $ackedSeqNo")
             tcpActor!!.tell(TcpMessage.write(bufferedWrites.peek(), Ack(ackedSeqNo)), self)
+        }
+    }
+
+    private fun processAck(message: Ack) {
+        //log().info("Received Ack of ${message.seqNo}")
+        if (ackedSeqNo == message.seqNo) {
+            bufferedWrites.remove()
+            ++ackedSeqNo
+            //log().info("${linkId} ackedSeqNo $ackedSeqNo buffered ${bufferedWrites.size} current seq ${ackedSeqNo + bufferedWrites.size}")
+        } else {
+            log().error("bad ack ${message.seqNo} expected $ackedSeqNo")
+        }
+        if (writesBlocked) {
+            if (message.seqNo >= nackedSeqNo && bufferedWrites.isNotEmpty()) {
+                if (leadIn > 0) {
+                    //log().info("send single $ackedSeqNo")
+                    tcpActor!!.tell(TcpMessage.write(bufferedWrites.peek(), Ack(ackedSeqNo)), self)
+                    --leadIn
+                } else {
+                    //log().info("send all")
+                    for ((offset, data) in bufferedWrites.withIndex()) {
+                        tcpActor!!.tell(TcpMessage.write(data, Ack(ackedSeqNo + offset)), self)
+                    }
+                    writesBlocked = false
+                }
+            }
         }
     }
 
@@ -189,7 +206,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
 
     private fun handleWriteNack(cmd: Tcp.Write) {
         if (!writesBlocked) {
-            log().info("${linkId} got write nack")
+            //log().info("${linkId} got write nack ${bufferedWrites.size}")
             writesBlocked = true
             nackedSeqNo = (cmd.ack() as Ack).seqNo
             leadIn = LEAD_IN_SIZE
