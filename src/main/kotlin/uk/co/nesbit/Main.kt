@@ -13,14 +13,15 @@ import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
 import java.util.*
 
+
 fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
     val N = 1000
-    val simNetwork = makeRandomNetwork(degree, N)
-    //val simNetwork = makeLinearNetwork(N)
-    //val simNetwork = makeASNetwork()
+    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
+    //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
+    //val simNetwork = convertToTcpNetwork(makeASNetwork())
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
@@ -28,7 +29,7 @@ fun main(args: Array<String>) {
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
     for (networkAddress in simNetwork.keys) {
         val links = simNetwork[networkAddress]!!
-        val config = NetworkConfiguration(networkAddress, false, links, emptySet())
+        val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
     val num = Scanner(System.`in`).nextInt()
@@ -36,6 +37,17 @@ fun main(args: Array<String>) {
     ref.tell(Nuke(), ActorRef.noSender())
     while (System.`in`.read() != 'q'.toInt());
     actorSystem.terminate().value()
+}
+
+private fun convertToTcpNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {
+    val tcpNetwork = mutableMapOf<Address, Set<Address>>()
+    for (networkAddress in simNetwork.keys) {
+        val tcpAddress: Address = (networkAddress as NetworkAddress).toLocalPublicAddress()
+        val links = simNetwork[networkAddress]!!
+        val tcpLinks: Set<Address> = links.map { (it as NetworkAddress).toLocalPublicAddress() }.toSet()
+        tcpNetwork[tcpAddress] = tcpLinks
+    }
+    return tcpNetwork
 }
 
 private fun diameter(graph: Map<Address, Set<Address>>): Pair<Int, Int> {
