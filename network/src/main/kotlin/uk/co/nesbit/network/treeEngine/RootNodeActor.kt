@@ -4,8 +4,10 @@ import akka.actor.*
 import akka.japi.pf.ReceiveBuilder
 import scala.concurrent.duration.Duration
 import uk.co.nesbit.network.api.NetworkConfiguration
+import uk.co.nesbit.network.api.PublicAddress
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
+import uk.co.nesbit.network.tcpnet.TcpNetworkActor
 import uk.co.nesbit.network.util.createProps
 
 class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
@@ -28,11 +30,17 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         return supervisorStrategy
     }
 
-    private val physicalNetworkActor: ActorRef =
+    private val physicalNetworkActor: ActorRef = if (networkConfig.networkId is PublicAddress) {
+        context.actorOf(
+            TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+            "net"
+        )
+    } else {
         context.actorOf(
             PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
             "net"
         )
+    }
 
     private val neighbourLinkActor: ActorRef =
         context.actorOf(

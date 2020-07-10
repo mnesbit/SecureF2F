@@ -23,7 +23,7 @@ class NeighbourSendGreedyMessage(val networkAddress: NetworkAddressInfo, val pay
 class NeighbourSendSphinxMessage(val nextHop: SecureHash, val message: SphinxRoutedMessage)
 class NeighbourReceivedGreedyMessage(val replyPath: List<VersionedIdentity>, val payload: ByteArray)
 class NeighbourUpdate(val localId: NetworkAddressInfo, val addresses: List<NetworkAddressInfo>)
-class Nuke()
+class Nuke
 
 class NeighbourLinkActor(
     private val keyService: KeyService,

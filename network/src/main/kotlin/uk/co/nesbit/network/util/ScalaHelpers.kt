@@ -19,7 +19,7 @@ fun Int.seconds(): FiniteDuration =
 fun Long.millis(): FiniteDuration =
     Duration.create(this, TimeUnit.MILLISECONDS)
 
-abstract class AbstractActorWithLoggingAndTimers() : AbstractActorWithTimers() {
+abstract class AbstractActorWithLoggingAndTimers : AbstractActorWithTimers() {
     private var _log: LoggingAdapter? = null
     protected fun log(): LoggingAdapter {
         if (_log == null) {
@@ -59,7 +59,7 @@ abstract class AbstractActorWithLoggingAndTimers() : AbstractActorWithTimers() {
 }
 
 // TODO This works around a stupid error highlighting bug in Idea, hopefully will get fixed
-fun createProps(clazz: Class<*>, vararg inputs: Any): Props {
+fun createProps(clazz: Class<*>, vararg inputs: Any?): Props {
     return Props.create(clazz, CollectionConverters.asScala(inputs.iterator()).toSeq())
 }
 
