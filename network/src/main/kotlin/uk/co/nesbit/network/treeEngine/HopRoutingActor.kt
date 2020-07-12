@@ -251,12 +251,12 @@ class HopRoutingActor(
             sendSphinxMessage(cachedPrivateRoute, message)
             return
         }
-        val wrapper = OneHopMessage.createOneHopMessage(0, 0, message)
+        val wrapper = OneHopMessage.createOneHopMessage(message)
         val encrypted = Ecies.encryptMessage(
-            wrapper.serialize(),
-            null,
-            destination.identity.identity.diffieHellmanPublicKey,
-            keyService.random
+                wrapper.serialize(),
+                null,
+                destination.identity.identity.diffieHellmanPublicKey,
+                keyService.random
         )
         val sendRequest = NeighbourSendGreedyMessage(destination, encrypted)
         neighbourLinkActor.tell(sendRequest, self)
@@ -266,11 +266,11 @@ class HopRoutingActor(
         replyRoute: List<VersionedIdentity>,
         message: Message
     ) {
-        val wrapper = OneHopMessage.createOneHopMessage(0, 0, message)
+        val wrapper = OneHopMessage.createOneHopMessage(message)
         val sphinxMessage = sphinxEncoder.makeMessage(
-            replyRoute.map { it.identity },
-            wrapper.serialize(),
-            keyService.random
+                replyRoute.map { it.identity },
+                wrapper.serialize(),
+                keyService.random
         )
         val sphinxRoutedMessage = SphinxRoutedMessage(sphinxMessage.messageBytes)
         val neighbourSend = NeighbourSendSphinxMessage(replyRoute.first().id, sphinxRoutedMessage)

@@ -329,9 +329,9 @@ class NeighbourLinkActor(
         linkState: LinkState,
         message: Message
     ) {
-        val oneHopMessage = OneHopMessage.createOneHopMessage(0, 0, message)
+        val oneHopMessage = OneHopMessage.createOneHopMessage(message)
         val networkMessage =
-            LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
+                LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
 
