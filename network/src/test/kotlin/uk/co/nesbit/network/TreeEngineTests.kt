@@ -291,21 +291,21 @@ class TreeEngineTests {
 
         val helloMessage = Hello.createHello(id2, keyService)
         val treeStateMessage = TreeState.createTreeState(
-            root1,
-            root2,
-            root3,
-            helloMessage.secureLinkId,
-            keyService.getVersion(id1),
-            keyService.getVersion(id2),
-            keyService,
-            Clock.systemUTC().instant()
+                root1,
+                root2,
+                root3,
+                helloMessage.secureLinkId,
+                keyService.getVersion(id1),
+                keyService.getVersion(id2),
+                keyService,
+                Clock.systemUTC().instant()
         )
-        val oneHopMessage1 = OneHopMessage.createOneHopMessage(1, 0, helloMessage)
+        val oneHopMessage1 = OneHopMessage.createOneHopMessage(helloMessage)
         val oneHopMessage1Serialized = oneHopMessage1.serialize()
         val oneHopMessage1Deserialized = OneHopMessage.deserialize(oneHopMessage1Serialized)
         assertEquals(oneHopMessage1, oneHopMessage1Deserialized)
         assertEquals(helloMessage, OneHopMessage.deserializePayload(oneHopMessage1Serialized))
-        val oneHopMessage2 = OneHopMessage.createOneHopMessage(2, 1, treeStateMessage)
+        val oneHopMessage2 = OneHopMessage.createOneHopMessage(treeStateMessage)
         val oneHopMessage2Serialized = oneHopMessage2.serialize()
         val oneHopMessage2Deserialized = OneHopMessage.deserialize(oneHopMessage2Serialized)
         assertEquals(oneHopMessage2, oneHopMessage2Deserialized)

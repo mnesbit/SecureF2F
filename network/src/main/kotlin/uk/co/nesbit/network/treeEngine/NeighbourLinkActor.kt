@@ -88,7 +88,7 @@ class NeighbourLinkActor(
 
     override fun preStart() {
         super.preStart()
-        log().info("Starting NeighbourLinkActor")
+        //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
             "staticLinkStartup",
@@ -99,12 +99,12 @@ class NeighbourLinkActor(
 
     override fun postStop() {
         super.postStop()
-        log().info("Stopped NeighbourLinkActor")
+        //log().info("Stopped NeighbourLinkActor")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().info("Restart NeighbourLinkActor")
+        log().warning("Restart NeighbourLinkActor")
         physicalNetworkActor.tell(CloseAllRequest(), self)
     }
 
@@ -329,9 +329,9 @@ class NeighbourLinkActor(
         linkState: LinkState,
         message: Message
     ) {
-        val oneHopMessage = OneHopMessage.createOneHopMessage(0, 0, message)
+        val oneHopMessage = OneHopMessage.createOneHopMessage(message)
         val networkMessage =
-            LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
+                LinkSendMessage(linkState.linkId, oneHopMessage.serialize())
         physicalNetworkActor.tell(networkMessage, self)
     }
 

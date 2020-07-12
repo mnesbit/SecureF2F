@@ -28,6 +28,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
         }
 
         const val LEAD_IN_SIZE = 10
+        const val MAX_BUFFER_SIZE = 100
     }
 
     private class Ack(val seqNo: Long) : Tcp.Event
@@ -77,6 +78,10 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
 
     private fun onLinkSendMessage(message: LinkSendMessage) {
         //log().info("LinkSendMessage ${message.msg.size} bytes ${message.msg.printHexBinary()}")
+        if(bufferedWrites.size >= MAX_BUFFER_SIZE) {
+            log().warning("dropping packet due to full buffer")
+            return
+        }
         val packetBuilder = ByteString.newBuilder()
         packetBuilder.sizeHint(message.msg.size + 4)
         packetBuilder.putInt(message.msg.size, ByteOrder.BIG_ENDIAN)
