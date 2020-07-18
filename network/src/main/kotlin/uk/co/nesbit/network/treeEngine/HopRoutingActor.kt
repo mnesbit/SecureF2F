@@ -17,8 +17,6 @@ import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.lang.Long.max
-import java.lang.Long.min
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -34,18 +32,18 @@ class HopRoutingActor(
     companion object {
         @JvmStatic
         fun getProps(
-            keyService: KeyService,
-            networkConfig: NetworkConfiguration,
-            neighbourLinkActor: ActorRef
+                keyService: KeyService,
+                networkConfig: NetworkConfiguration,
+                neighbourLinkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return createProps(javaClass.enclosingClass, keyService, networkConfig, neighbourLinkActor)
         }
 
-        const val ROUTE_CHECK_INTERVAL_MS = 15000L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 500L
-        const val REQUEST_TIMEOUT_MIN_MS = 200L
-        const val REQUEST_TIMEOUT_MAX_MS = 60000L
+        const val REFRESH_INTERVAL = 20000L
+        const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
+        const val REQUEST_TIMEOUT_START_MS = 500L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 100L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 15
@@ -79,10 +77,10 @@ class HopRoutingActor(
     private var gapNEstimate: Int = 0
     private var gapCalcStable: Int = 0
     private var gapZeroDone = false
-    private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
-    private var queryThrottle: Boolean = false
-    private var requestTimeout: Long = 3L * REQUEST_TIMEOUT_MIN_MS
+    private var lastSent: Instant = Instant.ofEpochMilli(0L)
+    private var requestTimeoutScaled: Long = 8L * REQUEST_TIMEOUT_START_MS
+    private var requestTimeoutVarScaled: Long = 0L
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
 
@@ -91,8 +89,8 @@ class HopRoutingActor(
         //log().info("Starting NeighbourLinkActor")
         neighbourLinkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
-            "routeScanningStartup",
-            CheckRoutes(true),
+                "routeScanningStartup",
+                CheckRoutes(true),
             keyService.random.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
@@ -144,11 +142,8 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (outstandingRequests.isEmpty()) {
-            if (queryThrottle) {
-                queryThrottle = false
-                return
-            }
+        if (outstandingRequests.isEmpty()
+                && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
 
@@ -157,7 +152,7 @@ class HopRoutingActor(
                 pollChosenNode(near, now)
             }
             pollRandomNode(now)
-            queryThrottle = true
+            lastSent = now
         }
     }
 
@@ -173,7 +168,7 @@ class HopRoutingActor(
                     bucket.nodes.add(request.value.target)
                 }
                 routeCache.invalidate(request.value.target.identity.id) // don't trust sphinx route
-                requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
+                requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
             }
         }
     }
@@ -190,15 +185,20 @@ class HopRoutingActor(
 
     private fun pollChosenNode(near: NetworkAddressInfo, now: Instant) {
         val nearestTo = findBucket(near.identity.id)
+        var requestId = keyService.random.nextLong()
+        if (requestId < 0L) {
+            requestId = -requestId
+        }
         val request = DhtRequest(
-            requestId++,
-            networkAddress!!.identity.id,
-            networkAddress!!,
-            nearestTo.nodes,
-            networkAddress!!.serialize()
+                requestId,
+                networkAddress!!.identity.id,
+                networkAddress!!,
+                nearestTo.nodes,
+                networkAddress!!.serialize()
         )
         val hops = estimateMessageHops(near)
-        val expiryInterval = requestTimeout * (hops + 1)
+        val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
+        val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
         outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
         sendGreedyMessage(near, request)
@@ -451,13 +451,25 @@ class HopRoutingActor(
             val hops = originalRequest.target.greedyDist(networkAddress!!)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
             val replyTimePerHop = replyTime / hops
-            requestTimeout =
-                min(max((3L * requestTimeout + replyTimePerHop) / 4L, REQUEST_TIMEOUT_MIN_MS), REQUEST_TIMEOUT_MAX_MS)
+            // Van Jacobson Algorithm for RTT
+            if (requestTimeoutVarScaled == 0L) {
+                requestTimeoutScaled = replyTimePerHop shl 3
+                requestTimeoutVarScaled = replyTimePerHop shl 1
+            } else {
+                var replyTimeError = replyTimePerHop - (requestTimeoutScaled shr 3)
+                requestTimeoutScaled += replyTimeError
+                if (replyTimeError < 0) {
+                    replyTimeError = -replyTimeError
+                }
+                replyTimeError -= (requestTimeoutVarScaled shr 2)
+                requestTimeoutVarScaled += replyTimeError
+            }
+
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
             }
         } else {
-            requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
+            requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
         }
     }
 
