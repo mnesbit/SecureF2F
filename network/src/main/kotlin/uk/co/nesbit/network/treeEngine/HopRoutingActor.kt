@@ -17,8 +17,6 @@ import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import uk.co.nesbit.network.util.millis
-import java.lang.Long.max
-import java.lang.Long.min
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -26,26 +24,26 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 class HopRoutingActor(
-    private val keyService: KeyService,
-    private val networkConfig: NetworkConfiguration,
-    private val neighbourLinkActor: ActorRef
+        private val keyService: KeyService,
+        private val networkConfig: NetworkConfiguration,
+        private val neighbourLinkActor: ActorRef
 ) :
-    UntypedBaseActorWithLoggingAndTimers() {
+        UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
-            keyService: KeyService,
-            networkConfig: NetworkConfiguration,
-            neighbourLinkActor: ActorRef
+                keyService: KeyService,
+                networkConfig: NetworkConfiguration,
+                neighbourLinkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return createProps(javaClass.enclosingClass, keyService, networkConfig, neighbourLinkActor)
         }
 
-        const val ROUTE_CHECK_INTERVAL_MS = 15000L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 500L
-        const val REQUEST_TIMEOUT_MIN_MS = 200L
-        const val REQUEST_TIMEOUT_MAX_MS = 60000L
+        const val REFRESH_INTERVAL = 20000L
+        const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
+        const val REQUEST_TIMEOUT_START_MS = 500L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 100L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 15
@@ -56,17 +54,17 @@ class HopRoutingActor(
 
     private class CheckRoutes(val first: Boolean)
     private class KBucket(
-        val xorDistanceMin: Int, // inclusive
-        val xorDistanceMax: Int // exclusive
+            val xorDistanceMin: Int, // inclusive
+            val xorDistanceMax: Int // exclusive
     ) {
         val nodes: MutableList<NetworkAddressInfo> = mutableListOf()
     }
 
     private class RequestTracker(
-        val request: DhtRequest,
-        val sent: Instant,
-        val expire: Instant,
-        val target: NetworkAddressInfo
+            val request: DhtRequest,
+            val sent: Instant,
+            val expire: Instant,
+            val target: NetworkAddressInfo
     )
 
     private val owners = mutableSetOf<ActorRef>()
@@ -79,10 +77,10 @@ class HopRoutingActor(
     private var gapNEstimate: Int = 0
     private var gapCalcStable: Int = 0
     private var gapZeroDone = false
-    private var requestId: Long = 0L
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
-    private var queryThrottle: Boolean = false
-    private var requestTimeout: Long = 3L * REQUEST_TIMEOUT_MIN_MS
+    private var lastSent: Instant = Instant.ofEpochMilli(0L)
+    private var requestTimeoutScaled: Long = 8L * REQUEST_TIMEOUT_START_MS
+    private var requestTimeoutVarScaled: Long = 0L
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
 
@@ -91,9 +89,9 @@ class HopRoutingActor(
         //log().info("Starting NeighbourLinkActor")
         neighbourLinkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
-            "routeScanningStartup",
-            CheckRoutes(true),
-            keyService.random.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
+                "routeScanningStartup",
+                CheckRoutes(true),
+                keyService.random.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -129,9 +127,9 @@ class HopRoutingActor(
     private fun onCheckRoutes(check: CheckRoutes) {
         if (check.first) {
             timers.startTimerWithFixedDelay(
-                "routeScanningPoller",
-                CheckRoutes(false),
-                ROUTE_CHECK_INTERVAL_MS.millis()
+                    "routeScanningPoller",
+                    CheckRoutes(false),
+                    ROUTE_CHECK_INTERVAL_MS.millis()
             )
         }
         if (networkAddress == null) {
@@ -144,11 +142,8 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (outstandingRequests.isEmpty()) {
-            if (queryThrottle) {
-                queryThrottle = false
-                return
-            }
+        if (outstandingRequests.isEmpty()
+                && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
 
@@ -157,7 +152,7 @@ class HopRoutingActor(
                 pollChosenNode(near, now)
             }
             pollRandomNode(now)
-            queryThrottle = true
+            lastSent = now
         }
     }
 
@@ -173,7 +168,7 @@ class HopRoutingActor(
                     bucket.nodes.add(request.value.target)
                 }
                 routeCache.invalidate(request.value.target.identity.id) // don't trust sphinx route
-                requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
+                requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
             }
         }
     }
@@ -190,23 +185,28 @@ class HopRoutingActor(
 
     private fun pollChosenNode(near: NetworkAddressInfo, now: Instant) {
         val nearestTo = findBucket(near.identity.id)
+        var requestId = keyService.random.nextLong()
+        if (requestId < 0L) {
+            requestId = -requestId
+        }
         val request = DhtRequest(
-            requestId++,
-            networkAddress!!.identity.id,
-            networkAddress!!,
-            nearestTo.nodes,
-            networkAddress!!.serialize()
+                requestId,
+                networkAddress!!.identity.id,
+                networkAddress!!,
+                nearestTo.nodes,
+                networkAddress!!.serialize()
         )
         val hops = estimateMessageHops(near)
-        val expiryInterval = requestTimeout * (hops + 1)
+        val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
+        val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
         outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
         sendGreedyMessage(near, request)
     }
 
     private fun logNearestNodeGap(
-        nearest: List<NetworkAddressInfo>,
-        distMin: Int
+            nearest: List<NetworkAddressInfo>,
+            distMin: Int
     ) {
         if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
             val gap = xorDistance(nearest.first().identity.id, networkAddress!!.identity.id) - distMin
@@ -229,8 +229,8 @@ class HopRoutingActor(
                 }
             }
             if (!bestDist.containsKey(networkAddress!!.identity.id)
-                || gapNEstimate != bestDist.size
-                || bestDist[networkAddress!!.identity.id] != distMin
+                    || gapNEstimate != bestDist.size
+                    || bestDist[networkAddress!!.identity.id] != distMin
             ) {
                 bestDist[networkAddress!!.identity.id] = distMin
                 gapCalcStable = 0
@@ -243,8 +243,8 @@ class HopRoutingActor(
     }
 
     private fun sendGreedyMessage(
-        destination: NetworkAddressInfo,
-        message: Message
+            destination: NetworkAddressInfo,
+            message: Message
     ) {
         val cachedPrivateRoute = routeCache.getIfPresent(destination.identity.id)
         if (cachedPrivateRoute != null) {
@@ -263,8 +263,8 @@ class HopRoutingActor(
     }
 
     private fun sendSphinxMessage(
-        replyRoute: List<VersionedIdentity>,
-        message: Message
+            replyRoute: List<VersionedIdentity>,
+            message: Message
     ) {
         val wrapper = OneHopMessage.createOneHopMessage(message)
         val sphinxMessage = sphinxEncoder.makeMessage(
@@ -292,7 +292,7 @@ class HopRoutingActor(
         val bucket = findBucket(node.identity.id)
         val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
         if (current != null
-            && current.identity.currentVersion.version > node.identity.currentVersion.version
+                && current.identity.currentVersion.version > node.identity.currentVersion.version
         ) {
             return
         }
@@ -307,8 +307,8 @@ class HopRoutingActor(
                 val midDist = xorDistance(networkAddress!!.identity.id, mid.identity.id)
                 val (left, right) = bucket.nodes.partition {
                     xorDistance(
-                        networkAddress!!.identity.id,
-                        it.identity.id
+                            networkAddress!!.identity.id,
+                            it.identity.id
                     ) < midDist
                 }
                 if (left.isNotEmpty() && right.isNotEmpty()) {
@@ -365,9 +365,9 @@ class HopRoutingActor(
         //log().info("received greedy routed message")
         val decrypted = try {
             Ecies.decryptMessage(
-                payloadMessage.payload,
-                null,
-                networkAddress!!.identity.identity.diffieHellmanPublicKey
+                    payloadMessage.payload,
+                    null,
+                    networkAddress!!.identity.identity.diffieHellmanPublicKey
             ) { x ->
                 keyService.getSharedDHSecret(networkAddress!!.identity.id, x)
             }
@@ -451,21 +451,33 @@ class HopRoutingActor(
             val hops = originalRequest.target.greedyDist(networkAddress!!)
             val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
             val replyTimePerHop = replyTime / hops
-            requestTimeout =
-                min(max((3L * requestTimeout + replyTimePerHop) / 4L, REQUEST_TIMEOUT_MIN_MS), REQUEST_TIMEOUT_MAX_MS)
+            // Van Jacobson Algorithm for RTT
+            if (requestTimeoutVarScaled == 0L) {
+                requestTimeoutScaled = replyTimePerHop shl 3
+                requestTimeoutVarScaled = replyTimePerHop shl 1
+            } else {
+                var replyTimeError = replyTimePerHop - (requestTimeoutScaled shr 3)
+                requestTimeoutScaled += replyTimeError
+                if (replyTimeError < 0) {
+                    replyTimeError = -replyTimeError
+                }
+                replyTimeError -= (requestTimeoutVarScaled shr 2)
+                requestTimeoutVarScaled += replyTimeError
+            }
+
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
             }
         } else {
-            requestTimeout += REQUEST_TIMEOUT_INCREMENT_MS
+            requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
         }
     }
 
     private fun onSphinxRoutedMessage(payloadMessage: SphinxRoutedMessage) {
         //log().info("received sphinx routed message")
         val messageResult = sphinxEncoder.processMessage(
-            payloadMessage.messageBytes,
-            networkAddress!!.identity.id
+                payloadMessage.messageBytes,
+                networkAddress!!.identity.id
         ) { remotePubKey -> keyService.getSharedDHSecret(networkAddress!!.identity.id, remotePubKey) }
         if (messageResult.valid) {
             if (messageResult.finalPayload != null) {

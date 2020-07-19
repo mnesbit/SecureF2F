@@ -7,26 +7,26 @@ import uk.co.nesbit.avro.*
 import uk.co.nesbit.network.api.Message
 
 class DhtResponse(
-    val requestId: Long,
-    val nearestPaths: List<NetworkAddressInfo>,
-    val data: ByteArray?
+        val requestId: Long,
+        val nearestPaths: List<NetworkAddressInfo>,
+        val data: ByteArray?
 ) : Message {
     constructor(dhtResponse: GenericRecord) :
             this(
-                dhtResponse.getTyped("requestId"),
-                dhtResponse.getObjectArray("nearestPaths", ::NetworkAddressInfo),
-                dhtResponse.getTyped("data")
+                    dhtResponse.getTyped("requestId"),
+                    dhtResponse.getObjectArray("nearestPaths", ::NetworkAddressInfo),
+                    dhtResponse.getTyped("data")
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val dhtResponseSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema
+                .addTypes(
+                        mapOf(
+                                NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/dhtresponse.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/dhtresponse.avsc"))
 
         fun deserialize(bytes: ByteArray): DhtResponse {
             val dhtResponseRecord = dhtResponseSchema.deserialize(bytes)

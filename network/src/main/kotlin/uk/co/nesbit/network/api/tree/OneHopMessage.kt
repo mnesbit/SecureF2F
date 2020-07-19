@@ -8,13 +8,13 @@ import uk.co.nesbit.network.api.Message
 
 
 class OneHopMessage private constructor(
-    private val schemaType: ByteArray,
-    private val payload: ByteArray
+        private val schemaType: ByteArray,
+        private val payload: ByteArray
 ) : Message {
     constructor(oneHopMessageRecord: GenericRecord) :
             this(
-                oneHopMessageRecord.getTyped("schemaFingerprint"),
-                oneHopMessageRecord.getTyped("payload")
+                    oneHopMessageRecord.getTyped("schemaFingerprint"),
+                    oneHopMessageRecord.getTyped("payload")
             )
 
     init {
@@ -24,17 +24,17 @@ class OneHopMessage private constructor(
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val oneHopMessageSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/onehopmessage.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/onehopmessage.avsc"))
 
         private val schemas = SchemaRegistry(
-            listOf(
-                Pair(OneHopMessage::class.java, oneHopMessageSchema),
-                Pair(Hello::class.java, Hello.helloSchema),
-                Pair(TreeState::class.java, TreeState.treeStateSchema),
-                Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
-                Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
-                Pair(AckMessage::class.java, AckMessage.ackMessageSchema)
-            )
+                listOf(
+                        Pair(OneHopMessage::class.java, oneHopMessageSchema),
+                        Pair(Hello::class.java, Hello.helloSchema),
+                        Pair(TreeState::class.java, TreeState.treeStateSchema),
+                        Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
+                        Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
+                        Pair(AckMessage::class.java, AckMessage.ackMessageSchema)
+                )
         )
 
         fun createOneHopMessage(value: Message): OneHopMessage {

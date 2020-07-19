@@ -17,19 +17,19 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class GreedyRoutedMessage private constructor(
-    val destination: NetworkAddressInfo,
-    val ttl: Int,
-    val payload: ByteArray,
-    val pathInfo: List<EncryptedSecurePathItem>,
-    val lastLinkSignature: DigitalSignature
+        val destination: NetworkAddressInfo,
+        val ttl: Int,
+        val payload: ByteArray,
+        val pathInfo: List<EncryptedSecurePathItem>,
+        val lastLinkSignature: DigitalSignature
 ) : Message {
     constructor(greedyRoutedRecord: GenericRecord) :
             this(
-                greedyRoutedRecord.getTyped("destination"),
-                greedyRoutedRecord.getTyped("ttl"),
-                greedyRoutedRecord.getTyped("payload"),
-                greedyRoutedRecord.getObjectArray("pathInfo", ::EncryptedSecurePathItem),
-                greedyRoutedRecord.getTyped("lastLinkSignature")
+                    greedyRoutedRecord.getTyped("destination"),
+                    greedyRoutedRecord.getTyped("ttl"),
+                    greedyRoutedRecord.getTyped("payload"),
+                    greedyRoutedRecord.getObjectArray("pathInfo", ::EncryptedSecurePathItem),
+                    greedyRoutedRecord.getTyped("lastLinkSignature")
             )
 
     companion object {
@@ -38,15 +38,15 @@ class GreedyRoutedMessage private constructor(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val greedyRoutedSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema,
-                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
-                    EncryptedSecurePathItem.encryptedSecurePathItemSchema.fullName to EncryptedSecurePathItem.encryptedSecurePathItemSchema,
-                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                .addTypes(
+                        mapOf(
+                                NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema,
+                                SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
+                                EncryptedSecurePathItem.encryptedSecurePathItemSchema.fullName to EncryptedSecurePathItem.encryptedSecurePathItemSchema,
+                                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/greedyroutedmessage.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/greedyroutedmessage.avsc"))
 
         fun deserialize(bytes: ByteArray): GreedyRoutedMessage {
             val greedyRoutedRecord = greedyRoutedSchema.deserialize(bytes)
@@ -54,92 +54,92 @@ class GreedyRoutedMessage private constructor(
         }
 
         private fun createLinkSignatureBytes(
-            finalDestination: NetworkAddressInfo,
-            ttl: Int,
-            payload: ByteArray,
-            path: List<EncryptedSecurePathItem>,
-            linkId: ByteArray
+                finalDestination: NetworkAddressInfo,
+                ttl: Int,
+                payload: ByteArray,
+                path: List<EncryptedSecurePathItem>,
+                linkId: ByteArray
         ): ByteArray {
             require(linkId.size == NONCE_SIZE) {
                 "LinkId must be 16 bytes long"
             }
             val dummyObject = GreedyRoutedMessage(
-                finalDestination,
-                ttl,
-                payload,
-                path,
-                DigitalSignature("DUMMY", ByteArray(0))
+                    finalDestination,
+                    ttl,
+                    payload,
+                    path,
+                    DigitalSignature("DUMMY", ByteArray(0))
             )
             val pathHash = SecureHash.secureHash(dummyObject.serialize())
             return concatByteArrays(linkId, pathHash.bytes)
         }
 
         fun createGreedRoutedMessage(
-            destination: NetworkAddressInfo,
-            ttl: Int,
-            payload: ByteArray,
-            linkId: ByteArray,
-            from: VersionedIdentity,
-            nextHop: VersionedIdentity,
-            keyService: KeyService,
-            now: Instant
+                destination: NetworkAddressInfo,
+                ttl: Int,
+                payload: ByteArray,
+                linkId: ByteArray,
+                from: VersionedIdentity,
+                nextHop: VersionedIdentity,
+                keyService: KeyService,
+                now: Instant
         ): GreedyRoutedMessage {
             val finalDestination = destination.identity
             val path = SecurePath.createEncryptedSecurePathList(
-                null,
-                from,
-                nextHop,
-                finalDestination.identity,
-                keyService,
-                now
+                    null,
+                    from,
+                    nextHop,
+                    finalDestination.identity,
+                    keyService,
+                    now
             )
             val linkSignOver = createLinkSignatureBytes(
-                destination,
-                ttl,
-                payload,
-                path,
-                linkId
+                    destination,
+                    ttl,
+                    payload,
+                    path,
+                    linkId
             )
             val linkSignature = keyService.sign(from.id, linkSignOver).toDigitalSignature()
             return GreedyRoutedMessage(
-                destination,
-                ttl,
-                payload,
-                path,
-                linkSignature
+                    destination,
+                    ttl,
+                    payload,
+                    path,
+                    linkSignature
             )
         }
 
         fun forwardGreedRoutedMessage(
-            message: GreedyRoutedMessage,
-            linkId: ByteArray,
-            from: VersionedIdentity,
-            nextHop: VersionedIdentity,
-            keyService: KeyService,
-            now: Instant
+                message: GreedyRoutedMessage,
+                linkId: ByteArray,
+                from: VersionedIdentity,
+                nextHop: VersionedIdentity,
+                keyService: KeyService,
+                now: Instant
         ): GreedyRoutedMessage {
             val path = SecurePath.createEncryptedSecurePathList(
-                message.pathInfo,
-                from,
-                nextHop,
-                message.destination.identity.identity,
-                keyService,
-                now
+                    message.pathInfo,
+                    from,
+                    nextHop,
+                    message.destination.identity.identity,
+                    keyService,
+                    now
             )
             val linkSignOver = createLinkSignatureBytes(
-                message.destination,
-                message.ttl,
-                message.payload,
-                path,
-                linkId
+                    message.destination,
+                    message.ttl,
+                    message.payload,
+                    path,
+                    linkId
             )
             val linkSignature = keyService.sign(from.id, linkSignOver).toDigitalSignature()
             return GreedyRoutedMessage(
-                message.destination,
-                message.ttl,
-                message.payload,
-                path,
-                linkSignature
+                    message.destination,
+                    message.ttl,
+                    message.payload,
+                    path,
+                    linkSignature
             )
         }
     }
@@ -155,11 +155,11 @@ class GreedyRoutedMessage private constructor(
     }
 
     fun verify(
-        self: SecureHash,
-        linkId: ByteArray,
-        prevNode: VersionedIdentity,
-        keyService: KeyService,
-        now: Instant
+            self: SecureHash,
+            linkId: ByteArray,
+            prevNode: VersionedIdentity,
+            keyService: KeyService,
+            now: Instant
     ): List<VersionedIdentity> {
         require(pathInfo.isNotEmpty()) {
             "Path must not be empty"
@@ -170,11 +170,11 @@ class GreedyRoutedMessage private constructor(
         }
         val selfIdentity = keyService.getVersion(self)
         val linkSignOver = createLinkSignatureBytes(
-            destination,
-            ttl,
-            payload,
-            pathInfo,
-            linkId
+                destination,
+                ttl,
+                payload,
+                pathInfo,
+                linkId
         )
         try {
             lastLinkSignature.verify(prevNode.identity.signingPublicKey, linkSignOver)

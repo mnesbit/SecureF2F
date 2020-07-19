@@ -22,8 +22,8 @@ class DigitalSignatureAndKey(val signatureAlgorithm: String,
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val digitalSignatureAndKeySchema: Schema = Schema.Parser()
-            .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
+                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignatureAndKey {
             val signatureRecord = digitalSignatureAndKeySchema.deserialize(bytes)

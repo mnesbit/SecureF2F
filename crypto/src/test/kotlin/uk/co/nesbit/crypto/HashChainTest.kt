@@ -130,17 +130,17 @@ class HashChainTest {
         val maxVersion = 256
         val keyMaterial = "Test".toByteArray()
         val simpleHashChain = SimpleHashChainPrivate.generateChain(
-            keyMaterial,
-            dummySecureRandom,
-            maxChainLength = maxVersion,
-            minChainLength = minVersion
+                keyMaterial,
+                dummySecureRandom,
+                maxChainLength = maxVersion,
+                minChainLength = minVersion
         )
         dummySecureRandom.setSeed(100)
         val pebbledHashChain = PebbledHashChain.generateChain(
-            keyMaterial,
-            dummySecureRandom,
-            maxChainLength = maxVersion,
-            minChainLength = minVersion
+                keyMaterial,
+                dummySecureRandom,
+                maxChainLength = maxVersion,
+                minChainLength = minVersion
         )
         assertFailsWith<java.lang.IllegalArgumentException> {
             simpleHashChain.getSecureVersion(0)

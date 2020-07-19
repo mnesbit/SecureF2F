@@ -14,7 +14,7 @@ class AckMessage(val ack: Boolean = true) : Message {
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val ackMessageSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/ackmessage.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/ackmessage.avsc"))
 
         fun deserialize(bytes: ByteArray): AckMessage {
             val ackMessageRecord = ackMessageSchema.deserialize(bytes)

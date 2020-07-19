@@ -210,7 +210,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         if (links[activeLink]?.status?.active == true) {
             val renumberedMessage =
-                LinkReceivedMessage(activeLink, msg.msg)
+                    LinkReceivedMessage(activeLink, msg.msg)
             for (owner in owners) {
                 owner.tell(renumberedMessage, self)
             }

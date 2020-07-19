@@ -63,7 +63,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
@@ -80,14 +80,14 @@ class NetworkTest {
                     assertEquals(connectRequest.sourceNetworkId, config.networkId)
                     // fake a positive reply
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
-                        testActor()
+                            PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
+                            testActor()
                     )
                     // should get back update of new LinkInfo
                     val expectedLinkInfo = LinkInfo(
-                        connectRequest.linkId,
-                        Route(config.networkId, NetworkAddress(2)),
-                        LinkStatus.LINK_UP_ACTIVE
+                            connectRequest.linkId,
+                            Route(config.networkId, NetworkAddress(2)),
+                            LinkStatus.LINK_UP_ACTIVE
                     )
                     expectMsg(expectedLinkInfo)
                     // but no more messages
@@ -112,7 +112,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
@@ -120,8 +120,8 @@ class NetworkTest {
                     // kick off passive link creation
                     val newLinkId = SimpleLinkId(100)
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
-                        testActor()
+                            PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
+                            testActor()
                     )
                     // Accepts connection
                     val connectResult = expectMsgClass(PhysicalNetworkActor.ConnectResult::class.java)
@@ -155,7 +155,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
@@ -169,15 +169,15 @@ class NetworkTest {
                     physicalNetworkActor.tell(DnsResponse(dnsQuery.linkId, mockNode), mockDns)
                     val connectRequest = expectMsgClass(PhysicalNetworkActor.ConnectRequest::class.java)
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
-                        testActor()
+                            PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
+                            testActor()
                     )
                     val initialLinkUpMsg = expectMsgClass(LinkInfo::class.java)
                     assertEquals(LinkStatus.LINK_UP_ACTIVE, initialLinkUpMsg.status)
                     // drop the link
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectionDrop(connectRequest.linkId),
-                        ActorRef.noSender()
+                            PhysicalNetworkActor.ConnectionDrop(connectRequest.linkId),
+                            ActorRef.noSender()
                     )
                     // Expect down event passed to watcher
                     val linkDownMsg = expectMsgClass(LinkInfo::class.java)
@@ -205,7 +205,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     val mockWatcher = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "watcher")
                     physicalNetworkActor.tell(WatchRequest(), mockWatcher)
@@ -219,8 +219,8 @@ class NetworkTest {
                     physicalNetworkActor.tell(DnsResponse(dnsQuery.linkId, mockNode), mockDns)
                     val connectRequest = expectMsgClass(PhysicalNetworkActor.ConnectRequest::class.java)
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
-                        testActor()
+                            PhysicalNetworkActor.ConnectResult(connectRequest.linkId, true),
+                            testActor()
                     )
                     val initialLinkUpMsg = expectMsgClass(LinkInfo::class.java)
                     assertEquals(LinkStatus.LINK_UP_ACTIVE, initialLinkUpMsg.status)
@@ -235,8 +235,8 @@ class NetworkTest {
                     assertEquals(0, physicalNetworkActor.underlyingActor().foreignLinks.size)
                     // subsequent drop event should do nothing
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectionDrop(connectRequest.linkId),
-                        ActorRef.noSender()
+                            PhysicalNetworkActor.ConnectionDrop(connectRequest.linkId),
+                            ActorRef.noSender()
                     )
                     // but no more messages
                     expectNoMessage()
@@ -255,7 +255,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
@@ -264,15 +264,15 @@ class NetworkTest {
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
-                        mockNode
+                            PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
+                            mockNode
                     )
                     // should get back update of new LinkInfo
                     val msgs = CollectionConverters.asJava(receiveN(2))
                     val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
                     val connectResult =
-                        msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
+                            msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
                     assertEquals(true, connectResult.opened)
                     // drop the link
                     physicalNetworkActor.tell(PhysicalNetworkActor.ConnectionDrop(newLinkId), ActorRef.noSender())
@@ -302,7 +302,7 @@ class NetworkTest {
                     val config = NetworkConfiguration(NetworkAddress(1), NetworkAddress(1), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config))
                     // Register for LookInfo updates
                     physicalNetworkActor.tell(WatchRequest(), testActor())
                     // get automatic registration of DNS
@@ -311,15 +311,15 @@ class NetworkTest {
                     val newLinkId = SimpleLinkId(100)
                     val mockNode = actorSystem!!.actorOf(TestActors.forwardActorProps(testActor()), "mockNode")
                     physicalNetworkActor.tell(
-                        PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
-                        mockNode
+                            PhysicalNetworkActor.ConnectRequest(NetworkAddress(2), newLinkId),
+                            mockNode
                     )
                     // should get back update of new LinkInfo
                     val msgs = CollectionConverters.asJava(receiveN(2))
                     val initialLinkUpMsg = msgs.single { it is LinkInfo } as LinkInfo
                     assertEquals(LinkStatus.LINK_UP_PASSIVE, initialLinkUpMsg.status)
                     val connectResult =
-                        msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
+                            msgs.single { it is PhysicalNetworkActor.ConnectResult } as PhysicalNetworkActor.ConnectResult
                     assertEquals(true, connectResult.opened)
                     // drop the link via process death
                     actorSystem!!.stop(mockNode)
@@ -350,9 +350,9 @@ class NetworkTest {
                     val config2 = NetworkConfiguration(NetworkAddress(2), NetworkAddress(2), false, setOf(), setOf())
                     // Make the actor in test mode, where we can access the object state
                     val physicalNetworkActor1 =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config1))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config1))
                     val physicalNetworkActor2 =
-                        TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config2))
+                            TestActorRef.create<PhysicalNetworkActor>(actorSystem, PhysicalNetworkActor.getProps(config2))
                     // Register for LookInfo updates
                     physicalNetworkActor1.tell(WatchRequest(), testActor())
                     physicalNetworkActor2.tell(WatchRequest(), testActor())
@@ -364,20 +364,20 @@ class NetworkTest {
                     assertEquals(LinkStatus.LINK_UP_ACTIVE, linkUpdate1.status)
                     // Send message from 1 to 2
                     physicalNetworkActor1.tell(
-                        LinkSendMessage(
-                            linkUpdate1.linkId,
-                            "Hello1".toByteArray()
-                        ), testActor()
+                            LinkSendMessage(
+                                    linkUpdate1.linkId,
+                                    "Hello1".toByteArray()
+                            ), testActor()
                     )
                     val msg1 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate2.linkId, msg1.linkId)
                     assertArrayEquals("Hello1".toByteArray(), msg1.msg)
                     // Send message from 2 to 1
                     physicalNetworkActor2.tell(
-                        LinkSendMessage(
-                            linkUpdate2.linkId,
-                            "Hello2".toByteArray()
-                        ), testActor()
+                            LinkSendMessage(
+                                    linkUpdate2.linkId,
+                                    "Hello2".toByteArray()
+                            ), testActor()
                     )
                     val msg2 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate1.linkId, msg2.linkId)

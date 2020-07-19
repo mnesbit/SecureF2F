@@ -66,41 +66,41 @@ class TreeEngineTests {
         val id3 = keys[2]
         val fixedClock = TestClock()
         val root1 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[0]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[0]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
         val root2 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[1]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[1]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
         val root3 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[2]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[2]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
         val treeRootTo1 = TreeState.createTreeState(
-            root1,
-            root2,
-            root3,
-            linkId12,
-            keyService.getVersion(id1),
-            keyService.getVersion(id2),
-            keyService,
-            fixedClock.instant()
+                root1,
+                root2,
+                root3,
+                linkId12,
+                keyService.getVersion(id1),
+                keyService.getVersion(id2),
+                keyService,
+                fixedClock.instant()
         )
         treeRootTo1.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
         val treeRootTo1Serialized = treeRootTo1.serialize()
@@ -109,14 +109,14 @@ class TreeEngineTests {
         treeRootTo1Deserialized.verify(linkId12, keyService.getVersion(id2), fixedClock.instant())
 
         val tree1To2 = TreeState.createTreeState(
-            treeRootTo1.path1,
-            treeRootTo1.path2,
-            treeRootTo1.path3,
-            linkId23,
-            keyService.getVersion(id2),
-            keyService.getVersion(id3),
-            keyService,
-            fixedClock.instant()
+                treeRootTo1.path1,
+                treeRootTo1.path2,
+                treeRootTo1.path3,
+                linkId23,
+                keyService.getVersion(id2),
+                keyService.getVersion(id3),
+                keyService,
+                fixedClock.instant()
         )
         tree1To2.verify(linkId23, keyService.getVersion(id3), fixedClock.instant())
         val tree1To2Serialized = tree1To2.serialize()
@@ -143,53 +143,53 @@ class TreeEngineTests {
         val linkId23 = keyService.random.generateSeed(NONCE_SIZE)
         val id3 = keys[2]
         val root1 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[0]),
-                keyService.getVersion(id1),
-                keyService,
-                Instant.ofEpochMilli(1L)
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[0]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        Instant.ofEpochMilli(1L)
+                )
         )
         val root2 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[1]),
-                keyService.getVersion(id1),
-                keyService,
-                Instant.ofEpochMilli(1L)
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[1]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        Instant.ofEpochMilli(1L)
+                )
         )
         val root3 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[2]),
-                keyService.getVersion(id1),
-                keyService,
-                Instant.ofEpochMilli(1L)
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[2]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        Instant.ofEpochMilli(1L)
+                )
         )
 
         val skipClock = TestClock(1L, TreeState.TimeErrorPerHop / 2L)
         val treeRootTo1 = TreeState.createTreeState(
-            root1,
-            root2,
-            root3,
-            linkId12,
-            keyService.getVersion(id1),
-            keyService.getVersion(id2),
-            keyService,
-            skipClock.instant()
+                root1,
+                root2,
+                root3,
+                linkId12,
+                keyService.getVersion(id1),
+                keyService.getVersion(id2),
+                keyService,
+                skipClock.instant()
         )
         val tree1To2 = TreeState.createTreeState(
-            treeRootTo1.path1,
-            treeRootTo1.path2,
-            treeRootTo1.path3,
-            linkId23,
-            keyService.getVersion(id2),
-            keyService.getVersion(id3),
-            keyService,
-            skipClock.instant()
+                treeRootTo1.path1,
+                treeRootTo1.path2,
+                treeRootTo1.path3,
+                linkId23,
+                keyService.getVersion(id2),
+                keyService.getVersion(id3),
+                keyService,
+                skipClock.instant()
         )
         tree1To2.verify(linkId23, keyService.getVersion(id3), skipClock.instant())
         skipClock.instant()
@@ -205,45 +205,45 @@ class TreeEngineTests {
         val (keys, roots) = generateKeysAndRoots(keyService, N)
         val ids = keys.map { Pair(it, keyService.random.generateSeed(NONCE_SIZE)) }
         val root1 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[0]),
-                keyService.getVersion(keys[0]),
-                keyService,
-                Clock.systemUTC().instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[0]),
+                        keyService.getVersion(keys[0]),
+                        keyService,
+                        Clock.systemUTC().instant()
+                )
         )
         val root2 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[1]),
-                keyService.getVersion(keys[0]),
-                keyService,
-                Clock.systemUTC().instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[1]),
+                        keyService.getVersion(keys[0]),
+                        keyService,
+                        Clock.systemUTC().instant()
+                )
         )
         val root3 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[2]),
-                keyService.getVersion(keys[0]),
-                keyService,
-                Clock.systemUTC().instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[2]),
+                        keyService.getVersion(keys[0]),
+                        keyService,
+                        Clock.systemUTC().instant()
+                )
         )
         var currTree: TreeState? = null
         for (i in 0 until (N - 1)) {
             val curr = ids[i]
             val next = ids[i + 1]
             currTree = TreeState.createTreeState(
-                currTree?.path1 ?: root1,
-                currTree?.path2 ?: root2,
-                currTree?.path3 ?: root3,
-                curr.second,
-                keyService.getVersion(curr.first),
-                keyService.getVersion(next.first),
-                keyService,
-                Clock.systemUTC().instant()
+                    currTree?.path1 ?: root1,
+                    currTree?.path2 ?: root2,
+                    currTree?.path3 ?: root3,
+                    curr.second,
+                    keyService.getVersion(curr.first),
+                    keyService.getVersion(next.first),
+                    keyService,
+                    Clock.systemUTC().instant()
             )
         }
         currTree!!.verify(ids[N - 2].second, keyService.getVersion(ids[N - 1].first), Clock.systemUTC().instant())
@@ -262,31 +262,31 @@ class TreeEngineTests {
         val id2 = keys[1]
         val fixedClock = TestClock()
         val root1 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[0]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[0]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
         val root2 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[1]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[1]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
         val root3 = SecurePath(
-            SecurePath.createSecurePathList(
-                null,
-                keyService.getVersion(roots[2]),
-                keyService.getVersion(id1),
-                keyService,
-                fixedClock.instant()
-            )
+                SecurePath.createSecurePathList(
+                        null,
+                        keyService.getVersion(roots[2]),
+                        keyService.getVersion(id1),
+                        keyService,
+                        fixedClock.instant()
+                )
         )
 
         val helloMessage = Hello.createHello(id2, keyService)
@@ -320,42 +320,42 @@ class TreeEngineTests {
         val id2 = keyService.getVersion(keys[1])
         val id3 = keyService.getVersion(keys[2])
         val node3Address = NetworkAddressInfo(
-            id3,
-            listOf(roots[0]) + id3.id,
-            listOf(roots[1]) + id3.id,
-            listOf(roots[2]) + id3.id
+                id3,
+                listOf(roots[0]) + id3.id,
+                listOf(roots[1]) + id3.id,
+                listOf(roots[2]) + id3.id
         )
         val message = "1234567890".toByteArray(Charsets.UTF_8)
         val linkId12 = keyService.random.generateSeed(NONCE_SIZE)
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
-            node3Address,
-            6,
-            message,
-            linkId12,
-            id1,
-            id2,
-            keyService,
-            Clock.systemUTC().instant()
+                node3Address,
+                6,
+                message,
+                linkId12,
+                id1,
+                id2,
+                keyService,
+                Clock.systemUTC().instant()
         )
         val serialized1 = greedyRoutedMessage.serialize()
         val deserialized1 = GreedyRoutedMessage.deserialize(serialized1)
         assertEquals(greedyRoutedMessage, deserialized1)
         val result1 = deserialized1.verify(
-            id2.id,
-            linkId12,
-            id1,
-            keyService,
-            Clock.systemUTC().instant()
+                id2.id,
+                linkId12,
+                id1,
+                keyService,
+                Clock.systemUTC().instant()
         )
         assertEquals(emptyList(), result1)
         val linkId23 = keyService.random.generateSeed(NONCE_SIZE)
         val greedyRoutedMessage2 = GreedyRoutedMessage.forwardGreedRoutedMessage(
-            deserialized1,
-            linkId23,
-            id2,
-            id3,
-            keyService,
-            Clock.systemUTC().instant()
+                deserialized1,
+                linkId23,
+                id2,
+                id3,
+                keyService,
+                Clock.systemUTC().instant()
         )
         val serialized2 = greedyRoutedMessage2.serialize()
         val deserialized2 = GreedyRoutedMessage.deserialize(serialized2)
@@ -370,10 +370,10 @@ class TreeEngineTests {
         val (keys, roots) = generateKeysAndRoots(keyService, 3)
         val id3 = keyService.getVersion(keys[2])
         val node3Address = NetworkAddressInfo(
-            id3,
-            listOf(roots[0]) + id3.id,
-            listOf(roots[1]) + id3.id,
-            listOf(roots[2]) + id3.id
+                id3,
+                listOf(roots[0]) + id3.id,
+                listOf(roots[1]) + id3.id,
+                listOf(roots[2]) + id3.id
         )
         node3Address.verify()
         val serialized = node3Address.serialize()

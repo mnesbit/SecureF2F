@@ -44,14 +44,19 @@
       "type": {
         "name": "suit",
         "type": "enum",
-        "symbols" : ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"]
+        "symbols": [
+          "SPADES",
+          "HEARTS",
+          "DIAMONDS",
+          "CLUBS"
+        ]
       }
     },
     {
       "name": "decimalField",
       "type": {
         "type": "bytes",
-        "logicalType" : "decimal",
+        "logicalType": "decimal",
         "precision": 10,
         "scale": 2
       }
@@ -60,42 +65,42 @@
       "name": "uuidField",
       "type": {
         "type": "string",
-        "logicalType" : "uuid"
+        "logicalType": "uuid"
       }
     },
     {
       "name": "dateField",
       "type": {
         "type": "int",
-        "logicalType" : "date"
+        "logicalType": "date"
       }
     },
     {
       "name": "timeMilliField",
       "type": {
         "type": "int",
-        "logicalType" : "time-millis"
+        "logicalType": "time-millis"
       }
     },
     {
       "name": "timeMicroField",
       "type": {
         "type": "long",
-        "logicalType" : "time-micros"
+        "logicalType": "time-micros"
       }
     },
     {
       "name": "timestampMilliField",
       "type": {
         "type": "long",
-        "logicalType" : "timestamp-millis"
+        "logicalType": "timestamp-millis"
       }
     },
     {
       "name": "timestampMicroField",
       "type": {
         "type": "long",
-        "logicalType" : "timestamp-micros"
+        "logicalType": "timestamp-micros"
       }
     },
     {

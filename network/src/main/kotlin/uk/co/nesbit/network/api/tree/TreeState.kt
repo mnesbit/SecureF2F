@@ -19,17 +19,17 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class TreeState(
-    val path1: SecurePath,
-    val path2: SecurePath,
-    val path3: SecurePath,
-    val linkSignature: DigitalSignature
+        val path1: SecurePath,
+        val path2: SecurePath,
+        val path3: SecurePath,
+        val linkSignature: DigitalSignature
 ) : Message {
     constructor(treeStateRecord: GenericRecord) :
             this(
-                treeStateRecord.getTyped("path1"),
-                treeStateRecord.getTyped("path2"),
-                treeStateRecord.getTyped("path3"),
-                treeStateRecord.getTyped("linkSignature")
+                    treeStateRecord.getTyped("path1"),
+                    treeStateRecord.getTyped("path2"),
+                    treeStateRecord.getTyped("path3"),
+                    treeStateRecord.getTyped("linkSignature")
             )
 
     companion object {
@@ -38,13 +38,13 @@ class TreeState(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val treeStateSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    SecurePath.securePathSchema.fullName to SecurePath.securePathSchema,
-                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                .addTypes(
+                        mapOf(
+                                SecurePath.securePathSchema.fullName to SecurePath.securePathSchema,
+                                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/treestate.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/treestate.avsc"))
 
         fun deserialize(bytes: ByteArray): TreeState {
             val treeStateRecord = treeStateSchema.deserialize(bytes)
@@ -52,14 +52,14 @@ class TreeState(
         }
 
         fun createTreeState(
-            appendTo1: SecurePath?,
-            appendTo2: SecurePath?,
-            appendTo3: SecurePath?,
-            linkId: ByteArray,
-            from: VersionedIdentity,
-            to: VersionedIdentity,
-            keyService: KeyService,
-            now: Instant
+                appendTo1: SecurePath?,
+                appendTo2: SecurePath?,
+                appendTo3: SecurePath?,
+                linkId: ByteArray,
+                from: VersionedIdentity,
+                to: VersionedIdentity,
+                keyService: KeyService,
+                now: Instant
         ): TreeState {
             val (path1, path1Hash) = appendPath(appendTo1, from, to, keyService, now)
             val (path2, path2Hash) = appendPath(appendTo2, from, to, keyService, now)
@@ -70,11 +70,11 @@ class TreeState(
         }
 
         private fun appendPath(
-            parentPath: SecurePath?,
-            from: VersionedIdentity,
-            to: VersionedIdentity,
-            keyService: KeyService,
-            now: Instant
+                parentPath: SecurePath?,
+                from: VersionedIdentity,
+                to: VersionedIdentity,
+                keyService: KeyService,
+                now: Instant
         ): Pair<SecurePath, SecureHash> {
             val pathList = SecurePath.createSecurePathList(parentPath?.path, from, to, keyService, now)
             val path = SecurePath(pathList)
@@ -93,9 +93,9 @@ class TreeState(
 
     val treeAddress: NetworkAddressInfo by lazy(LazyThreadSafetyMode.PUBLICATION) {
         NetworkAddressInfo(path1.path.last().identity,
-            path1.path.map { it.identity.id },
-            path2.path.map { it.identity.id },
-            path3.path.map { it.identity.id })
+                path1.path.map { it.identity.id },
+                path2.path.map { it.identity.id },
+                path3.path.map { it.identity.id })
     }
 
     val roots: List<SecureHash> by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -133,10 +133,10 @@ class TreeState(
     }
 
     private fun verifyPath(
-        path: SecurePath,
-        index: Int,
-        self: VersionedIdentity,
-        now: Instant
+            path: SecurePath,
+            index: Int,
+            self: VersionedIdentity,
+            now: Instant
     ): SecureHash {
         val uniqueIds = path.path.map { it.identity.id }.toSet()
         require(uniqueIds.size == path.path.size) {
@@ -171,9 +171,9 @@ class TreeState(
     }
 
     fun verify(
-        secureLinkId: ByteArray,
-        self: VersionedIdentity,
-        now: Instant
+            secureLinkId: ByteArray,
+            self: VersionedIdentity,
+            now: Instant
     ) {
         val from = path1.path.last().identity
         require(from == path2.path.last().identity) {

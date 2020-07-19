@@ -13,11 +13,11 @@ import scala.runtime.BoxedUnit
 import java.util.concurrent.TimeUnit
 
 fun Int.seconds(): FiniteDuration =
-    Duration.create(this.toLong(), TimeUnit.SECONDS)
+        Duration.create(this.toLong(), TimeUnit.SECONDS)
 
 
 fun Long.millis(): FiniteDuration =
-    Duration.create(this, TimeUnit.MILLISECONDS)
+        Duration.create(this, TimeUnit.MILLISECONDS)
 
 abstract class AbstractActorWithLoggingAndTimers : AbstractActorWithTimers() {
     private var _log: LoggingAdapter? = null

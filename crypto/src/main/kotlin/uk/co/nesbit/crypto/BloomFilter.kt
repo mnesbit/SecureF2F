@@ -10,10 +10,10 @@ import uk.co.nesbit.avro.putTyped
 import java.util.*
 
 class BloomFilter private constructor(
-    val expectedItemCount: Int,
-    val falsePositiveRate: Double,
-    val hashSeed: Int,
-    private val filterBits: BitSet
+        val expectedItemCount: Int,
+        val falsePositiveRate: Double,
+        val hashSeed: Int,
+        private val filterBits: BitSet
 ) : AvroConvertible {
 
     private val bitCount: Int = bitCountCalc(expectedItemCount, falsePositiveRate)
@@ -21,27 +21,27 @@ class BloomFilter private constructor(
 
     constructor(bloomFilterRecord: GenericRecord) :
             this(
-                bloomFilterRecord.getTyped("expectedItemCount"),
-                bloomFilterRecord.getTyped("falsePositiveRate"),
-                bloomFilterRecord.getTyped("hashSeed"),
-                BitSet.valueOf(bloomFilterRecord.getTyped<ByteArray>("filterBits"))
+                    bloomFilterRecord.getTyped("expectedItemCount"),
+                    bloomFilterRecord.getTyped("falsePositiveRate"),
+                    bloomFilterRecord.getTyped("hashSeed"),
+                    BitSet.valueOf(bloomFilterRecord.getTyped<ByteArray>("filterBits"))
             )
 
     constructor (
-        expectedItemCount: Int,
-        falsePositiveRate: Double,
-        hashSeed: Int
+            expectedItemCount: Int,
+            falsePositiveRate: Double,
+            hashSeed: Int
     ) : this(
-        expectedItemCount,
-        falsePositiveRate,
-        hashSeed,
-        BitSet(bitCountCalc(expectedItemCount, falsePositiveRate))
+            expectedItemCount,
+            falsePositiveRate,
+            hashSeed,
+            BitSet(bitCountCalc(expectedItemCount, falsePositiveRate))
     )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val bloomFilterSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/bloomfilter.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/bloomfilter.avsc"))
 
         fun deserialize(bytes: ByteArray): BloomFilter {
             val bloomFilterRecord = bloomFilterSchema.deserialize(bytes)

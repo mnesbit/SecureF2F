@@ -10,21 +10,21 @@ import java.security.PublicKey
 import java.security.SecureRandom
 
 class SphinxPublicIdentity(
-    val signingPublicKey: PublicKey,
-    val diffieHellmanPublicKey: PublicKey,
-    val targetHash: SecureHash,
-    val maxVersion: Int,
-    val minVersion: Int,
-    val publicAddress: String?
+        val signingPublicKey: PublicKey,
+        val diffieHellmanPublicKey: PublicKey,
+        val targetHash: SecureHash,
+        val maxVersion: Int,
+        val minVersion: Int,
+        val publicAddress: String?
 ) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
             this(
-                signatureRecord.getTyped("signingPublicKey"),
-                signatureRecord.getTyped("diffieHellmanPublicKey"),
-                signatureRecord.getTyped("targetHash"),
-                signatureRecord.getTyped("maxVersion"),
-                signatureRecord.getTyped("minVersion"),
-                signatureRecord.getTyped<String?>("publicAddress")
+                    signatureRecord.getTyped("signingPublicKey"),
+                    signatureRecord.getTyped("diffieHellmanPublicKey"),
+                    signatureRecord.getTyped("targetHash"),
+                    signatureRecord.getTyped("maxVersion"),
+                    signatureRecord.getTyped("minVersion"),
+                    signatureRecord.getTyped<String?>("publicAddress")
             )
 
     companion object {
@@ -32,13 +32,13 @@ class SphinxPublicIdentity(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sphinxIdentitySchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
-                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                .addTypes(
+                        mapOf(
+                                PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema,
+                                SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/sphinxidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxPublicIdentity {
             val idRecord = sphinxIdentitySchema.deserialize(bytes)
@@ -48,16 +48,16 @@ class SphinxPublicIdentity(
     }
 
     private val hashChain = HashChainPublic(
-        concatByteArrays(
-            signingPublicKey.encoded,
-            diffieHellmanPublicKey.encoded,
-            maxVersion.toByteArray(),
-            minVersion.toByteArray()
-        ), targetHash, maxVersion, minVersion
+            concatByteArrays(
+                    signingPublicKey.encoded,
+                    diffieHellmanPublicKey.encoded,
+                    maxVersion.toByteArray(),
+                    minVersion.toByteArray()
+            ), targetHash, maxVersion, minVersion
     )
 
     init {
-        require(diffieHellmanPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
+        require(diffieHellmanPublicKey.algorithm in setOf("Curve25519", "NACLCurve25519")) { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     override fun toGenericRecord(): GenericRecord {
@@ -79,7 +79,7 @@ class SphinxPublicIdentity(
     fun verifyChainValue(version: SecureVersion): Boolean = hashChain.verifyChainValue(version)
 
     fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int): Boolean =
-        hashChain.verifyChainValue(hash, stepsFromEnd, minVersion, maxVersion)
+            hashChain.verifyChainValue(hash, stepsFromEnd, minVersion, maxVersion)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -98,47 +98,48 @@ class SphinxPublicIdentity(
 }
 
 class SphinxIdentityKeyPair(
-    val signingKeys: KeyPair,
-    val diffieHellmanKeys: KeyPair,
-    val hashChain: HashChainPrivate,
-    val publicAddress: String? = null
+        val signingKeys: KeyPair,
+        val diffieHellmanKeys: KeyPair,
+        val hashChain: HashChainPrivate,
+        val publicAddress: String? = null
 ) {
     companion object {
+        const val useNACL = true
+
         fun generateKeyPair(
-            secureRandom: SecureRandom = newSecureRandom(),
-            publicAddress: String? = null,
-            maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
-            minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
+                secureRandom: SecureRandom = newSecureRandom(),
+                publicAddress: String? = null,
+                maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+                minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
         ): SphinxIdentityKeyPair {
-            //val signingKeys = generateEdDSAKeyPair(secureRandom)
-            val signingKeys = generateNACLKeyPair(secureRandom)
-            val dhKeys = generateCurve25519DHKeyPair(secureRandom)
+            val signingKeys = if (useNACL) generateNACLKeyPair(secureRandom) else generateEdDSAKeyPair(secureRandom)
+            val dhKeys = if (useNACL) generateNACLDHKeyPair(secureRandom) else generateCurve25519DHKeyPair(secureRandom)
             val hashChain = PebbledHashChain.generateChain(
-                concatByteArrays(
-                    signingKeys.public.encoded,
-                    dhKeys.public.encoded,
-                    maxVersion.toByteArray(),
-                    minVersion.toByteArray()
-                ), secureRandom, maxVersion, minVersion
+                    concatByteArrays(
+                            signingKeys.public.encoded,
+                            dhKeys.public.encoded,
+                            maxVersion.toByteArray(),
+                            minVersion.toByteArray()
+                    ), secureRandom, maxVersion, minVersion
             )
             return SphinxIdentityKeyPair(signingKeys, dhKeys, hashChain, publicAddress)
         }
     }
 
     init {
-        require(diffieHellmanKeys.private.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
+        require(diffieHellmanKeys.private.algorithm in setOf("Curve25519", "NACLCurve25519")) { "Only Curve25519 Diffie-Hellman supported" }
     }
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))
 
     val public: SphinxPublicIdentity by lazy(LazyThreadSafetyMode.PUBLICATION) {
         SphinxPublicIdentity(
-            signingKeys.public,
-            diffieHellmanKeys.public,
-            hashChain.targetHash,
-            hashChain.maxChainLength,
-            hashChain.minChainLength,
-            publicAddress
+                signingKeys.public,
+                diffieHellmanKeys.public,
+                hashChain.targetHash,
+                hashChain.maxChainLength,
+                hashChain.minChainLength,
+                publicAddress
         )
     }
 
@@ -148,8 +149,8 @@ class SphinxIdentityKeyPair(
 data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVersion: SecureVersion) : AvroConvertible {
     constructor(versionRecord: GenericRecord) :
             this(
-                versionRecord.getTyped("identity"),
-                versionRecord.getTyped("currentVersion")
+                    versionRecord.getTyped("identity"),
+                    versionRecord.getTyped("currentVersion")
             )
 
     init {
@@ -161,13 +162,13 @@ data class VersionedIdentity(val identity: SphinxPublicIdentity, val currentVers
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val versionedIdentitySchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
-                    SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema
+                .addTypes(
+                        mapOf(
+                                SphinxPublicIdentity.sphinxIdentitySchema.fullName to SphinxPublicIdentity.sphinxIdentitySchema,
+                                SecureVersion.secureVersionSchema.fullName to SecureVersion.secureVersionSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/sphinx/versionedidentity.avsc"))
 
         fun deserialize(bytes: ByteArray): VersionedIdentity {
             val versionedIdentityRecord = versionedIdentitySchema.deserialize(bytes)

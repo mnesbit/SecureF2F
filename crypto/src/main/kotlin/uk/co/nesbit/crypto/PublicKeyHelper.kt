@@ -17,13 +17,13 @@ import java.security.spec.X509EncodedKeySpec
 object PublicKeyHelper {
     init {
         AvroTypeHelpers.registerHelper(
-            PublicKey::class.java,
-            { x -> x.toGenericRecord() },
-            { y -> fromGenericRecord(y) })
+                PublicKey::class.java,
+                { x -> x.toGenericRecord() },
+                { y -> fromGenericRecord(y) })
     }
 
     val publicKeySchema: Schema = Schema.Parser()
-        .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
+            .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
     private const val MAX_CACHE = 20000L
@@ -83,6 +83,10 @@ object PublicKeyHelper {
             "NACLEd25519" -> {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 NACLEd25519PublicKey(publicKeyBytes)
+            }
+            "NACLCurve25519" -> {// don't cache DH keys as they change a lot
+                require(keyFormat == "RAW") { "Don't know how to deserialize" }
+                NACLCurve25519PublicKey(publicKeyBytes)
             }
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }

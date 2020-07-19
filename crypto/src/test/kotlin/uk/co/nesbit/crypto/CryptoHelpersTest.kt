@@ -259,6 +259,17 @@ class CryptoHelpersTest {
         val sec6 = getSharedDHSecret(key6, key5.public)
         assertArrayEquals(sec5, sec6)
 
+        val key7 = generateNACLDHKeyPair()
+        val key8 = generateNACLDHKeyPair()
+        val sec7 = getSharedDHSecret(key7, key8.public)
+        val sec8 = getSharedDHSecret(key8, key7.public)
+        assertArrayEquals(sec7, sec8)
+
+        //Check interop
+        val sec9 = getSharedDHSecret(key5, Curve25519PublicKey(key7.public.encoded))
+        val sec10 = getSharedDHSecret(key7, NACLCurve25519PublicKey(key5.public.encoded))
+        assertArrayEquals(sec9, sec10)
+
         val bytes = "jhASDJHKSD".toByteArray(Charsets.UTF_8)
         val hash1 = getHMAC(sec1, bytes)
         val hash2 = getHMAC(sec2, bytes)
@@ -531,6 +542,25 @@ class CryptoHelpersTest {
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
+    }
+
+    @Test
+    fun `test NACLCurve25519 PublicKey round trip`() {
+        val keyPair1 = generateNACLDHKeyPair()
+        val keyPair2 = generateNACLDHKeyPair()
+        val publicKeyRecord1 = keyPair1.public.toGenericRecord()
+        val publicKeyRecord2 = keyPair2.public.toGenericRecord()
+        assertEquals(keyPair1.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord1))
+        assertEquals(keyPair2.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord2))
+        val serializedPublicKey1 = keyPair1.public.serialize()
+        val serializedPublicKey2 = keyPair2.public.serialize()
+        val deserializedPublicKey1 = PublicKeyHelper.deserialize(serializedPublicKey1)
+        val deserializedPublicKey2 = PublicKeyHelper.deserialize(serializedPublicKey2)
+        assertEquals(keyPair1.public, deserializedPublicKey1)
+        assertEquals(keyPair2.public, deserializedPublicKey2)
+        val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
+        val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
+        assertArrayEquals(sec1, sec2)
     }
 
 }

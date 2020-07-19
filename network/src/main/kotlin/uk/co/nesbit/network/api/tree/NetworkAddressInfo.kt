@@ -10,29 +10,29 @@ import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
 
 class NetworkAddressInfo(
-    val identity: VersionedIdentity,
-    val treeAddress1: List<SecureHash>,
-    val treeAddress2: List<SecureHash>,
-    val treeAddress3: List<SecureHash>
+        val identity: VersionedIdentity,
+        val treeAddress1: List<SecureHash>,
+        val treeAddress2: List<SecureHash>,
+        val treeAddress3: List<SecureHash>
 ) : AvroConvertible {
     constructor(networkAddressInfoRecord: GenericRecord) :
             this(
-                networkAddressInfoRecord.getTyped("identity"),
-                networkAddressInfoRecord.getObjectArray("treeAddress1", ::SecureHash),
-                networkAddressInfoRecord.getObjectArray("treeAddress2", ::SecureHash),
-                networkAddressInfoRecord.getObjectArray("treeAddress3", ::SecureHash)
+                    networkAddressInfoRecord.getTyped("identity"),
+                    networkAddressInfoRecord.getObjectArray("treeAddress1", ::SecureHash),
+                    networkAddressInfoRecord.getObjectArray("treeAddress2", ::SecureHash),
+                    networkAddressInfoRecord.getObjectArray("treeAddress3", ::SecureHash)
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val networkAddressInfoSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
-                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema
+                .addTypes(
+                        mapOf(
+                                SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
+                                VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/networkaddressinfo.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/networkaddressinfo.avsc"))
 
         fun deserialize(bytes: ByteArray): NetworkAddressInfo {
             val networkAddressInfoRecord = networkAddressInfoSchema.deserialize(bytes)
@@ -82,19 +82,19 @@ class NetworkAddressInfo(
     }
 
     fun greedyDist(other: NetworkAddressInfo): Int = minOf(
-        greedyDist(treeAddress1, other.treeAddress1),
-        greedyDist(treeAddress2, other.treeAddress2),
-        greedyDist(treeAddress3, other.treeAddress3)
+            greedyDist(treeAddress1, other.treeAddress1),
+            greedyDist(treeAddress2, other.treeAddress2),
+            greedyDist(treeAddress3, other.treeAddress3)
     )
 
     private fun greedyDist(
-        self: List<SecureHash>,
-        other: List<SecureHash>
+            self: List<SecureHash>,
+            other: List<SecureHash>
     ): Int {
         var prefixLength = 0
         while (prefixLength < self.size
-            && prefixLength < other.size
-            && self[prefixLength] == other[prefixLength]
+                && prefixLength < other.size
+                && self[prefixLength] == other[prefixLength]
         ) {
             ++prefixLength
         }

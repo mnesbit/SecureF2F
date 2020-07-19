@@ -62,7 +62,7 @@ class SphinxAddress(val identity: SphinxPublicIdentity) : Address {
     override val actorName: String get() = identity.id.bytes.printHexBinary()
 
     override fun toString(): String =
-        if (identity.publicAddress == null) "Sphinx[$id]" else "Sphinx[${identity.publicAddress}]"
+            if (identity.publicAddress == null) "Sphinx[$id]" else "Sphinx[${identity.publicAddress}]"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

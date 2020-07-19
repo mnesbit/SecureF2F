@@ -16,15 +16,15 @@ import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.services.KeyService
 
 class Hello(
-    val secureLinkId: ByteArray,
-    val sourceId: VersionedIdentity,
-    val signature: DigitalSignature
+        val secureLinkId: ByteArray,
+        val sourceId: VersionedIdentity,
+        val signature: DigitalSignature
 ) : Message {
     constructor(helloRecord: GenericRecord) :
             this(
-                helloRecord.getTyped("secureLinkId"),
-                helloRecord.getTyped("sourceId"),
-                helloRecord.getTyped("signature")
+                    helloRecord.getTyped("secureLinkId"),
+                    helloRecord.getTyped("sourceId"),
+                    helloRecord.getTyped("signature")
             )
 
     init {
@@ -36,13 +36,13 @@ class Hello(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val helloSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                .addTypes(
+                        mapOf(
+                                VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/hello.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/hello.avsc"))
 
         val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", helloSchema)
 
