@@ -7,9 +7,20 @@ import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
+import java.security.KeyPair
+import java.security.PublicKey
+import java.security.SecureRandom
 import kotlin.experimental.xor
 
 class SphinxTest {
+    private fun getDHKeyPair(rand: SecureRandom): KeyPair {
+        return if (SphinxIdentityKeyPair.useNACL) generateNACLDHKeyPair(rand) else generateCurve25519DHKeyPair(rand)
+    }
+
+    private fun wrapDH(bytes: ByteArray): PublicKey {
+        return if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PublicKey(bytes) else Curve25519PublicKey(bytes)
+    }
+
     @Test
     fun `Test ECDH chaining from basics`() {
         val rand = newSecureRandom()
@@ -18,43 +29,43 @@ class SphinxTest {
         val node2Keys = SphinxIdentityKeyPair.generateKeyPair(rand)
 
         // At initiator
-        val xKeyPair = generateCurve25519DHKeyPair(rand)
+        val xKeyPair = getDHKeyPair(rand)
         val alpha0 = xKeyPair.public
-        val secret0 = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node0Keys.public.diffieHellmanPublicKey))
+        val secret0 = wrapDH(getSharedDHSecret(xKeyPair, node0Keys.public.diffieHellmanPublicKey))
         val hashes0 = Sphinx.DerivedHashes(node0Keys.id, secret0)
         val blind0 = hashes0.blind
 
-        val alpha1 = Curve25519PublicKey(getSharedDHSecret(blind0, alpha0))
-        val secret1a = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node1Keys.public.diffieHellmanPublicKey))
-        val secret1 = Curve25519PublicKey(getSharedDHSecret(blind0, secret1a))
+        val alpha1 = wrapDH(getSharedDHSecret(blind0, alpha0))
+        val secret1a = wrapDH(getSharedDHSecret(xKeyPair, node1Keys.public.diffieHellmanPublicKey))
+        val secret1 = wrapDH(getSharedDHSecret(blind0, secret1a))
         val hashes1 = Sphinx.DerivedHashes(node1Keys.id, secret1)
         val blind1 = hashes1.blind
 
-        val alpha2 = Curve25519PublicKey(getSharedDHSecret(blind1, alpha1))
-        val secret2a = Curve25519PublicKey(getSharedDHSecret(xKeyPair, node2Keys.public.diffieHellmanPublicKey))
-        val secret2b = Curve25519PublicKey(getSharedDHSecret(blind0, secret2a))
-        val secret2 = Curve25519PublicKey(getSharedDHSecret(blind1, secret2b))
+        val alpha2 = wrapDH(getSharedDHSecret(blind1, alpha1))
+        val secret2a = wrapDH(getSharedDHSecret(xKeyPair, node2Keys.public.diffieHellmanPublicKey))
+        val secret2b = wrapDH(getSharedDHSecret(blind0, secret2a))
+        val secret2 = wrapDH(getSharedDHSecret(blind1, secret2b))
         val hashes2 = Sphinx.DerivedHashes(node2Keys.id, secret2)
         val blind2 = hashes2.blind
 
         // At recipients
-        val sharedSecret0 = Curve25519PublicKey(getSharedDHSecret(node0Keys.diffieHellmanKeys, alpha0))
+        val sharedSecret0 = wrapDH(getSharedDHSecret(node0Keys.diffieHellmanKeys, alpha0))
         assertEquals(secret0, sharedSecret0)
         val clientHashes0 = Sphinx.DerivedHashes(node0Keys.id, sharedSecret0)
         val clientBlinded0 = clientHashes0.blind
         assertEquals(blind0, clientBlinded0)
-        val clientAlpha1 = Curve25519PublicKey(getSharedDHSecret(clientBlinded0, alpha0))
+        val clientAlpha1 = wrapDH(getSharedDHSecret(clientBlinded0, alpha0))
         assertEquals(alpha1, clientAlpha1)
 
-        val sharedSecret1 = Curve25519PublicKey(getSharedDHSecret(node1Keys.diffieHellmanKeys, clientAlpha1))
+        val sharedSecret1 = wrapDH(getSharedDHSecret(node1Keys.diffieHellmanKeys, clientAlpha1))
         assertEquals(secret1, sharedSecret1)
         val clientHashes1 = Sphinx.DerivedHashes(node1Keys.id, sharedSecret1)
         val clientBlinded1 = clientHashes1.blind
         assertEquals(blind1, clientBlinded1)
-        val clientAlpha2 = Curve25519PublicKey(getSharedDHSecret(clientBlinded1, clientAlpha1))
-        assertArrayEquals(alpha2.keyBytes, clientAlpha2.keyBytes)
+        val clientAlpha2 = wrapDH(getSharedDHSecret(clientBlinded1, clientAlpha1))
+        assertArrayEquals(alpha2.encoded, clientAlpha2.encoded)
 
-        val sharedSecret2 = Curve25519PublicKey(getSharedDHSecret(node2Keys.diffieHellmanKeys, clientAlpha2))
+        val sharedSecret2 = wrapDH(getSharedDHSecret(node2Keys.diffieHellmanKeys, clientAlpha2))
         assertEquals(secret2, sharedSecret2)
         val clientHashes2 = Sphinx.DerivedHashes(node2Keys.id, sharedSecret2)
         val clientBlinded2 = clientHashes2.blind
@@ -75,7 +86,7 @@ class SphinxTest {
         for (i in 0 until sphinx.maxRouteLength) {
             val node = nodeKeys[i]
             val entry = dhSequence[i]
-            val sharedSecret = Curve25519PublicKey(getSharedDHSecret(node.diffieHellmanKeys, entry.alpha))
+            val sharedSecret = wrapDH(getSharedDHSecret(node.diffieHellmanKeys, entry.alpha))
             assertEquals(entry.sharedSecret, sharedSecret)
             val clientHashes = Sphinx.DerivedHashes(node.id, sharedSecret)
             val clientBlinded = clientHashes.blind

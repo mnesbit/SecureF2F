@@ -8,10 +8,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider
 import uk.co.nesbit.crypto.*
 import uk.co.nesbit.utils.printHexBinary
 import java.nio.ByteBuffer
-import java.security.PrivateKey
-import java.security.PublicKey
-import java.security.SecureRandom
-import java.security.Security
+import java.security.*
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -109,6 +106,14 @@ class Sphinx(
         return output
     }
 
+    private fun getDHKeyPair(rand: SecureRandom): KeyPair {
+        return if (SphinxIdentityKeyPair.useNACL) generateNACLDHKeyPair(rand) else generateCurve25519DHKeyPair(rand)
+    }
+
+    private fun wrapDH(rawBytes: ByteArray): PublicKey {
+        return if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PublicKey(rawBytes) else Curve25519PublicKey(rawBytes)
+    }
+
     internal class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
         companion object {
             private const val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
@@ -128,7 +133,7 @@ class Sphinx(
             rhoKey = SecretKeySpec(splits[0], "AES")
             gcmNonce = splits[1]
             gcmKey = SecretKeySpec(splits[2], "AES")
-            blind = Curve25519PrivateKey(splits[3])
+            blind = if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PrivateKey(splits[3]) else Curve25519PrivateKey(splits[3])
         }
     }
 
@@ -143,17 +148,17 @@ class Sphinx(
 
     internal fun createRoute(route: List<SphinxPublicIdentity>, random: SecureRandom = this.random): List<HeaderEntry> {
         require(route.size in 1..maxRouteLength) { "Invalid route length" }
-        val startingPoint = generateCurve25519DHKeyPair(random)
+        val startingPoint = getDHKeyPair(random)
         val output = mutableListOf<HeaderEntry>()
         val firstNode = route.first()
-        val firstSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint, firstNode.diffieHellmanPublicKey))
+        val firstSecret = wrapDH(getSharedDHSecret(startingPoint, firstNode.diffieHellmanPublicKey))
         val nextNode = if (route.size == 1) route[0] else route[1]
         output += HeaderEntry(nextNode.id, startingPoint.public, firstSecret, DerivedHashes(firstNode.id, firstSecret))
         for (i in 1 until route.size) {
-            val alpha = Curve25519PublicKey(getSharedDHSecret(output[i - 1].hashes.blind, output[i - 1].alpha))
-            var sharedSecret = Curve25519PublicKey(getSharedDHSecret(startingPoint.private, route[i].diffieHellmanPublicKey))
+            val alpha = wrapDH(getSharedDHSecret(output[i - 1].hashes.blind, output[i - 1].alpha))
+            var sharedSecret = wrapDH(getSharedDHSecret(startingPoint.private, route[i].diffieHellmanPublicKey))
             for (j in 0 until i) {
-                sharedSecret = Curve25519PublicKey(getSharedDHSecret(output[j].hashes.blind, sharedSecret))
+                sharedSecret = wrapDH(getSharedDHSecret(output[j].hashes.blind, sharedSecret))
             }
             val nextHopNode = if (i < route.size - 1) route[i + 1] else route[i]
             output += HeaderEntry(nextHopNode.id, alpha, sharedSecret, DerivedHashes(route[i].id, sharedSecret))
@@ -230,13 +235,13 @@ class Sphinx(
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeId: SecureHash, dhFunction: (remotePublicKey: PublicKey) -> ByteArray): MessageProcessingResult {
         require(nodeId.bytes.size == ID_HASH_SIZE) { "ID Hash wrong size length" }// Ensure sizes align properly
-        val alpha = Curve25519PublicKey(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
-        val comparableAlpha = alpha.keyBytes.secureHash()
+        val alpha = wrapDH(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
+        val comparableAlpha = alpha.encoded.secureHash()
         if (comparableAlpha in alphaCache) {
             return MessageProcessingResult(false, null, null, null) // Never allow reuse of Diffie-Hellman points
         }
         alphaCache += comparableAlpha
-        val sharedSecret = Curve25519PublicKey(dhFunction(alpha))
+        val sharedSecret = wrapDH(dhFunction(alpha))
         val hashes = DerivedHashes(nodeId, sharedSecret)
         val dec = decryptPayload(hashes.gcmKey, hashes.gcmNonce, msg.header, msg.tag, msg.payload)
         if (!dec.valid) {

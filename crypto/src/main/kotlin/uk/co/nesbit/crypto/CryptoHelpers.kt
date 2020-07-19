@@ -3,7 +3,10 @@ package uk.co.nesbit.crypto
 import com.google.crypto.tink.subtle.Ed25519Sign
 import com.goterl.lazycode.lazysodium.LazySodiumJava
 import com.goterl.lazycode.lazysodium.SodiumJava
-import com.goterl.lazycode.lazysodium.interfaces.Sign.*
+import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman
+import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
+import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
+import com.goterl.lazycode.lazysodium.interfaces.Sign
 import djb.Curve25519
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair
@@ -13,7 +16,8 @@ import java.security.SecureRandom
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-val nacl: Native = LazySodiumJava(SodiumJava())
+val nacl: Sign.Native = LazySodiumJava(SodiumJava())
+val naclDH: DiffieHellman.Native = LazySodiumJava(SodiumJava())
 
 fun newSecureRandom(): SecureRandom {
     return if (System.getProperty("os.name") == "Linux") {
@@ -43,10 +47,10 @@ fun generateTinkEd25519KeyPair(): KeyPair {
 }
 
 fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val seed = ByteArray(ED25519_SEEDBYTES)
+    val seed = ByteArray(Sign.ED25519_SEEDBYTES)
     secureRandom.nextBytes(seed)
-    val publicKeyBytes = ByteArray(ED25519_PUBLICKEYBYTES)
-    val secretKey = ByteArray(ED25519_SECRETKEYBYTES)
+    val publicKeyBytes = ByteArray(Sign.ED25519_PUBLICKEYBYTES)
+    val secretKey = ByteArray(Sign.ED25519_SECRETKEYBYTES)
     nacl.cryptoSignSeedKeypair(publicKeyBytes, secretKey, seed)
     val privateKey = NACLEd25519PrivateKey(seed)
     val publicKey = NACLEd25519PublicKey(publicKeyBytes)
@@ -83,6 +87,14 @@ fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()):
     return KeyPair(Curve25519PublicKey(publicKeyBytes), Curve25519PrivateKey(privateKeyBytes))
 }
 
+fun generateNACLDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
+    val privateKeyBytes = ByteArray(SCALARMULT_CURVE25519_SCALARBYTES)
+    val publicKeyBytes = ByteArray(SCALARMULT_CURVE25519_BYTES)
+    secureRandom.nextBytes(privateKeyBytes)
+    naclDH.cryptoScalarMultBase(publicKeyBytes, privateKeyBytes)
+    return KeyPair(NACLCurve25519PublicKey(publicKeyBytes), NACLCurve25519PrivateKey(privateKeyBytes))
+}
+
 fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
     when (this.private.algorithm) {
         "EC" -> {
@@ -116,10 +128,10 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
         }
         "NACLEd25519" -> {
-            val naclPublicKey = ByteArray(PUBLICKEYBYTES)
-            val naclSecretKey = ByteArray(SECRETKEYBYTES)
+            val naclPublicKey = ByteArray(Sign.PUBLICKEYBYTES)
+            val naclSecretKey = ByteArray(Sign.SECRETKEYBYTES)
             nacl.cryptoSignSeedKeypair(naclPublicKey, naclSecretKey, private.encoded)
-            val signature = ByteArray(BYTES)
+            val signature = ByteArray(Sign.BYTES)
             nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclSecretKey)
             return DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
@@ -177,6 +189,11 @@ fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): 
         "Curve25519" -> {
             val secret = ByteArray(Curve25519.KEY_SIZE)
             Curve25519.curve(secret, localPrivateKey.encoded, remotePublicKey.encoded)
+            return secret
+        }
+        "NACLCurve25519" -> {
+            val secret = ByteArray(SCALARMULT_CURVE25519_BYTES)
+            naclDH.cryptoScalarMult(secret, localPrivateKey.encoded, remotePublicKey.encoded)
             return secret
         }
         else -> throw NotImplementedError("Can't handle algorithm ${localPrivateKey.algorithm}")

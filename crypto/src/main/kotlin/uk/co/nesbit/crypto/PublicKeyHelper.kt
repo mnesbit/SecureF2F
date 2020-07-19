@@ -84,6 +84,10 @@ object PublicKeyHelper {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 NACLEd25519PublicKey(publicKeyBytes)
             }
+            "NACLCurve25519" -> {// don't cache DH keys as they change a lot
+                require(keyFormat == "RAW") { "Don't know how to deserialize" }
+                NACLCurve25519PublicKey(publicKeyBytes)
+            }
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }
     }
