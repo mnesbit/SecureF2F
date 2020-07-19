@@ -11,13 +11,13 @@ import uk.co.nesbit.network.api.Message
 class SphinxRoutedMessage(val messageBytes: ByteArray) : Message {
     constructor(sphinxRoutedMessageRecord: GenericRecord) :
             this(
-                sphinxRoutedMessageRecord.getTyped<ByteArray>("messageBytes")
+                    sphinxRoutedMessageRecord.getTyped<ByteArray>("messageBytes")
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sphinxRoutedMessageSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/sphinxroutedmessage.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/sphinxroutedmessage.avsc"))
 
         fun deserialize(bytes: ByteArray): SphinxRoutedMessage {
             val sphinxRoutedMessageRecord = sphinxRoutedMessageSchema.deserialize(bytes)

@@ -41,11 +41,11 @@ class DnsMockActor : AbstractLoggingActor() {
     }
 
     override fun createReceive(): Receive =
-        ReceiveBuilder()
-            .match(DnsRegistration::class.java, ::onRegistration)
-            .match(Terminated::class.java, ::onDeath)
-            .match(DnsLookup::class.java, ::onLookup)
-            .build()
+            ReceiveBuilder()
+                    .match(DnsRegistration::class.java, ::onRegistration)
+                    .match(Terminated::class.java, ::onDeath)
+                    .match(DnsLookup::class.java, ::onLookup)
+                    .build()
 
     private fun onRegistration(registration: DnsRegistration) {
         //log().info("Received DNS registration $registration")

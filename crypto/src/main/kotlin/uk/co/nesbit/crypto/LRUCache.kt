@@ -9,7 +9,7 @@ class LRUCache<K, V>(private val capacity: Int) {
 
     operator fun get(key: K): V? {
         val entry = map[key]
-        if(entry != null) {
+        if (entry != null) {
             queue.add(key)
             queue.remove(key)
         }

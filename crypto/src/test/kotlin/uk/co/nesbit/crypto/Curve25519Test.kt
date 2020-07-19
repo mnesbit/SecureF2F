@@ -13,9 +13,9 @@ class Curve25519Test {
         assertEquals(Curve25519.KEY_SIZE, keyPair.private.encoded.size)
         val zeroOutput = ByteArray(Curve25519.KEY_SIZE)
         Curve25519.curve(
-            zeroOutput,
-            Curve25519.ORDER,
-            keyPair.public.encoded
+                zeroOutput,
+                Curve25519.ORDER,
+                keyPair.public.encoded
         ) // Point multiplied by curve order equal zero point
         assertArrayEquals(Curve25519.ZERO, zeroOutput)
         val secretOutput1 = ByteArray(Curve25519.KEY_SIZE)

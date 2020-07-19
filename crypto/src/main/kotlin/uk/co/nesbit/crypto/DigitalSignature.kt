@@ -25,7 +25,7 @@ class DigitalSignature(val signatureAlgorithm: String,
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val digitalSignatureSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignature {
             val signatureRecord = digitalSignatureSchema.deserialize(bytes)

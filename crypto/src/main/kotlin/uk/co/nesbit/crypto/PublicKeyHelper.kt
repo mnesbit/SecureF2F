@@ -17,13 +17,13 @@ import java.security.spec.X509EncodedKeySpec
 object PublicKeyHelper {
     init {
         AvroTypeHelpers.registerHelper(
-            PublicKey::class.java,
-            { x -> x.toGenericRecord() },
-            { y -> fromGenericRecord(y) })
+                PublicKey::class.java,
+                { x -> x.toGenericRecord() },
+                { y -> fromGenericRecord(y) })
     }
 
     val publicKeySchema: Schema = Schema.Parser()
-        .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
+            .parse(javaClass.getResourceAsStream("/uk/co/nesbit/crypto/publickey.avsc"))
 
     // Primitive LRU cache to reduce expensive creation of EdDSA objects
     private const val MAX_CACHE = 20000L

@@ -8,31 +8,31 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.network.api.Message
 
 class DhtRequest(
-    val requestId: Long,
-    val key: SecureHash,
-    val sourceAddress: NetworkAddressInfo,
-    val push: List<NetworkAddressInfo>,
-    val data: ByteArray?
+        val requestId: Long,
+        val key: SecureHash,
+        val sourceAddress: NetworkAddressInfo,
+        val push: List<NetworkAddressInfo>,
+        val data: ByteArray?
 ) : Message {
     constructor(dhtRequest: GenericRecord) :
             this(
-                dhtRequest.getTyped("requestId"),
-                dhtRequest.getTyped("key"),
-                dhtRequest.getTyped("sourceAddress"),
-                dhtRequest.getObjectArray("push", ::NetworkAddressInfo),
-                dhtRequest.getTyped("data")
+                    dhtRequest.getTyped("requestId"),
+                    dhtRequest.getTyped("key"),
+                    dhtRequest.getTyped("sourceAddress"),
+                    dhtRequest.getObjectArray("push", ::NetworkAddressInfo),
+                    dhtRequest.getTyped("data")
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val dhtRequestSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
-                    NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema
+                .addTypes(
+                        mapOf(
+                                SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
+                                NetworkAddressInfo.networkAddressInfoSchema.fullName to NetworkAddressInfo.networkAddressInfoSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/dhtrequest.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/dhtrequest.avsc"))
 
         fun deserialize(bytes: ByteArray): DhtRequest {
             val dhtRequestRecord = dhtRequestSchema.deserialize(bytes)

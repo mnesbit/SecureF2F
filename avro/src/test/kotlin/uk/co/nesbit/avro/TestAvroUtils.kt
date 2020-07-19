@@ -294,10 +294,10 @@ class TestAvroUtils {
             }
 
             override fun enumVisitor(
-                value: GenericEnumSymbol<*>,
-                schema: Schema,
-                path: List<PathComponent>,
-                root: GenericRecord
+                    value: GenericEnumSymbol<*>,
+                    schema: Schema,
+                    path: List<PathComponent>,
+                    root: GenericRecord
             ) {
                 val pathStr = path.toStringPath()
                 assert(pathStr in setOf(

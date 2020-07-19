@@ -139,18 +139,18 @@ fun GenericRecord.getBytes(fieldName: String, value: Any): ByteArray {
 fun GenericRecord.getDecimal(fieldName: String): BigDecimal {
     val fieldSchema = schema.getField(fieldName).schema()
     return Conversions.DecimalConversion().fromBytes(
-        get(fieldName) as ByteBuffer,
-        fieldSchema,
-        fieldSchema.logicalType
+            get(fieldName) as ByteBuffer,
+            fieldSchema,
+            fieldSchema.logicalType
     )
 }
 
 fun GenericRecord.getUUID(fieldName: String): UUID {
     val fieldSchema = schema.getField(fieldName).schema()
     return Conversions.UUIDConversion().fromCharSequence(
-        get(fieldName) as CharSequence,
-        fieldSchema,
-        fieldSchema.logicalType
+            get(fieldName) as CharSequence,
+            fieldSchema,
+            fieldSchema.logicalType
     )
 }
 
@@ -234,8 +234,8 @@ fun GenericRecord.getLocalDateTime(fieldName: String): LocalDateTime {
             "timestamp-micros" -> {
                 val micros = get(fieldName) as Long
                 LocalDateTime.ofInstant(
-                    Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)),
-                    ZoneOffset.UTC
+                        Instant.ofEpochMilli(micros / 1000L).plusNanos(1000L * (micros % 1000L)),
+                        ZoneOffset.UTC
                 )
             }
             else -> {

@@ -19,8 +19,8 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         }
 
         private val supervisorStrategy: SupervisorStrategy = OneForOneStrategy(
-            -1,
-            Duration.Inf()
+                -1,
+                Duration.Inf()
         ) { _ ->
             SupervisorStrategy.restart() as SupervisorStrategy.Directive?
         }
@@ -32,33 +32,33 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
 
     private val physicalNetworkActor: ActorRef = if (networkConfig.networkId is PublicAddress) {
         context.actorOf(
-            TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-            "net"
+                TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+                "net"
         )
     } else {
         context.actorOf(
-            PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-            "net"
+                PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+                "net"
         )
     }
 
     private val neighbourLinkActor: ActorRef =
-        context.actorOf(
-            NeighbourLinkActor.getProps(
-                keyService,
-                networkConfig,
-                physicalNetworkActor
-            ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
-        )
+            context.actorOf(
+                    NeighbourLinkActor.getProps(
+                            keyService,
+                            networkConfig,
+                            physicalNetworkActor
+                    ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
+            )
 
     private val hopRoutingActor: ActorRef =
-        context.actorOf(
-            HopRoutingActor.getProps(
-                keyService,
-                networkConfig,
-                neighbourLinkActor
-            ).withDispatcher("akka.fixed-dispatcher"), "route"
-        )
+            context.actorOf(
+                    HopRoutingActor.getProps(
+                            keyService,
+                            networkConfig,
+                            neighbourLinkActor
+                    ).withDispatcher("akka.fixed-dispatcher"), "route"
+            )
 
     override fun preStart() {
         super.preStart()
@@ -76,9 +76,9 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     }
 
     override fun createReceive(): Receive =
-        ReceiveBuilder()
-            .match(String::class.java, ::onMessage)
-            .build()
+            ReceiveBuilder()
+                    .match(String::class.java, ::onMessage)
+                    .build()
 
     private fun onMessage(message: String) {
         log().info(message)

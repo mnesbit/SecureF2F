@@ -7,20 +7,20 @@ import uk.co.nesbit.avro.*
 import java.security.PublicKey
 
 class SignedData(
-    val data: ByteArray,
-    val signature: DigitalSignature
+        val data: ByteArray,
+        val signature: DigitalSignature
 ) : AvroConvertible {
     constructor(signedDataRecord: GenericRecord) :
             this(
-                signedDataRecord.getTyped("data"),
-                signedDataRecord.getTyped("signature")
+                    signedDataRecord.getTyped("data"),
+                    signedDataRecord.getTyped("signature")
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val signedDataSchema: Schema = Schema.Parser()
-            .addTypes(mapOf(DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
-            .parse(javaClass.enclosingClass.getResourceAsStream("signeddata.avsc"))
+                .addTypes(mapOf(DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema))
+                .parse(javaClass.enclosingClass.getResourceAsStream("signeddata.avsc"))
 
         fun deserialize(bytes: ByteArray): SignedData {
             val hashRecord = signedDataSchema.deserialize(bytes)

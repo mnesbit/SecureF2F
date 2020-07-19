@@ -23,6 +23,7 @@ class InitiatorHelloRequest private constructor(private val schemaId: SecureHash
                     initiatorHelloRequestRecord.getTyped("initiatorNonce"),
                     initiatorHelloRequestRecord.getTyped("responderNonce"),
                     initiatorHelloRequestRecord.getTyped("encryptedPayload"))
+
     init {
         require(initiatorNonce.size == NONCE_SIZE) { "Invalid nonce" }
         require(responderNonce.size == NONCE_SIZE) { "Invalid nonce" }
@@ -32,8 +33,8 @@ class InitiatorHelloRequest private constructor(private val schemaId: SecureHash
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val initiatorHelloRequestSchema: Schema = Schema.Parser()
-            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorhellorequest.avsc"))
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/initiatorhellorequest.avsc"))
 
         private val schemaFingerprint: ByteArray = SchemaNormalization.parsingFingerprint("SHA-256", initiatorHelloRequestSchema)
 

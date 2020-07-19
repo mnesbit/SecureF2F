@@ -7,13 +7,13 @@ import javax.crypto.spec.SecretKeySpec
 // Based upon the pebbling algorithm in http://www.win.tue.nl/~berry/papers/eobp.pdf
 // and code at http://www.win.tue.nl/~berry/pebbling/
 class PebbledHashChain private constructor(
-    private val chainKey: SecretKeySpec,
-    override val targetHash: SecureHash,
-    private val seedHash: SecureHash,
-    private val intermediateHashes: MutableList<SecureHash>,
-    override var version: Int,
-    override val maxChainLength: Int,
-    override val minChainLength: Int
+        private val chainKey: SecretKeySpec,
+        override val targetHash: SecureHash,
+        private val seedHash: SecureHash,
+        private val intermediateHashes: MutableList<SecureHash>,
+        override var version: Int,
+        override val maxChainLength: Int,
+        override val minChainLength: Int
 ) : HashChainPrivate {
     init {
         require(minChainLength >= 0) { "min chain length cannot be negative" }
@@ -23,10 +23,10 @@ class PebbledHashChain private constructor(
 
     companion object {
         fun generateChain(
-            keyMaterial: ByteArray,
-            secureRandom: Random = newSecureRandom(),
-            maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH,
-            minChainLength: Int = HashChainPublic.MIN_CHAIN_LENGTH
+                keyMaterial: ByteArray,
+                secureRandom: Random = newSecureRandom(),
+                maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+                minChainLength: Int = HashChainPublic.MIN_CHAIN_LENGTH
         ): HashChainPrivate {
             require(maxChainLength and (maxChainLength - 1) == 0) {
                 "Maximum chain length must be a power of 2"
@@ -51,13 +51,13 @@ class PebbledHashChain private constructor(
             }
             intermediateHashes.reverse()
             val chain = PebbledHashChain(
-                hmacKey,
-                SecureHash(CHAIN_HASH_ID, finalHash),
-                startHash,
-                intermediateHashes,
-                0,
-                maxChainLength,
-                minChainLength
+                    hmacKey,
+                    SecureHash(CHAIN_HASH_ID, finalHash),
+                    startHash,
+                    intermediateHashes,
+                    0,
+                    maxChainLength,
+                    minChainLength
             )
             for (i in 0 until minChainLength) {
                 chain.incrementVersion()
@@ -72,10 +72,10 @@ class PebbledHashChain private constructor(
 
     override val public: HashChainPublic by lazy(LazyThreadSafetyMode.PUBLICATION) {
         HashChainPublic(
-            chainKey,
-            targetHash,
-            maxChainLength,
-            minChainLength
+                chainKey,
+                targetHash,
+                maxChainLength,
+                minChainLength
         )
     }
 

@@ -21,11 +21,11 @@ class SessionBinding(private val protocolVersion: Int,
                      private val identityInfo: VersionedIdentity) : AvroConvertible {
     constructor(sessionBindingRecord: GenericRecord) :
             this(
-                sessionBindingRecord.getTyped("protocolVersion"),
-                sessionBindingRecord.getTyped("otherPartyNonce"),
-                sessionBindingRecord.getTyped("ownNonce"),
-                sessionBindingRecord.getTyped("ownDHPublicKey"),
-                sessionBindingRecord.getTyped("identityInfo")
+                    sessionBindingRecord.getTyped("protocolVersion"),
+                    sessionBindingRecord.getTyped("otherPartyNonce"),
+                    sessionBindingRecord.getTyped("ownNonce"),
+                    sessionBindingRecord.getTyped("ownDHPublicKey"),
+                    sessionBindingRecord.getTyped("identityInfo")
             )
 
     init {
@@ -38,13 +38,13 @@ class SessionBinding(private val protocolVersion: Int,
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sessionBindingSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                    PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema
+                .addTypes(
+                        mapOf(
+                                VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                                PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionbinding.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/session/sessionbinding.avsc"))
 
         fun deserialize(bytes: ByteArray): SessionBinding {
             val sessionBindingRecord = sessionBindingSchema.deserialize(bytes)

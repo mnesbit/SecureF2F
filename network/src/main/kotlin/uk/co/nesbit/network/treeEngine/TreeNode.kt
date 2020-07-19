@@ -9,8 +9,8 @@ import uk.co.nesbit.network.services.KeyServiceImpl
 class TreeNode(private val actorSystem: ActorSystem, networkConfig: NetworkConfiguration) {
     val keyService: KeyService = KeyServiceImpl(maxVersion = 1 shl 10)
     val rootNodeActor: ActorRef =
-        actorSystem.actorOf(
-            RootNodeActor.getProps(keyService, networkConfig),
-            networkConfig.networkId.actorName
-        )
+            actorSystem.actorOf(
+                    RootNodeActor.getProps(keyService, networkConfig),
+                    networkConfig.networkId.actorName
+            )
 }

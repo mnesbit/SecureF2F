@@ -19,7 +19,7 @@ import java.nio.ByteOrder
 import java.util.*
 
 class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddress?) :
-    UntypedBaseActorWithLoggingAndTimers() {
+        UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(linkId: LinkId, connectTo: PublicAddress?): Props {
@@ -78,7 +78,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
 
     private fun onLinkSendMessage(message: LinkSendMessage) {
         //log().info("LinkSendMessage ${message.msg.size} bytes ${message.msg.printHexBinary()}")
-        if(bufferedWrites.size >= MAX_BUFFER_SIZE) {
+        if (bufferedWrites.size >= MAX_BUFFER_SIZE) {
             log().warning("dropping packet due to full buffer")
             return
         }
@@ -96,19 +96,19 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
 
     private fun onConnected(message: Tcp.Connected) {
         log().info(
-            "Tcp Connected $linkId ${message.localAddress()}" +
-                    (if (connectTo != null) "->" else "<-") +
-                    "${message.remoteAddress()}"
+                "Tcp Connected $linkId ${message.localAddress()}" +
+                        (if (connectTo != null) "->" else "<-") +
+                        "${message.remoteAddress()}"
         )
         tcpActor = sender
         context.watch(tcpActor)
         sender.tell(TcpMessage.register(self, false, true), self)
         connected = true
         context.parent.tell(
-            TcpNetworkActor.ConnectResult(
-                linkId,
-                if (connectTo != null) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
-            ), self
+                TcpNetworkActor.ConnectResult(
+                        linkId,
+                        if (connectTo != null) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
+                ), self
         )
     }
 

@@ -26,17 +26,17 @@ class NeighbourUpdate(val localId: NetworkAddressInfo, val addresses: List<Netwo
 class Nuke
 
 class NeighbourLinkActor(
-    private val keyService: KeyService,
-    private val networkConfig: NetworkConfiguration,
-    private val physicalNetworkActor: ActorRef
+        private val keyService: KeyService,
+        private val networkConfig: NetworkConfiguration,
+        private val physicalNetworkActor: ActorRef
 ) :
-    UntypedBaseActorWithLoggingAndTimers() {
+        UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
-            keyService: KeyService,
-            networkConfig: NetworkConfiguration,
-            physicalNetworkActor: ActorRef
+                keyService: KeyService,
+                networkConfig: NetworkConfiguration,
+                physicalNetworkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return createProps(javaClass.enclosingClass, keyService, networkConfig, physicalNetworkActor)
@@ -58,8 +58,8 @@ class NeighbourLinkActor(
     }
 
     private class ParentInfo(
-        var parent: LinkId? = null,
-        var startPoint: Int = 0
+            var parent: LinkId? = null,
+            var startPoint: Int = 0
     )
 
     private val networkId: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -79,7 +79,7 @@ class NeighbourLinkActor(
 
     private var parents: List<ParentInfo> = listOf(ParentInfo(), ParentInfo(), ParentInfo())
     private var selfAddress: NetworkAddressInfo =
-        NetworkAddressInfo(keyService.getVersion(networkId), listOf(networkId), listOf(networkId), listOf(networkId))
+            NetworkAddressInfo(keyService.getVersion(networkId), listOf(networkId), listOf(networkId), listOf(networkId))
     private var changed: Boolean = true
     private var parentHeartbeat: Boolean = false
     private var neighbourChanged: Boolean = false
@@ -91,9 +91,9 @@ class NeighbourLinkActor(
         //log().info("Starting NeighbourLinkActor")
         physicalNetworkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
-            "staticLinkStartup",
-            CheckStaticLinks(true),
-            keyService.random.nextInt(LINK_CHECK_INTERVAL_MS.toInt()).toLong().millis()
+                "staticLinkStartup",
+                CheckStaticLinks(true),
+                keyService.random.nextInt(LINK_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -132,9 +132,9 @@ class NeighbourLinkActor(
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
         if (check.first) {
             timers.startTimerWithFixedDelay(
-                "staticLinkPoller",
-                CheckStaticLinks(false),
-                LINK_CHECK_INTERVAL_MS.millis()
+                    "staticLinkPoller",
+                    CheckStaticLinks(false),
+                    LINK_CHECK_INTERVAL_MS.millis()
             )
         }
         openStaticLinks()
@@ -159,7 +159,7 @@ class NeighbourLinkActor(
         while (linkStateIterator.hasNext()) {
             val linkState = linkStateIterator.next().value
             if (linkState.identity == null
-                && ChronoUnit.MILLIS.between(linkState.created, now) > HELLO_TIMEOUT_MS
+                    && ChronoUnit.MILLIS.between(linkState.created, now) > HELLO_TIMEOUT_MS
             ) {
                 log().error("Hello timed out ${linkState.linkId}")
                 physicalNetworkActor.tell(CloseRequest(linkState.linkId), self)
@@ -181,17 +181,17 @@ class NeighbourLinkActor(
         if (linkRequestPending.size < MAX_CONNECTS) {
             for (expectedLink in networkConfig.staticRoutes.shuffled()) {
                 if (!staticLinkStatus.containsKey(expectedLink)
-                    && !staticLinkAlternate.containsKey(expectedLink)
-                    && !linkRequestPending.contains(expectedLink)
-                    && expectedLink != networkConfig.networkId // no self-links
+                        && !staticLinkAlternate.containsKey(expectedLink)
+                        && !linkRequestPending.contains(expectedLink)
+                        && expectedLink != networkConfig.networkId // no self-links
                 ) {
                     log().info(
-                        "open static link to $expectedLink " +
-                                "expected ${networkConfig.staticRoutes.size} " +
-                                "open ${staticLinkStatus.size} " +
-                                "pending ${linkRequestPending.size} " +
-                                "aliased ${staticLinkAlternate.size} " +
-                                "remaining ${networkConfig.staticRoutes.size - staticLinkStatus.size - staticLinkAlternate.size}"
+                            "open static link to $expectedLink " +
+                                    "expected ${networkConfig.staticRoutes.size} " +
+                                    "open ${staticLinkStatus.size} " +
+                                    "pending ${linkRequestPending.size} " +
+                                    "aliased ${staticLinkAlternate.size} " +
+                                    "remaining ${networkConfig.staticRoutes.size - staticLinkStatus.size - staticLinkAlternate.size}"
                     )
                     linkRequestPending += expectedLink
                     physicalNetworkActor.tell(OpenRequest(expectedLink), self)
@@ -220,13 +220,13 @@ class NeighbourLinkActor(
         val currentParent = parents[index]
         val allStates = linkStates.values.toList()
         val valid = allStates
-            .filter { it.treeState != null }
-            .filter { entry -> entry.treeState!!.shortPaths[index].none { it.id == networkId } }
-            .filter { entry2 ->
-                val root = entry2.treeState!!.paths[index].path.first()
-                val age = rootExpiryCache[root.identity.id]!!.second
-                ChronoUnit.MILLIS.between(age, now) < ROOT_STALE_MS
-            }
+                .filter { it.treeState != null }
+                .filter { entry -> entry.treeState!!.shortPaths[index].none { it.id == networkId } }
+                .filter { entry2 ->
+                    val root = entry2.treeState!!.paths[index].path.first()
+                    val age = rootExpiryCache[root.identity.id]!!.second
+                    ChronoUnit.MILLIS.between(age, now) < ROOT_STALE_MS
+                }
         if (valid.isEmpty()) {
             currentParent.startPoint = 0
             currentParent.parent = null
@@ -234,7 +234,7 @@ class NeighbourLinkActor(
         }
         val neighbourRoots = valid.map { it.treeState!!.roots[index] }
         val minRoot = (neighbourRoots + networkId)
-            .minBy { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }!!
+                .minBy { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }!!
         if (minRoot == networkId) {
             currentParent.startPoint = 0
             currentParent.parent = null
@@ -326,8 +326,8 @@ class NeighbourLinkActor(
 
 
     private fun sendMessageToLink(
-        linkState: LinkState,
-        message: Message
+            linkState: LinkState,
+            message: Message
     ) {
         val oneHopMessage = OneHopMessage.createOneHopMessage(message)
         val networkMessage =
@@ -345,14 +345,14 @@ class NeighbourLinkActor(
         val parentPath2 = parentPath(1)
         val parentPath3 = parentPath(2)
         val treeState = TreeState.createTreeState(
-            parentPath1,
-            parentPath2,
-            parentPath3,
-            linkState.sendSecureId!!,
-            keyService.getVersion(networkId),
-            linkState.identity!!,
-            keyService,
-            now
+                parentPath1,
+                parentPath2,
+                parentPath3,
+                linkState.sendSecureId!!,
+                keyService.getVersion(networkId),
+                linkState.identity!!,
+                keyService,
+                now
         )
         //log().info("send ${linkState.linkId} ${linkState.seqNum} ${linkState.ackSeqNum}")
         sendMessageToLink(linkState, treeState)
@@ -377,7 +377,7 @@ class NeighbourLinkActor(
         log().info("onLinkStatusChange $linkId $linkInfo")
         if (linkInfo.status.active) {
             if (linkInfo.status == LinkStatus.LINK_UP_ACTIVE
-                && linkInfo.route.to in networkConfig.staticRoutes
+                    && linkInfo.route.to in networkConfig.staticRoutes
             ) {
                 linkRequestPending -= linkInfo.route.to
                 val prevLink = staticLinkStatus[linkInfo.route.to]
@@ -534,7 +534,7 @@ class NeighbourLinkActor(
         val parentDists = selfAddress.depths
         val nearestParent = parentDists.withIndex().minBy { it.value }!!.index
         if (sourceLink == parents[nearestParent].parent
-            && tree.paths[nearestParent].path.first() != oldState?.paths?.get(nearestParent)?.path?.first()
+                && tree.paths[nearestParent].path.first() != oldState?.paths?.get(nearestParent)?.path?.first()
         ) {
             parentHeartbeat = true
         }
@@ -543,8 +543,8 @@ class NeighbourLinkActor(
     }
 
     private fun findGreedyNextHop(
-        treeAddress: NetworkAddressInfo,
-        sourceLink: LinkId
+            treeAddress: NetworkAddressInfo,
+            sourceLink: LinkId
     ): LinkState? {
         val neighbour = addresses[treeAddress.identity.id]
         if (neighbour != null) {
@@ -558,10 +558,10 @@ class NeighbourLinkActor(
         var bestDistance = selfAddress.greedyDist(treeAddress)
         for (neighbourState in linkStates.values) {
             if (neighbourState.linkId != sourceLink
-                && neighbourState.identity != null
-                && neighbourState.sendSecureId != null
-                && neighbourState.treeState != null
-                && neighbourState.treeState!!.roots == selfAddress.roots
+                    && neighbourState.identity != null
+                    && neighbourState.sendSecureId != null
+                    && neighbourState.treeState != null
+                    && neighbourState.treeState!!.roots == selfAddress.roots
             ) {
                 val hopCount = neighbourState.treeState!!.treeAddress.greedyDist(treeAddress)
                 if (hopCount < bestDistance) {
@@ -582,11 +582,11 @@ class NeighbourLinkActor(
         }
         val reversePath = try {
             payloadMessage.verify(
-                networkId,
-                linkState.receiveSecureId,
-                linkState.identity!!,
-                keyService,
-                now
+                    networkId,
+                    linkState.receiveSecureId,
+                    linkState.identity!!,
+                    keyService,
+                    now
             )
         } catch (ex: Exception) {
             log().warning("Bad GreedyRoutedMessage ${ex.message}")
@@ -609,12 +609,12 @@ class NeighbourLinkActor(
                 return
             }
             val forwardMessage = GreedyRoutedMessage.forwardGreedRoutedMessage(
-                payloadMessage,
-                nextHop.sendSecureId!!,
-                keyService.getVersion(networkId),
-                nextHop.identity!!,
-                keyService,
-                now
+                    payloadMessage,
+                    nextHop.sendSecureId!!,
+                    keyService.getVersion(networkId),
+                    nextHop.identity!!,
+                    keyService,
+                    now
             )
             sendMessageToLink(nextHop, forwardMessage)
         }
@@ -628,14 +628,14 @@ class NeighbourLinkActor(
         }
         val hopCountMax = selfAddress.greedyDist(messageRequest.networkAddress)
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
-            messageRequest.networkAddress,
-            hopCountMax,
-            messageRequest.payload,
-            nextHop.sendSecureId!!,
-            keyService.getVersion(networkId),
-            nextHop.identity!!,
-            keyService,
-            clock.instant()
+                messageRequest.networkAddress,
+                hopCountMax,
+                messageRequest.payload,
+                nextHop.sendSecureId!!,
+                keyService.getVersion(networkId),
+                nextHop.identity!!,
+                keyService,
+                clock.instant()
         )
         sendMessageToLink(nextHop, greedyRoutedMessage)
     }

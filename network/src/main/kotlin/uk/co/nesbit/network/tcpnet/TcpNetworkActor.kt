@@ -134,8 +134,8 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Untyped
             return
         }
         val handler = context.actorOf(
-            TcpLinkActor.getProps(linkId, request.remoteNetworkId),
-            linkId.id.toString()
+                TcpLinkActor.getProps(linkId, request.remoteNetworkId),
+                linkId.id.toString()
         )
         context.watch(handler)
         linkHandlers[linkId] = handler
@@ -205,8 +205,8 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Untyped
         val remoteAddress = PublicAddress(message.remoteAddress().hostString, message.remoteAddress().port)
         val newLink = createLink(remoteAddress)
         val handler = context.actorOf(
-            TcpLinkActor.getProps(newLink, null),
-            newLink.id.toString()
+                TcpLinkActor.getProps(newLink, null),
+                newLink.id.toString()
         )
         context.watch(handler)
         linkHandlers[newLink] = handler

@@ -17,7 +17,7 @@ class RatchetMessage(val encryptedHeader: ByteArray, val encryptedPayload: ByteA
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val ratchetMessageSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetmessage.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetmessage.avsc"))
 
         fun deserialize(bytes: ByteArray): RatchetMessage {
             val ratchetMessageRecord = ratchetMessageSchema.deserialize(bytes)

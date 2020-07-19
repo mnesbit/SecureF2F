@@ -14,26 +14,26 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class SecurePathItem(
-    val timestamp: Instant,
-    val identity: VersionedIdentity,
-    val signatureOverNext: DigitalSignature
+        val timestamp: Instant,
+        val identity: VersionedIdentity,
+        val signatureOverNext: DigitalSignature
 ) : AvroConvertible {
     constructor(securePathItemRecord: GenericRecord) : this(
-        securePathItemRecord.getTyped("timestamp"),
-        securePathItemRecord.getTyped("identity"),
-        securePathItemRecord.getTyped("signatureOverNext")
+            securePathItemRecord.getTyped("timestamp"),
+            securePathItemRecord.getTyped("identity"),
+            securePathItemRecord.getTyped("signatureOverNext")
     )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val securePathItemSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
-                    DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                .addTypes(
+                        mapOf(
+                                VersionedIdentity.versionedIdentitySchema.fullName to VersionedIdentity.versionedIdentitySchema,
+                                DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/securepathitem.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/securepathitem.avsc"))
 
         fun deserialize(bytes: ByteArray): SecurePathItem {
             val securePathItemRecord = securePathItemSchema.deserialize(bytes)
@@ -72,18 +72,18 @@ class SecurePathItem(
 
 class EncryptedSecurePathItem private constructor(private val encryptedItem: ByteArray) : AvroConvertible {
     constructor(encryptedSecurePathItemRecord: GenericRecord) : this(
-        encryptedSecurePathItemRecord.getTyped<ByteArray>("encryptedItem")
+            encryptedSecurePathItemRecord.getTyped<ByteArray>("encryptedItem")
     )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val encryptedSecurePathItemSchema: Schema = Schema.Parser()
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/encryptedsecurepathitem.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/encryptedsecurepathitem.avsc"))
 
         fun createEncryptedSecurePathItem(
-            securePathItem: SecurePathItem,
-            targetPublicKey: PublicKey,
-            random: SecureRandom = newSecureRandom()
+                securePathItem: SecurePathItem,
+                targetPublicKey: PublicKey,
+                random: SecureRandom = newSecureRandom()
         ): EncryptedSecurePathItem {
             val payload = securePathItem.serialize()
             val encrypted = Ecies.encryptMessage(payload, null, targetPublicKey, random)
@@ -128,7 +128,7 @@ class EncryptedSecurePathItem private constructor(private val encryptedItem: Byt
 
 class SecurePath(val path: List<SecurePathItem>) : AvroConvertible {
     constructor(securePathRecord: GenericRecord) : this(
-        securePathRecord.getObjectArray("path", ::SecurePathItem)
+            securePathRecord.getObjectArray("path", ::SecurePathItem)
     )
 
     init {
@@ -138,12 +138,12 @@ class SecurePath(val path: List<SecurePathItem>) : AvroConvertible {
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val securePathSchema: Schema = Schema.Parser()
-            .addTypes(
-                mapOf(
-                    SecurePathItem.securePathItemSchema.fullName to SecurePathItem.securePathItemSchema
+                .addTypes(
+                        mapOf(
+                                SecurePathItem.securePathItemSchema.fullName to SecurePathItem.securePathItemSchema
+                        )
                 )
-            )
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/securepath.avsc"))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/securepath.avsc"))
 
         fun deserialize(bytes: ByteArray): SecurePath {
             val securePathRecord = securePathSchema.deserialize(bytes)
@@ -151,11 +151,11 @@ class SecurePath(val path: List<SecurePathItem>) : AvroConvertible {
         }
 
         fun createSecurePathList(
-            appendTo: List<SecurePathItem>?,
-            from: VersionedIdentity,
-            to: VersionedIdentity,
-            keyService: KeyService,
-            now: Instant
+                appendTo: List<SecurePathItem>?,
+                from: VersionedIdentity,
+                to: VersionedIdentity,
+                keyService: KeyService,
+                now: Instant
         ): List<SecurePathItem> {
             val truncatedNow = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
             val nowBytes = truncatedNow.toEpochMilli().toByteArray()
@@ -167,12 +167,12 @@ class SecurePath(val path: List<SecurePathItem>) : AvroConvertible {
         }
 
         fun createEncryptedSecurePathList(
-            appendTo: List<EncryptedSecurePathItem>?,
-            from: VersionedIdentity,
-            to: VersionedIdentity,
-            finalDestination: SphinxPublicIdentity,
-            keyService: KeyService,
-            now: Instant
+                appendTo: List<EncryptedSecurePathItem>?,
+                from: VersionedIdentity,
+                to: VersionedIdentity,
+                finalDestination: SphinxPublicIdentity,
+                keyService: KeyService,
+                now: Instant
         ): List<EncryptedSecurePathItem> {
             val truncatedNow = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
             val nowBytes = truncatedNow.toEpochMilli().toByteArray()
@@ -180,9 +180,9 @@ class SecurePath(val path: List<SecurePathItem>) : AvroConvertible {
             val signatureOverNext = keyService.sign(from.id, pathSignOverNext).toDigitalSignature()
             val pathItem = SecurePathItem(truncatedNow, from, signatureOverNext)
             val encryptedPathItem = EncryptedSecurePathItem.createEncryptedSecurePathItem(
-                pathItem,
-                finalDestination.diffieHellmanPublicKey,
-                keyService.random
+                    pathItem,
+                    finalDestination.diffieHellmanPublicKey,
+                    keyService.random
             )
             val prevPath = appendTo ?: emptyList()
             return prevPath + encryptedPathItem

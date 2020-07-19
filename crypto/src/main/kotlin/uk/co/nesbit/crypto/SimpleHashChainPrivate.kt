@@ -4,12 +4,12 @@ import java.util.*
 import javax.crypto.spec.SecretKeySpec
 
 class SimpleHashChainPrivate private constructor(
-    private val chainKey: SecretKeySpec,
-    override val targetHash: SecureHash,
-    private val seedHash: SecureHash,
-    override var version: Int,
-    override val maxChainLength: Int,
-    override val minChainLength: Int
+        private val chainKey: SecretKeySpec,
+        override val targetHash: SecureHash,
+        private val seedHash: SecureHash,
+        override var version: Int,
+        override val maxChainLength: Int,
+        override val minChainLength: Int
 ) : HashChainPrivate {
     init {
         require(minChainLength >= 0) { "min chain length cannot be negative" }
@@ -20,38 +20,38 @@ class SimpleHashChainPrivate private constructor(
 
     companion object {
         fun generateChain(
-            keyMaterial: ByteArray,
-            secureRandom: Random = newSecureRandom(),
-            maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH,
-            minChainLength: Int = HashChainPublic.MIN_CHAIN_LENGTH
+                keyMaterial: ByteArray,
+                secureRandom: Random = newSecureRandom(),
+                maxChainLength: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+                minChainLength: Int = HashChainPublic.MIN_CHAIN_LENGTH
         ): HashChainPrivate {
             val seed = ByteArray(32)
             secureRandom.nextBytes(seed)
             val startHash = SecureHash(HashChainPublic.CHAIN_HASH_ID, seed)
             val hmacKey = SecretKeySpec(keyMaterial, HashChainPublic.CHAIN_HASH_ID)
             val endVal = getChainValueInternal(
-                0,
-                startHash,
-                hmacKey,
-                maxChainLength,
-                0
+                    0,
+                    startHash,
+                    hmacKey,
+                    maxChainLength,
+                    0
             )
             return SimpleHashChainPrivate(
-                hmacKey,
-                endVal,
-                startHash,
-                minChainLength,
-                maxChainLength,
-                minChainLength
+                    hmacKey,
+                    endVal,
+                    startHash,
+                    minChainLength,
+                    maxChainLength,
+                    minChainLength
             )
         }
 
         private fun getChainValueInternal(
-            stepsFromEnd: Int,
-            seed: SecureHash,
-            hmacKey: SecretKeySpec,
-            maxChainLength: Int,
-            minChainLength: Int
+                stepsFromEnd: Int,
+                seed: SecureHash,
+                hmacKey: SecretKeySpec,
+                maxChainLength: Int,
+                minChainLength: Int
         ): SecureHash {
             require(stepsFromEnd >= minChainLength)
             require(stepsFromEnd <= maxChainLength)
@@ -76,10 +76,10 @@ class SimpleHashChainPrivate private constructor(
     }
 
     override fun getSecureVersion(stepsFromEnd: Int): SecureVersion = SecureVersion(
-        stepsFromEnd,
-        getChainValue(stepsFromEnd),
-        maxChainLength,
-        minChainLength
+            stepsFromEnd,
+            getChainValue(stepsFromEnd),
+            maxChainLength,
+            minChainLength
     )
 
     override val secureVersion: SecureVersion
@@ -87,10 +87,10 @@ class SimpleHashChainPrivate private constructor(
 
     override val public: HashChainPublic by lazy(LazyThreadSafetyMode.PUBLICATION) {
         HashChainPublic(
-            chainKey,
-            targetHash,
-            maxChainLength,
-            minChainLength
+                chainKey,
+                targetHash,
+                maxChainLength,
+                minChainLength
         )
     }
 

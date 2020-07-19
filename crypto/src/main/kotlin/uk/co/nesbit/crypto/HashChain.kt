@@ -10,24 +10,24 @@ import uk.co.nesbit.avro.putTyped
 import javax.crypto.spec.SecretKeySpec
 
 data class SecureVersion(
-    val version: Int,
-    val chainHash: SecureHash,
-    val maxVersion: Int,
-    val minVersion: Int
+        val version: Int,
+        val chainHash: SecureHash,
+        val maxVersion: Int,
+        val minVersion: Int
 ) : AvroConvertible {
     constructor(versionRecord: GenericRecord) :
             this(
-                versionRecord.getTyped("version"),
-                versionRecord.getTyped("chainHash"),
-                versionRecord.getTyped("maxVersion"),
-                versionRecord.getTyped("minVersion")
+                    versionRecord.getTyped("version"),
+                    versionRecord.getTyped("chainHash"),
+                    versionRecord.getTyped("maxVersion"),
+                    versionRecord.getTyped("minVersion")
             )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val secureVersionSchema: Schema = Schema.Parser()
-            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/secureversion.avsc"))
 
         fun deserialize(bytes: ByteArray): SecureVersion {
             val secureVersionRecord = secureVersionSchema.deserialize(bytes)
@@ -46,29 +46,29 @@ data class SecureVersion(
 }
 
 class HashChainPublic(
-    private val chainKey: SecretKeySpec,
-    val targetHash: SecureHash,
-    val maxChainLength: Int,
-    val minChainLength: Int
+        private val chainKey: SecretKeySpec,
+        val targetHash: SecureHash,
+        val maxChainLength: Int,
+        val minChainLength: Int
 ) : AvroConvertible {
     constructor(
-        keyMaterial: ByteArray,
-        targetHash: SecureHash,
-        maxChainLength: Int,
-        minChainLength: Int
+            keyMaterial: ByteArray,
+            targetHash: SecureHash,
+            maxChainLength: Int,
+            minChainLength: Int
     ) : this(
-        SecretKeySpec(keyMaterial, CHAIN_HASH_ID),
-        targetHash,
-        maxChainLength,
-        minChainLength
+            SecretKeySpec(keyMaterial, CHAIN_HASH_ID),
+            targetHash,
+            maxChainLength,
+            minChainLength
     )
 
     constructor(chainRecord: GenericRecord) :
             this(
-                chainRecord.getTyped<ByteArray>("chainKey"),
-                chainRecord.getTyped("targetHash"),
-                chainRecord.getTyped("maxChainLength"),
-                chainRecord.getTyped("minChainLength")
+                    chainRecord.getTyped<ByteArray>("chainKey"),
+                    chainRecord.getTyped("targetHash"),
+                    chainRecord.getTyped("maxChainLength"),
+                    chainRecord.getTyped("minChainLength")
             )
 
     private val cache = mutableMapOf(targetHash to 0)
@@ -85,8 +85,8 @@ class HashChainPublic(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val hashChainSchema: Schema = Schema.Parser()
-            .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
-            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
+                .addTypes(mapOf(SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema))
+                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/hashchain.avsc"))
 
         fun deserialize(bytes: ByteArray): HashChainPublic {
             val hashChainRecord = hashChainSchema.deserialize(bytes)
@@ -104,10 +104,10 @@ class HashChainPublic(
     }
 
     fun verifyChainValue(version: SecureVersion): Boolean = verifyChainValue(
-        version.chainHash,
-        version.version,
-        version.minVersion,
-        version.maxVersion
+            version.chainHash,
+            version.version,
+            version.minVersion,
+            version.maxVersion
     )
 
     fun verifyChainValue(hash: SecureHash, stepsFromEnd: Int, minVersion: Int, maxVersion: Int): Boolean {
