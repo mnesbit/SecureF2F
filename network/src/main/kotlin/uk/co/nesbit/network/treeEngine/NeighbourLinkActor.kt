@@ -44,6 +44,7 @@ class NeighbourLinkActor(
 
         const val MAX_CONNECTS = 5
         const val HELLO_TIMEOUT_MS = 120000L
+        const val JITTER_MS = 1000
         const val HEARTBEAT_INTERVAL_MS = TreeState.TimeErrorPerHop / 3L
         const val LINK_CHECK_INTERVAL_MS = HEARTBEAT_INTERVAL_MS / 2L
         const val ROOT_STALE_MS = 120000L
@@ -130,13 +131,11 @@ class NeighbourLinkActor(
     }
 
     private fun onCheckStaticLinks(check: CheckStaticLinks) {
-        if (check.first) {
-            timers.startTimerWithFixedDelay(
-                    "staticLinkPoller",
-                    CheckStaticLinks(false),
-                    LINK_CHECK_INTERVAL_MS.millis()
-            )
-        }
+        timers.startSingleTimer(
+                "staticLinkPoller",
+                CheckStaticLinks(false),
+                (LINK_CHECK_INTERVAL_MS + keyService.random.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+        )
         openStaticLinks()
         val now = clock.instant()
         removeStaleInfo(now)
@@ -550,12 +549,12 @@ class NeighbourLinkActor(
         if (neighbour != null) {
             return linkStates[neighbour]
         }
-        if (treeAddress.roots != selfAddress.roots) {
-            log().warning("Unmatched root dropping")
-            return null
-        }
         var best: LinkState? = null
         var bestDistance = selfAddress.greedyDist(treeAddress)
+        if (bestDistance == Int.MAX_VALUE) {
+            log().warning("Unmatched roots dropping")
+            return null
+        }
         for (neighbourState in linkStates.values) {
             if (neighbourState.linkId != sourceLink
                     && neighbourState.identity != null
@@ -626,7 +625,7 @@ class NeighbourLinkActor(
             log().warning("Unable to route to ${messageRequest.networkAddress}")
             return
         }
-        val hopCountMax = selfAddress.greedyDist(messageRequest.networkAddress)
+        val hopCountMax = (3 * selfAddress.greedyDist(messageRequest.networkAddress)) / 2
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
                 messageRequest.networkAddress,
                 hopCountMax,

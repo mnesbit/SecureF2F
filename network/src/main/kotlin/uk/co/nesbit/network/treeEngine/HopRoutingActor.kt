@@ -41,6 +41,7 @@ class HopRoutingActor(
         }
 
         const val REFRESH_INTERVAL = 20000L
+        const val JITTER_MS = 1000
         const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
         const val REQUEST_TIMEOUT_START_MS = 500L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 100L
@@ -125,13 +126,11 @@ class HopRoutingActor(
     }
 
     private fun onCheckRoutes(check: CheckRoutes) {
-        if (check.first) {
-            timers.startTimerWithFixedDelay(
-                    "routeScanningPoller",
-                    CheckRoutes(false),
-                    ROUTE_CHECK_INTERVAL_MS.millis()
-            )
-        }
+        timers.startSingleTimer(
+                "routeScanningPoller",
+                CheckRoutes(false),
+                (ROUTE_CHECK_INTERVAL_MS + keyService.random.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+        )
         if (networkAddress == null) {
             return
         }
@@ -434,7 +433,7 @@ class HopRoutingActor(
             if (networkAddress == null) {
                 return 1
             }
-            return networkAddress!!.greedyDist(target)
+            return networkAddress!!.greedyDist(target).coerceAtMost(sphinxEncoder.maxRouteLength)
         }
     }
 
