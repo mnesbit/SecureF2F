@@ -34,7 +34,7 @@ class TreeState(
 
     companion object {
         const val BaseTimeError = 10000L
-        const val TimeErrorPerHop = 45000L
+        const val TimeErrorPerHop = 60000L
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val treeStateSchema: Schema = Schema.Parser()

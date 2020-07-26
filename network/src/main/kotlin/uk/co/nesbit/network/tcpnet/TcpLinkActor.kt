@@ -16,6 +16,7 @@ import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import java.net.InetSocketAddress
 import java.nio.ByteOrder
+import java.time.Clock
 import java.util.*
 
 class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddress?) :
@@ -187,7 +188,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
             val buff1 = bufferedReads.drop(4)
             val packet = buff1.take(length).toArray()
             //log().info("packet ${packet.size} bytes ${packet.printHexBinary()}")
-            context.parent.tell(LinkReceivedMessage(linkId, packet), self)
+            context.parent.tell(LinkReceivedMessage(linkId, Clock.systemUTC().instant(), packet), self)
             bufferedReads = buff1.drop(length)
             //log().info("new receive length ${bufferedReads.length()}")
         }

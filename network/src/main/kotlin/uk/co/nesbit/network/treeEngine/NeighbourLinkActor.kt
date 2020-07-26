@@ -18,6 +18,7 @@ import uk.co.nesbit.network.util.millis
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import kotlin.random.Random
 
 class NeighbourSendGreedyMessage(val networkAddress: NetworkAddressInfo, val payload: ByteArray)
 class NeighbourSendSphinxMessage(val nextHop: SecureHash, val message: SphinxRoutedMessage)
@@ -45,9 +46,11 @@ class NeighbourLinkActor(
         const val MAX_CONNECTS = 5
         const val HELLO_TIMEOUT_MS = 120000L
         const val JITTER_MS = 1000
-        const val HEARTBEAT_INTERVAL_MS = TreeState.TimeErrorPerHop / 3L
-        const val LINK_CHECK_INTERVAL_MS = HEARTBEAT_INTERVAL_MS / 2L
+        const val HEARTBEAT_INTERVAL_MS = 5000L
         const val ROOT_STALE_MS = 120000L
+        const val FREEZE_TIME = 10000L
+        const val LATENCY_HIGH = 500L
+        const val LATENCY_LOW = 25L
     }
 
     private class CheckStaticLinks(val first: Boolean)
@@ -81,11 +84,11 @@ class NeighbourLinkActor(
     private var parents: List<ParentInfo> = listOf(ParentInfo(), ParentInfo(), ParentInfo())
     private var selfAddress: NetworkAddressInfo =
             NetworkAddressInfo(keyService.getVersion(networkId), listOf(networkId), listOf(networkId), listOf(networkId))
-    private var changed: Boolean = true
-    private var parentHeartbeat: Boolean = false
     private var neighbourChanged: Boolean = false
-    private var lastTreeSent: Instant = Instant.ofEpochMilli(0L)
-    private var lastNeighbourSent: Instant = Instant.ofEpochMilli(0L)
+    private val localRand = Random(keyService.random.nextLong())
+    private var heartbeatRate = HEARTBEAT_INTERVAL_MS
+    private var dropP = 0.0
+    private var pChangeTime = clock.instant()
 
     override fun preStart() {
         super.preStart()
@@ -94,7 +97,7 @@ class NeighbourLinkActor(
         timers.startSingleTimer(
                 "staticLinkStartup",
                 CheckStaticLinks(true),
-                keyService.random.nextInt(LINK_CHECK_INTERVAL_MS.toInt()).toLong().millis()
+                localRand.nextInt(HEARTBEAT_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -112,7 +115,7 @@ class NeighbourLinkActor(
     override fun onReceive(message: Any) {
         when (message) {
             is WatchRequest -> onWatchRequest()
-            is CheckStaticLinks -> onCheckStaticLinks(message)
+            is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
@@ -130,26 +133,18 @@ class NeighbourLinkActor(
         }
     }
 
-    private fun onCheckStaticLinks(check: CheckStaticLinks) {
+    private fun onCheckStaticLinks() {
         timers.startSingleTimer(
                 "staticLinkPoller",
                 CheckStaticLinks(false),
-                (LINK_CHECK_INTERVAL_MS + keyService.random.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+                (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         openStaticLinks()
         val now = clock.instant()
         removeStaleInfo(now)
         calcParents(now)
         //log().info("status changed: $changed parentHeartbeat: $parentHeartbeat neighbourChanged: $neighbourChanged")
-        sendNeighbourUpdate(now)
-        if (ChronoUnit.MILLIS.between(lastTreeSent, now) >= HEARTBEAT_INTERVAL_MS) {
-            for (parent in parents) {
-                if (parent.parent == null) {
-                    parentHeartbeat = true
-                    break
-                }
-            }
-        }
+        sendNeighbourUpdate()
         sendTreeStatus(now)
     }
 
@@ -200,17 +195,14 @@ class NeighbourLinkActor(
         }
     }
 
-    private fun sendNeighbourUpdate(now: Instant) {
-        if (changed || neighbourChanged) {
-            if (ChronoUnit.MILLIS.between(lastNeighbourSent, now) >= HEARTBEAT_INTERVAL_MS / 2L) {
-                neighbourChanged = false
-                lastNeighbourSent = now
-                val neighbours = linkStates.values.mapNotNull { it.treeState?.treeAddress }
-                log().info("Send neighbour update")
-                val neighbourUpdate = NeighbourUpdate(selfAddress, neighbours)
-                for (owner in owners) {
-                    owner.tell(neighbourUpdate, self)
-                }
+    private fun sendNeighbourUpdate() {
+        if (neighbourChanged) {
+            neighbourChanged = false
+            val neighbours = linkStates.values.mapNotNull { it.treeState?.treeAddress }
+            log().info("Send neighbour update")
+            val neighbourUpdate = NeighbourUpdate(selfAddress, neighbours)
+            for (owner in owners) {
+                owner.tell(neighbourUpdate, self)
             }
         }
     }
@@ -316,10 +308,10 @@ class NeighbourLinkActor(
         calcParent(2, now)
         val oldSelfAddress = selfAddress
         calcSelfAddress()
-        if (!changed && oldSelfAddress != selfAddress) {
+        if (oldSelfAddress != selfAddress) {
             keyService.incrementAndGetVersion(networkId)
             calcSelfAddress()
-            changed = true
+            neighbourChanged = true
         }
     }
 
@@ -358,17 +350,10 @@ class NeighbourLinkActor(
     }
 
     private fun sendTreeStatus(now: Instant) {
-        if (changed || parentHeartbeat) {
-            if (ChronoUnit.MILLIS.between(lastTreeSent, now) >= HEARTBEAT_INTERVAL_MS / 2L) {
-                changed = false
-                parentHeartbeat = false
-                lastTreeSent = now
-                for (neighbour in linkStates.values) {
-                    sendTreeForLink(now, neighbour.linkId)
-                }
-                log().info("tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}")
-            }
+        for (neighbour in linkStates.values) {
+            sendTreeForLink(now, neighbour.linkId)
         }
+        log().info("tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}")
     }
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {
@@ -409,10 +394,6 @@ class NeighbourLinkActor(
                 }
             }
             neighbourChanged = true
-            val now = clock.instant()
-            calcParents(now)
-            sendNeighbourUpdate(now)
-            sendTreeStatus(now)
         }
         openStaticLinks()
     }
@@ -432,6 +413,7 @@ class NeighbourLinkActor(
             physicalNetworkActor.tell(CloseRequest(message.linkId), self)
             return
         }
+        cpuLoadCheck(message)
         val oneHopMessage = try {
             OneHopMessage.deserialize(message.msg)
         } catch (ex: Exception) {
@@ -444,15 +426,29 @@ class NeighbourLinkActor(
             is Hello -> processHelloMessage(message.linkId, payloadMessage)
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
             is GreedyRoutedMessage -> processGreedyRoutedMessage(message.linkId, payloadMessage)
-            is SphinxRoutedMessage -> {
-                for (owner in owners) {
-                    owner.tell(payloadMessage, self)
-                }
-            }
+            is SphinxRoutedMessage -> processSphinxRoutedMessage(payloadMessage)
             is AckMessage -> {
                 //
             }
             else -> log().error("Unknown message type $message")
+        }
+    }
+
+    private fun cpuLoadCheck(message: LinkReceivedMessage) {
+        val now = clock.instant()
+        if (ChronoUnit.MILLIS.between(pChangeTime, now) > FREEZE_TIME) {
+            val localQueueLatency = ChronoUnit.MILLIS.between(message.received, now)
+            if (localQueueLatency > LATENCY_HIGH) {
+                dropP = ((dropP + 0.01) * 1.5).coerceIn(0.0, 0.5)
+                heartbeatRate = ((3L * heartbeatRate) / 2L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
+                pChangeTime = now
+                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+            } else if (localQueueLatency < LATENCY_LOW) {
+                dropP = (dropP - 0.01).coerceIn(0.0, 0.5)
+                heartbeatRate = (heartbeatRate - 1000L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
+                pChangeTime = now
+                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+            }
         }
     }
 
@@ -525,20 +521,6 @@ class NeighbourLinkActor(
         if (tree.treeAddress != oldState?.treeAddress) {
             neighbourChanged = true
         }
-        if (changed && ChronoUnit.MILLIS.between(lastTreeSent, now) < HEARTBEAT_INTERVAL_MS / 2L) {
-            return
-        }
-        calcParents(now)
-        sendNeighbourUpdate(now)
-        val parentDists = selfAddress.depths
-        val nearestParent = parentDists.withIndex().minBy { it.value }!!.index
-        if (sourceLink == parents[nearestParent].parent
-                && tree.paths[nearestParent].path.first() != oldState?.paths?.get(nearestParent)?.path?.first()
-        ) {
-            parentHeartbeat = true
-        }
-        //log().info("status changed: $changed parentHeartbeat: $parentHeartbeat neighbourChanged: $neighbourChanged")
-        sendTreeStatus(now)
     }
 
     private fun findGreedyNextHop(
@@ -573,6 +555,9 @@ class NeighbourLinkActor(
     }
 
     private fun processGreedyRoutedMessage(sourceLink: LinkId, payloadMessage: GreedyRoutedMessage) {
+        if (localRand.nextDouble() < dropP) {
+            return
+        }
         val now = clock.instant()
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
@@ -616,6 +601,15 @@ class NeighbourLinkActor(
                     now
             )
             sendMessageToLink(nextHop, forwardMessage)
+        }
+    }
+
+    private fun processSphinxRoutedMessage(payloadMessage: Message) {
+        if (localRand.nextDouble() < dropP) {
+            return
+        }
+        for (owner in owners) {
+            owner.tell(payloadMessage, self)
         }
     }
 

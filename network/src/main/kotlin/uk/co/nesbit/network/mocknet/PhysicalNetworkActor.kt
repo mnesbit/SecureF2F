@@ -7,6 +7,7 @@ import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
+import java.time.Clock
 import java.util.concurrent.atomic.AtomicInteger
 
 class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : UntypedBaseActorWithLoggingAndTimers() {
@@ -210,7 +211,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         if (links[activeLink]?.status?.active == true) {
             val renumberedMessage =
-                    LinkReceivedMessage(activeLink, msg.msg)
+                    LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
             for (owner in owners) {
                 owner.tell(renumberedMessage, self)
             }
@@ -220,7 +221,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     private fun onLinkSendMessage(msg: LinkSendMessage) {
         val target = targets[msg.linkId]
         val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
-        val renumberedMessage = LinkReceivedMessage(activeLink, msg.msg)
+        val renumberedMessage = LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
         target?.tell(renumberedMessage, self)
     }
 

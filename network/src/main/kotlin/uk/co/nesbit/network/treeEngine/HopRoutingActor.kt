@@ -22,6 +22,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.random.Random
 
 class HopRoutingActor(
         private val keyService: KeyService,
@@ -82,6 +83,7 @@ class HopRoutingActor(
     private var lastSent: Instant = Instant.ofEpochMilli(0L)
     private var requestTimeoutScaled: Long = 8L * REQUEST_TIMEOUT_START_MS
     private var requestTimeoutVarScaled: Long = 0L
+    private val localRand = Random(keyService.random.nextLong())
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
 
@@ -92,7 +94,7 @@ class HopRoutingActor(
         timers.startSingleTimer(
                 "routeScanningStartup",
                 CheckRoutes(true),
-                keyService.random.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
+                localRand.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -108,7 +110,7 @@ class HopRoutingActor(
 
     override fun onReceive(message: Any) {
         when (message) {
-            is CheckRoutes -> onCheckRoutes(message)
+            is CheckRoutes -> onCheckRoutes()
             is WatchRequest -> onWatchRequest()
             is NeighbourUpdate -> onNeighbourUpdate(message)
             is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
@@ -125,11 +127,11 @@ class HopRoutingActor(
         }
     }
 
-    private fun onCheckRoutes(check: CheckRoutes) {
+    private fun onCheckRoutes() {
         timers.startSingleTimer(
                 "routeScanningPoller",
                 CheckRoutes(false),
-                (ROUTE_CHECK_INTERVAL_MS + keyService.random.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+                (ROUTE_CHECK_INTERVAL_MS + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         if (networkAddress == null) {
             return
