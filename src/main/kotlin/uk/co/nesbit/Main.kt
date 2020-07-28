@@ -18,7 +18,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
-    val N = 4000
+    val N = 1000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
     //val simNetwork = convertToTcpNetwork(makeASNetwork())
