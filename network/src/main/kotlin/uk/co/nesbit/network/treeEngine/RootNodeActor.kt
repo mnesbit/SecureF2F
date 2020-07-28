@@ -22,6 +22,7 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
                 -1,
                 Duration.Inf()
         ) { _ ->
+            @Suppress("USELESS_CAST")
             SupervisorStrategy.restart() as SupervisorStrategy.Directive?
         }
     }

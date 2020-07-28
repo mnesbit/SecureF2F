@@ -91,6 +91,9 @@ class NetworkAddressInfo(
             self: List<SecureHash>,
             other: List<SecureHash>
     ): Int {
+        if (self.first() != other.first()) {
+            return Int.MAX_VALUE
+        }
         var prefixLength = 0
         while (prefixLength < self.size
                 && prefixLength < other.size
