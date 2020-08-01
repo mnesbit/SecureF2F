@@ -1,17 +1,24 @@
 package uk.co.nesbit
 
-import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import akka.pattern.Patterns.ask
+import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import scala.concurrent.Await
+import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.mocknet.DnsMockActor
-import uk.co.nesbit.network.treeEngine.Nuke
+import uk.co.nesbit.network.treeEngine.ClientDhtRequest
+import uk.co.nesbit.network.treeEngine.ClientDhtResponse
 import uk.co.nesbit.network.treeEngine.TreeNode
 import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
+import java.time.Duration
 import java.util.*
+import java.util.concurrent.TimeoutException
 
 
 fun main(args: Array<String>) {
@@ -32,10 +39,42 @@ fun main(args: Array<String>) {
         val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
-    val num = Scanner(System.`in`).nextInt()
-    val ref = actorSystem.actorSelection("akka://Akka/user/$num/neighbours")
-    ref.tell(Nuke(), ActorRef.noSender())
-    while (System.`in`.read() != 'q'.toInt());
+//    val num = Scanner(System.`in`).nextInt()
+//    val ref = actorSystem.actorSelection("akka://Akka/user/$num/neighbours")
+//    ref.tell(Nuke(), ActorRef.noSender())
+//    while (System.`in`.read() != 'q'.toInt());
+    val random = Random()
+    var round = 0
+    val timeout = Timeout.create(Duration.ofSeconds(15L))
+    while (true) {
+        Thread.sleep(15000L)
+        ++round
+        val putTarget = simNodes[random.nextInt(simNodes.size)].name
+        val randomPutNode = actorSystem.actorSelection("akka://Akka/user/$putTarget/route")
+        val data = round.toByteArray()
+        val key = SecureHash.secureHash(data)
+        val putRequest = ClientDhtRequest(key, data)
+        println("send put $round $key to ${randomPutNode.pathString()}")
+        val putFut = ask(randomPutNode, putRequest, timeout)
+        try {
+            val putResult = Await.result(putFut, timeout.duration()) as ClientDhtResponse
+            println("got result $putResult")
+        } catch (ex: TimeoutException) {
+            println("put query $round timed out")
+        }
+
+        val getTarget = simNodes[random.nextInt(simNodes.size)].name
+        val randomGetNode = actorSystem.actorSelection("akka://Akka/user/$getTarget/route")
+        val getRequest = ClientDhtRequest(key, null)
+        println("send get $round $key to ${randomGetNode.pathString()}")
+        val getFut = ask(randomGetNode, getRequest, timeout)
+        try {
+            val getResult = Await.result(getFut, timeout.duration()) as ClientDhtResponse
+            println("got result $getResult")
+        } catch (ex: TimeoutException) {
+            println("get query $round timed out")
+        }
+    }
     actorSystem.terminate().value()
 }
 
