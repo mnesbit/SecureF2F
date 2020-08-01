@@ -442,12 +442,12 @@ class NeighbourLinkActor(
                 dropP = ((dropP + 0.01) * 1.5).coerceIn(0.0, 0.5)
                 heartbeatRate = ((3L * heartbeatRate) / 2L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
-                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+                //log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
             } else if (localQueueLatency < LATENCY_LOW) {
                 dropP = (dropP - 0.01).coerceIn(0.0, 0.5)
                 heartbeatRate = (heartbeatRate - 1000L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
-                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+                //log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
             }
         }
     }

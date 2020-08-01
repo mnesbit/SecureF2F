@@ -164,7 +164,7 @@ class HopRoutingActor(
             if (request.value.expire < now) {
                 //log().info("stale request")
                 requestItr.remove()
-                val bucket = findBucket(request.value.request.key)
+                val bucket = findBucket(request.value.request.key, false)
                 if (bucket.nodes.remove(request.value.target)) { // move to end
                     bucket.nodes.add(request.value.target)
                 }
@@ -184,25 +184,32 @@ class HopRoutingActor(
         }
     }
 
-    private fun pollChosenNode(near: NetworkAddressInfo, now: Instant) {
-        val nearestTo = findBucket(near.identity.id)
+    private fun pollChosenNode(destination: NetworkAddressInfo, now: Instant) {
+        sendDhtRequest(destination, networkAddress!!.identity.id, networkAddress!!.serialize(), now)
+    }
+
+    private fun sendDhtRequest(destination: NetworkAddressInfo,
+                               key: SecureHash,
+                               data: ByteArray?,
+                               now: Instant) {
+        val nearestTo = findBucket(destination.identity.id, true)
         var requestId = keyService.random.nextLong()
         if (requestId < 0L) {
             requestId = -requestId
         }
         val request = DhtRequest(
                 requestId,
-                networkAddress!!.identity.id,
+                key,
                 networkAddress!!,
                 nearestTo.nodes,
-                networkAddress!!.serialize()
+                data
         )
-        val hops = estimateMessageHops(near)
+        val hops = estimateMessageHops(destination)
         val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
         val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
-        outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, near)
-        sendGreedyMessage(near, request)
+        outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, destination)
+        sendGreedyMessage(destination, request)
     }
 
     private fun logNearestNodeGap(
@@ -210,10 +217,13 @@ class HopRoutingActor(
             distMin: Int
     ) {
         if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
-            val gap = xorDistance(nearest.first().identity.id, networkAddress!!.identity.id) - distMin
+            val gap = nearest.map { xorDistance(it.identity.id, networkAddress!!.identity.id) }.min()!! - distMin
             if (gap == 0 && !gapZeroDone) {
                 gapZero.incrementAndGet()
                 gapZeroDone = true
+            } else if (gap != 0 && gapZeroDone) {
+                gapZero.decrementAndGet()
+                gapZeroDone = false
             }
             log().info("gap $gap $round ${(100 * gapZero.get()) / gapNEstimate}")
         }
@@ -278,9 +288,17 @@ class HopRoutingActor(
         neighbourLinkActor.tell(neighbourSend, self)
     }
 
-    private fun findBucket(id: SecureHash): KBucket {
+    private fun findBucket(id: SecureHash, allowMerge: Boolean): KBucket {
         val dist = xorDistance(networkAddress!!.identity.id, id)
-        return kbuckets.first { it.xorDistanceMin <= dist && dist < it.xorDistanceMax }
+        val bucket = kbuckets.first { it.xorDistanceMin <= dist && dist < it.xorDistanceMax }
+        if (allowMerge && bucket.nodes.size < K) {
+            val allAddresses = kbuckets.flatMap { it.nodes }
+            val sorted = allAddresses.sortedBy { xorDistance(it.identity.id, id) }
+            val mergedBucket = KBucket(dist, dist)
+            mergedBucket.nodes.addAll(sorted.take(K))
+            return mergedBucket
+        }
+        return bucket
     }
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
@@ -290,7 +308,7 @@ class HopRoutingActor(
         if (node.identity.id == networkAddress?.identity?.id) {
             return
         }
-        val bucket = findBucket(node.identity.id)
+        val bucket = findBucket(node.identity.id, false)
         val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
         if (current != null
                 && current.identity.currentVersion.version > node.identity.currentVersion.version
@@ -342,7 +360,7 @@ class HopRoutingActor(
     }
 
     private fun findNearest(id: SecureHash, number: Int): List<NetworkAddressInfo> {
-        val bucket = findBucket(id)
+        val bucket = findBucket(id, true)
         val sorted = bucket.nodes.sortedBy { xorDistance(id, it.identity.id) }
         return sorted.take(number)
     }
@@ -394,7 +412,7 @@ class HopRoutingActor(
     }
 
     private fun processDhtRequestInternal(request: DhtRequest): DhtResponse {
-        val nearest = findBucket(request.key) // query then merge to ensure newscast style
+        val nearest = findBucket(request.key, true) // query then merge to ensure newscast style
         addToKBuckets(request.sourceAddress)
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
