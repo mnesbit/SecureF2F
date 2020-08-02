@@ -25,7 +25,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
-    val N = 1000
+    val N = 4000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
     //val simNetwork = convertToTcpNetwork(makeASNetwork())
@@ -45,9 +45,9 @@ fun main(args: Array<String>) {
 //    while (System.`in`.read() != 'q'.toInt());
     val random = Random()
     var round = 0
-    val timeout = Timeout.create(Duration.ofSeconds(15L))
+    val timeout = Timeout.create(Duration.ofSeconds(120L))
     while (true) {
-        Thread.sleep(15000L)
+        Thread.sleep(5000L)
         ++round
         val putTarget = simNodes[random.nextInt(simNodes.size)].name
         val randomPutNode = actorSystem.actorSelection("akka://Akka/user/$putTarget/route")
@@ -55,10 +55,12 @@ fun main(args: Array<String>) {
         val key = SecureHash.secureHash(data)
         val putRequest = ClientDhtRequest(key, data)
         println("send put $round $key to ${randomPutNode.pathString()}")
+        val startPut = System.nanoTime()
         val putFut = ask(randomPutNode, putRequest, timeout)
         try {
             val putResult = Await.result(putFut, timeout.duration()) as ClientDhtResponse
-            println("got result $putResult")
+            val diff = ((System.nanoTime() - startPut) / 1000L).toDouble() / 1000.0
+            println("got result $putResult in $diff ms")
         } catch (ex: TimeoutException) {
             println("put query $round timed out")
         }
@@ -67,10 +69,12 @@ fun main(args: Array<String>) {
         val randomGetNode = actorSystem.actorSelection("akka://Akka/user/$getTarget/route")
         val getRequest = ClientDhtRequest(key, null)
         println("send get $round $key to ${randomGetNode.pathString()}")
+        val startGet = System.nanoTime()
         val getFut = ask(randomGetNode, getRequest, timeout)
         try {
             val getResult = Await.result(getFut, timeout.duration()) as ClientDhtResponse
-            println("got result $getResult")
+            val diff = ((System.nanoTime() - startGet) / 1000L).toDouble() / 1000.0
+            println("got result $getResult in $diff ms")
         } catch (ex: TimeoutException) {
             println("get query $round timed out")
         }

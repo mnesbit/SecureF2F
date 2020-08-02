@@ -255,6 +255,9 @@ class HopRoutingActor(
         val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
         outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, destination, parent)
+        if (parent != null) {
+            log().info("Send client DhtRequest to ${destination.identity.id} for $key")
+        }
         sendGreedyMessage(destination, request)
     }
 
@@ -496,6 +499,7 @@ class HopRoutingActor(
         if (parent.request.data == null) { // read
             if (response.data != null) {
                 outstandingClientRequests -= parent
+                log().info("Client request reyurned data for ${parent.request.key}")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, response.data), self)
             } else {
                 extraClientQueries(parent, now)
@@ -582,12 +586,17 @@ class HopRoutingActor(
         if (request.data == null) { // read
             val localData = data.getIfPresent(request.key)
             if (localData != null) { // already have cached answer
-                log().info("Satisfy get of ${request.key} with local data ")
+                log().info("Satisfy client get of ${request.key} with local data ")
                 sender.tell(ClientDhtResponse(request.key, true, localData), self)
                 return
             }
         } else { // write
             data.put(request.key, request.data)
+        }
+        if (networkAddress == null) {
+            log().warning("Node not ready for client key ${request.key}")
+            sender.tell(ClientDhtResponse(request.key, false, request.data), self)
+            return
         }
         val now = Clock.systemUTC().instant()
         val initialProbes = findNearest(request.key, ALPHA)
