@@ -25,7 +25,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
-    val N = 4000
+    val N = 1000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
     //val simNetwork = convertToTcpNetwork(makeASNetwork())
@@ -60,7 +60,7 @@ fun main(args: Array<String>) {
         try {
             val putResult = Await.result(putFut, timeout.duration()) as ClientDhtResponse
             val diff = ((System.nanoTime() - startPut) / 1000L).toDouble() / 1000.0
-            println("got result $putResult in $diff ms")
+            println("put result $putResult in $diff ms")
         } catch (ex: TimeoutException) {
             println("put query $round timed out")
         }
@@ -74,7 +74,7 @@ fun main(args: Array<String>) {
         try {
             val getResult = Await.result(getFut, timeout.duration()) as ClientDhtResponse
             val diff = ((System.nanoTime() - startGet) / 1000L).toDouble() / 1000.0
-            println("got result $getResult in $diff ms")
+            println("get result $getResult in $diff ms")
         } catch (ex: TimeoutException) {
             println("get query $round timed out")
         }
