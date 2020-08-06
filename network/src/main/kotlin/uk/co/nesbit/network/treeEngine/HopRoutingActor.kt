@@ -23,6 +23,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.experimental.xor
 import kotlin.random.Random
 
 class ClientDhtRequest(
@@ -69,11 +70,29 @@ class HopRoutingActor(
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
-        const val K = 15
+        const val K = 10
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
         val gapZero = AtomicInteger(0)
         val gapStart = Clock.systemUTC().instant()
+
+
+        @JvmStatic
+        fun xorPrefix(x: SecureHash, y: SecureHash): Int {
+            require(x.algorithm == y.algorithm) { "Hashes must be of same type" }
+            val xb = x.bytes
+            val yb = y.bytes
+            for (i in xb.indices) {
+                if (xb[i] != yb[i]) {
+                    val diff = java.lang.Byte.toUnsignedInt(xb[i] xor yb[i])
+                    val xorx = Integer.numberOfLeadingZeros(diff)
+                    val shift = 8 - xorx - 3 // shift leading 1 bit right to leave 3 bits
+                    return (diff ushr shift)
+                }
+            }
+            return 0
+        }
+
     }
 
     private class CheckRoutes(val first: Boolean)
@@ -251,7 +270,7 @@ class HopRoutingActor(
                                key: SecureHash,
                                data: ByteArray?,
                                now: Instant) {
-        val nearestTo = findBucket(destination.identity.id)
+        val nearestTo = findNearest(destination.identity.id, K)
         var requestId = keyService.random.nextLong()
         if (requestId < 0L) {
             requestId = -requestId
@@ -260,7 +279,7 @@ class HopRoutingActor(
                 requestId,
                 key,
                 networkAddress!!,
-                nearestTo.nodes,
+                nearestTo,
                 data
         )
         val hops = estimateMessageHops(destination)
@@ -374,7 +393,12 @@ class HopRoutingActor(
             return
         }
         bucket.nodes.removeIf { it.identity.id == node.identity.id }
-        if (bucket.nodes.size >= K) {
+        val prefix = xorPrefix(node.identity.id, networkAddress!!.identity.id)
+        val subBucket = bucket.nodes
+                .map { Pair(xorPrefix(it.identity.id, networkAddress!!.identity.id), it) }
+                .filter { it.first == prefix }
+                .map { it.second }
+        if (subBucket.size >= K) { // we store 'sub-buckets' like KAD to enhance hop gain per query
             bucket.nodes.add(0, node)
             if (bucket.xorDistanceMax - bucket.xorDistanceMin > 1) {
                 val sorted = bucket.nodes.sortedBy {
@@ -398,22 +422,22 @@ class HopRoutingActor(
                     kbuckets.add(rightBucket)
                     kbuckets.sortBy { it.xorDistanceMin }
                 } else {
-                    dropNode(bucket)
+                    dropNode(bucket, subBucket)
                 }
             } else {
-                dropNode(bucket)
+                dropNode(bucket, subBucket)
             }
         } else {
             bucket.nodes.add(0, node)
         }
     }
 
-    private fun dropNode(bucket: KBucket) {
-        val lastUncached = bucket.nodes.findLast { routeCache.getIfPresent(it.identity.id) == null }
+    private fun dropNode(bucket: KBucket, subBucket: List<NetworkAddressInfo>) {
+        val lastUncached = subBucket.findLast { routeCache.getIfPresent(it.identity.id) == null }
         if (lastUncached != null) {
             bucket.nodes.remove(lastUncached)
         } else {
-            bucket.nodes.removeAt(bucket.nodes.size - 1)
+            bucket.nodes.remove(subBucket.last())
         }
     }
 
@@ -473,12 +497,12 @@ class HopRoutingActor(
     }
 
     private fun processDhtRequestInternal(request: DhtRequest): DhtResponse {
-        val nearest = findBucket(request.key) // query then merge to ensure newscast style
+        val nearest = findNearest(request.key, K) // query then merge to ensure newscast style
         addToKBuckets(request.sourceAddress)
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
         }
-        val response = DhtResponse(request.requestId, nearest.nodes, data.getIfPresent(request.key))
+        val response = DhtResponse(request.requestId, nearest, data.getIfPresent(request.key))
         if (request.data != null) {
             data.put(request.key, request.data)
         }
