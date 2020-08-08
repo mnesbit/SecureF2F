@@ -385,7 +385,9 @@ class HopRoutingActor(
     }
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
-        if (node.roots != networkAddress!!.roots) {
+        if (networkAddress!!.roots
+                        .zip(node.roots)
+                        .count { x -> x.first == x.second } < 2) {
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
@@ -401,9 +403,7 @@ class HopRoutingActor(
         bucket.nodes.removeIf { it.identity.id == node.identity.id }
         val prefix = xorPrefix(node.identity.id, networkAddress!!.identity.id)
         val subBucket = bucket.nodes
-                .map { Pair(xorPrefix(it.identity.id, networkAddress!!.identity.id), it) }
-                .filter { it.first == prefix }
-                .map { it.second }
+                .filter { xorPrefix(it.identity.id, networkAddress!!.identity.id) == prefix }
         if (subBucket.size >= K) { // we store 'sub-buckets' like KAD to enhance hop gain per query
             bucket.nodes.add(0, node)
             if (bucket.xorDistanceMax - bucket.xorDistanceMin > 1) {
@@ -463,7 +463,22 @@ class HopRoutingActor(
         //log().info("neighbour update with root ${networkAddress!!.roots}")
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
-                it.roots != networkAddress!!.roots
+                networkAddress!!.roots
+                        .zip(it.roots)
+                        .count { x -> x.first == x.second } < 2
+            }
+        }
+        var index = 1
+        while (index < kbuckets.size) {
+            val bucket = kbuckets[index]
+            if (bucket.nodes.isEmpty()) {
+                val prevBucket = kbuckets[index - 1]
+                val mergedBucket = KBucket(prevBucket.xorDistanceMin, bucket.xorDistanceMax)
+                mergedBucket.nodes.addAll(prevBucket.nodes)
+                kbuckets[index - 1] = mergedBucket
+                kbuckets.removeAt(index)
+            } else {
+                ++index
             }
         }
     }
