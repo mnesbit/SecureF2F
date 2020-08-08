@@ -63,8 +63,8 @@ class HopRoutingActor(
         }
 
         const val REFRESH_INTERVAL = 20000L
-        const val JITTER_MS = 1000
         const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
+        const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 100L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
@@ -85,9 +85,15 @@ class HopRoutingActor(
             for (i in xb.indices) {
                 if (xb[i] != yb[i]) {
                     val diff = java.lang.Byte.toUnsignedInt(xb[i] xor yb[i])
-                    val xorx = Integer.numberOfLeadingZeros(diff)
-                    val shift = 8 - xorx - 3 // shift leading 1 bit right to leave 3 bits
-                    return (diff ushr shift)
+                    val diff2 = if (i < xb.size - 1) {
+                        java.lang.Byte.toUnsignedInt(xb[i + 1] xor yb[i + 1])
+                    } else {
+                        0
+                    }
+                    val prefix16 = (diff shl 8) or diff2
+                    val xorx = Integer.numberOfLeadingZeros(prefix16)
+                    val shift = 32 - xorx - 3 // shift leading 1 bit right to leave 3 bits
+                    return (prefix16 ushr shift)
                 }
             }
             return 0
@@ -309,7 +315,7 @@ class HopRoutingActor(
             val time = ChronoUnit.MILLIS.between(gapStart, Clock.systemUTC().instant())
             val gapCount = gapZero.get()
             val rate = ((gapCount * 1000L) / time)
-            log().info("gap $gap $round ${(100 * gapCount) / gapNEstimate} $rate per/sec")
+            log().info("gap $gap $round ${(100 * gapCount) / gapNEstimate} $rate per/sec ${kbuckets.sumBy { it.nodes.size }} ${kbuckets.size}")
         }
     }
 
