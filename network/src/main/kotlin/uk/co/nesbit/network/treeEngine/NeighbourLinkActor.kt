@@ -87,7 +87,6 @@ class NeighbourLinkActor(
     private var neighbourChanged: Boolean = false
     private val localRand = Random(keyService.random.nextLong())
     private var heartbeatRate = HEARTBEAT_INTERVAL_MS
-    private var dropP = 0.0
     private var pChangeTime = clock.instant()
 
     override fun preStart() {
@@ -438,16 +437,19 @@ class NeighbourLinkActor(
         val now = clock.instant()
         if (ChronoUnit.MILLIS.between(pChangeTime, now) > FREEZE_TIME) {
             val localQueueLatency = ChronoUnit.MILLIS.between(message.received, now)
+            val oldRate = heartbeatRate
             if (localQueueLatency > LATENCY_HIGH) {
-                dropP = ((dropP + 0.01) * 1.5).coerceIn(0.0, 0.5)
                 heartbeatRate = ((3L * heartbeatRate) / 2L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
-                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+                if (oldRate != heartbeatRate) {
+                    log().warning("drop rate up $localQueueLatency $heartbeatRate")
+                }
             } else if (localQueueLatency < LATENCY_LOW) {
-                dropP = (dropP - 0.01).coerceIn(0.0, 0.5)
                 heartbeatRate = (heartbeatRate - 1000L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
-                log().warning("drop rate $localQueueLatency $dropP $heartbeatRate")
+                if (oldRate != heartbeatRate) {
+                    log().warning("drop rate down $localQueueLatency $heartbeatRate")
+                }
             }
         }
     }
@@ -493,7 +495,7 @@ class NeighbourLinkActor(
         //log().info("tree delay ${ChronoUnit.MILLIS.between(tree.path.path.last().timestamp,now)}")
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
-            log().error("No hello yet received on $sourceLink")
+            log().warning("No hello yet received on $sourceLink")
             return
         }
         val neighbour = tree.treeAddress
@@ -531,12 +533,12 @@ class NeighbourLinkActor(
         if (neighbour != null) {
             return linkStates[neighbour]
         }
-        var best: LinkState? = null
-        var bestDistance = selfAddress.greedyDist(treeAddress)
-        if (bestDistance == Int.MAX_VALUE) {
+        val selfDistance = selfAddress.greedyDist(treeAddress)
+        if (selfDistance == Int.MAX_VALUE) {
             log().warning("Unmatched roots dropping")
             return null
         }
+        val eligible = mutableListOf<LinkState>()
         for (neighbourState in linkStates.values) {
             if (neighbourState.linkId != sourceLink
                     && neighbourState.identity != null
@@ -545,19 +547,18 @@ class NeighbourLinkActor(
                     && neighbourState.treeState!!.roots == selfAddress.roots
             ) {
                 val hopCount = neighbourState.treeState!!.treeAddress.greedyDist(treeAddress)
-                if (hopCount < bestDistance) {
-                    bestDistance = hopCount
-                    best = neighbourState
+                if (hopCount < selfDistance) {
+                    eligible += neighbourState
                 }
             }
         }
-        return best
+        if (eligible.isEmpty()) {
+            return null
+        }
+        return eligible[localRand.nextInt(eligible.size)]
     }
 
     private fun processGreedyRoutedMessage(sourceLink: LinkId, payloadMessage: GreedyRoutedMessage) {
-        if (localRand.nextDouble() < dropP) {
-            return
-        }
         val now = clock.instant()
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
@@ -605,9 +606,6 @@ class NeighbourLinkActor(
     }
 
     private fun processSphinxRoutedMessage(payloadMessage: Message) {
-        if (localRand.nextDouble() < dropP) {
-            return
-        }
         for (owner in owners) {
             owner.tell(payloadMessage, self)
         }
