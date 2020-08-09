@@ -28,7 +28,7 @@ fun main(args: Array<String>) {
     val N = 1000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
-    //val simNetwork = convertToTcpNetwork(makeASNetwork())
+    //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()

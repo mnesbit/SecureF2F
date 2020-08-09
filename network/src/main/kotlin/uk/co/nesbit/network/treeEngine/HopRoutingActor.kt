@@ -203,7 +203,7 @@ class HopRoutingActor(
             addToKBuckets(neighbour)
         }
         if (outstandingRequests.isEmpty()
-                && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL) {
+                && ChronoUnit.MILLIS.between(lastSent, now) >= (REFRESH_INTERVAL * (kbuckets.size - 1).coerceAtLeast(1))) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
             logNearestNodeGap(nearest, distMin)
