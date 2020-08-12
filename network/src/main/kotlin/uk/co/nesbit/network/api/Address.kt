@@ -1,8 +1,7 @@
 package uk.co.nesbit.network.api
 
-import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.sphinx.SphinxPublicIdentity
 import uk.co.nesbit.utils.printHexBinary
+import java.net.URL
 import java.security.PublicKey
 
 interface Address {
@@ -13,6 +12,8 @@ class NetworkAddress(val id: Int) : Address {
     override val actorName: String get() = id.toString()
 
     fun toLocalPublicAddress(): PublicAddress = PublicAddress("localhost", id + 10000)
+
+    fun toLocalHTTPAddress(): URLAddress = URLAddress(URL(URLAddress.HTTP_PROTOCOL, "localhost", id + 10000, "/link"))
 
     override fun toString(): String = "NetworkAddress[$id]"
 
@@ -56,27 +57,34 @@ class PublicAddress(val host: String, val port: Int) : Address {
     }
 }
 
-class SphinxAddress(val identity: SphinxPublicIdentity) : Address {
-    val id: SecureHash get() = identity.id
+class URLAddress(val url: URL) : Address {
+    companion object {
+        const val HTTP_PROTOCOL = "http"
+    }
 
-    override val actorName: String get() = identity.id.bytes.printHexBinary()
+    init {
+        require(url.protocol == HTTP_PROTOCOL) {
+            "Only HTTP currently implemented"
+        }
+    }
 
-    override fun toString(): String =
-            if (identity.publicAddress == null) "Sphinx[$id]" else "Sphinx[${identity.publicAddress}]"
+    override val actorName: String get() = "${url.protocol}_${url.host}_${url.port}${url.file.replace("[^-\\w:@&=+,.!~*'_;]".toRegex(), "_")}"
+
+    override fun toString(): String = "URLAddress[$url]"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as SphinxAddress
+        other as URLAddress
 
-        if (identity != other.identity) return false
+        if (url != other.url) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        return identity.hashCode()
+        return url.hashCode()
     }
 }
 
