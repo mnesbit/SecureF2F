@@ -47,7 +47,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         val linkIdCounter = AtomicInteger(0)
 
         const val LINK_HEARTBEAT_INTERVAL = 60000L
-        const val STALE_CHECK_INTERVAL = LINK_HEARTBEAT_INTERVAL / 2L
+        const val STALE_CHECK_INTERVAL = 1000L
+        const val MAX_BUFFER_SIZE = 100
         const val COOKIE_NAME = "link-id"
     }
 
@@ -58,21 +59,67 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
 
     private class CheckStaleLinks(val first: Boolean)
 
+    private data class BindResult(val success: ServerBinding?, val error: Throwable? = null)
+
+    private data class OpenResponse(
+        val open: OpenRequest,
+        val linkId: LinkId,
+        val response: HttpResponse,
+        val error: Throwable? = null
+    )
+
+    private data class SendMailResponse(
+        val send: LinkSendMessage,
+        val linkId: LinkId,
+        val response: HttpResponse,
+        val error: Throwable? = null
+    )
+
+    private data class MailGetResponse(
+        val linkId: LinkId,
+        val response: HttpResponse,
+        val error: Throwable? = null
+    )
+
     private data class ConnectionInfo(
         val linkId: LinkId,
+        val cookieString: String,
         var refreshed: Instant,
-        var opened: Boolean = false
     ) {
+        var opened: Boolean = false
         val packets = mutableListOf<ByteArray>()
     }
 
-    private class BodyContext(
+    private data class ClientConnectionInfo(
+        val linkId: LinkId,
+        val baseUri: Uri,
+        var refreshed: Instant = Clock.systemUTC().instant(),
+        var cookie: Cookie? = null
+    )
+
+    private class SendMailBodyContext(
         val context: ConnectionInfo,
         val source: ActorRef
     ) {
         private var body: ByteString = ByteString.emptyByteString()
 
-        fun concat(part: ByteString): BodyContext {
+        fun concat(part: ByteString): SendMailBodyContext {
+            body = body.concat(part)
+            return this
+        }
+
+        fun toBodyString(): String {
+            return body.decodeString(Charsets.UTF_8)
+        }
+    }
+
+    private class GetMailBodyContext(
+        val context: ClientConnectionInfo,
+        val source: ActorRef
+    ) {
+        private var body: ByteString = ByteString.emptyByteString()
+
+        fun concat(part: ByteString): GetMailBodyContext {
             body = body.concat(part)
             return this
         }
@@ -122,7 +169,9 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     private var serverBinding: ServerBinding? = null
 
     private val links = mutableMapOf<LinkId, LinkInfo>()
-    private val linkCookies = mutableMapOf<String, ConnectionInfo>()
+    private val serverLinkInfo = mutableMapOf<String, ConnectionInfo>()
+    private val serverReverseLinkInfo = mutableMapOf<LinkId, ConnectionInfo>()
+    private val clientLinkInfo = mutableMapOf<LinkId, ClientConnectionInfo>()
 
     override fun preStart() {
         super.preStart()
@@ -131,7 +180,7 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         val source = Http.get(context.system)
             .newServerAt(networkAddress.url.host, networkAddress.url.port)
             .connectionSource()
-        val serverBindingFuture: CompletionStage<ServerBinding> =
+        val serverBindingFuture: CompletionStage<BindResult> =
             source.to(Sink.foreach { connection ->
                 val flow = Flow.create<HttpRequest>()
                     .map { HttpRequestAndSource(connection.remoteAddress(), it) }
@@ -139,6 +188,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
                 connection.handleWith(flow, materializer)
             }
             ).run(materializer)
+                .thenApply { BindResult(it) }
+                .exceptionally { error -> BindResult(null, error) }
         Patterns.pipe(serverBindingFuture, context.dispatcher).to(self)
 
         timers.startSingleTimer(
@@ -165,14 +216,17 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             is WatchRequest -> onWatchRequest()
             is CheckStaleLinks -> onCheckStaleLinks(message)
             is OpenRequest -> onOpenRequest(message)
+            is OpenResponse -> onOpenResponse(message)
             is CloseRequest -> onCloseRequest(message)
             is CloseAllRequest -> onCloseAll()
             is LinkSendMessage -> onLinkSendMessage(message)
-            is LinkReceivedMessage -> onLinkReceivedMessage(message)
+            is SendMailResponse -> onLinkSendResponse(message)
             is Terminated -> onDeath(message)
-            is ServerBinding -> onServerBinding(message)
+            is BindResult -> onServerBinding(message)
             is HttpRequestAndSource -> onHttpRequest(message)
-            is BodyContext -> onMessageCompleted(message)
+            is SendMailBodyContext -> onSendMailReceivedBody(message)
+            is MailGetResponse -> onMailGetResponse(message)
+            is GetMailBodyContext -> onMailGetReceivedBody(message)
             else -> log().warning("Unrecognised message $message")
         }
     }
@@ -186,13 +240,25 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             )
         }
         val now = Clock.systemUTC().instant()
-        val connectionItr = linkCookies.iterator()
+        val connectionItr = serverLinkInfo.iterator()
         while (connectionItr.hasNext()) {
             val link = connectionItr.next().value
             if (ChronoUnit.MILLIS.between(link.refreshed, now) >= LINK_HEARTBEAT_INTERVAL) {
                 connectionItr.remove()
+                serverReverseLinkInfo.remove(link.linkId)
                 log().info("remove stale link $link")
                 closeLink(link.linkId)
+            }
+        }
+        val clientConnectionItr = clientLinkInfo.iterator()
+        while (clientConnectionItr.hasNext()) {
+            val link = clientConnectionItr.next()
+            if (ChronoUnit.MILLIS.between(link.value.refreshed, now) >= LINK_HEARTBEAT_INTERVAL) {
+                connectionItr.remove()
+                log().info("remove stale link $link")
+                closeLink(link.value.linkId)
+            } else {
+                getMail(link.key)
             }
         }
     }
@@ -210,15 +276,19 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         owners -= death.actor
     }
 
-    private fun onServerBinding(message: ServerBinding) {
-        log().info("Got ServerBinding to ${message.localAddress()}")
-        serverBinding = message
+    private fun onServerBinding(message: BindResult) {
+        if (message.error != null) {
+            log().error(message.error.cause, "Failed to bind")
+            context.stop(self)
+            return
+        }
+        serverBinding = message.success
+        log().info("Got ServerBinding to ${serverBinding!!.localAddress()}")
     }
-
 
     private fun onHttpRequest(message: HttpRequestAndSource) {
         val request = message.request
-        log().info("got HttpRequest ${message.source} ${request.method()} ${request.uri}")
+        //log().info("got HttpRequest ${message.source} ${request.method()} ${request.uri}")
         val reply: HttpResponse? = when (request.method()) {
             HttpMethods.GET -> {
                 processHttpGet(message)
@@ -246,7 +316,7 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             val linkCookie = cookie.cookies.firstOrNull { it.name() == COOKIE_NAME }
             if (linkCookie != null) {
                 val linkCookieValue = linkCookie.value()
-                return linkCookies[linkCookieValue]
+                return serverLinkInfo[linkCookieValue]
             }
         }
         return null
@@ -304,9 +374,10 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         val cookieString = Base64.getEncoder().encodeToString(randomBytes)
         val cookie = HttpCookie.create(COOKIE_NAME, cookieString)
         val now = Clock.systemUTC().instant()
-        val connectionInfo = ConnectionInfo(newLink, now)
-        linkCookies[cookieString] = connectionInfo
-        log().info("Send new cookie $connectionInfo")
+        val connectionInfo = ConnectionInfo(newLink, cookieString, now)
+        serverLinkInfo[cookieString] = connectionInfo
+        serverReverseLinkInfo[newLink] = connectionInfo
+        //log().info("Send new cookie $connectionInfo")
         val status = StatusInfo(true, now)
         val adaptor = moshi.adapter(StatusInfo::class.java)
         val json = adaptor.toJson(status)
@@ -330,12 +401,12 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         }
         val connectionInfo = getLinkInformation(message) ?: return sendErrorResponse(message, StatusCodes.NOT_FOUND)
         val content = message.request.entity().dataBytes
-            .runFold(BodyContext(connectionInfo, sender), { acc, b -> acc.concat(b) }, materializer)
+            .runFold(SendMailBodyContext(connectionInfo, sender), { acc, b -> acc.concat(b) }, materializer)
         Patterns.pipe(content, context.dispatcher).to(self)
         return null
     }
 
-    private fun onMessageCompleted(message: BodyContext) {
+    private fun onSendMailReceivedBody(message: SendMailBodyContext) {
         val linkStatus = links[message.context.linkId]
         if (!message.context.opened) {
             if (linkStatus == null) {
@@ -352,7 +423,7 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         }
         val now = Clock.systemUTC().instant()
         val payload = message.toBodyString()
-        log().info("payload = $payload")
+        //log().info("sendmail payload = $payload")
         val adapter = moshi.adapter(MessageEnvelope::class.java)
         try {
             val mail = adapter.fromJson(payload)
@@ -392,6 +463,17 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             return sendErrorResponse(message, StatusCodes.BAD_REQUEST)
         }
         val connectionInfo = getLinkInformation(message) ?: return sendErrorResponse(message, StatusCodes.NOT_FOUND)
+        val linkStatus = links[connectionInfo.linkId]
+        if (!connectionInfo.opened) {
+            if (linkStatus == null) {
+                return HttpResponse.create()
+                    .withStatus(StatusCodes.NOT_FOUND)
+            }
+            enableLink(linkStatus.linkId, LinkStatus.LINK_UP_PASSIVE)
+            connectionInfo.opened = true
+        } else if (linkStatus == null || !linkStatus.status.active) {
+            return HttpResponse.create().withStatus(StatusCodes.NOT_FOUND)
+        }
         val messages = MessageStatus.create(connectionInfo.packets, maxPackets)
         val adapter = moshi.adapter(MessageStatus::class.java)
         val json = adapter.toJson(messages)
@@ -399,7 +481,6 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             .withEntity(json)
             .withStatus(StatusCodes.OK)
     }
-
 
     private fun createLink(remoteAddress: Address): LinkId {
         val newLinkId = SimpleLinkId(linkIdCounter.getAndIncrement())
@@ -435,7 +516,7 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     }
 
     private fun onOpenRequest(request: OpenRequest) {
-        log().info("OpenRequest $request")
+        //log().info("OpenRequest $request")
         val linkId = createLink(request.remoteNetworkId)
         if (request.remoteNetworkId !is URLAddress) {
             val newLinkInfo = links[linkId]!!
@@ -444,20 +525,227 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             }
             return
         }
+        val requestBase = Uri.create(request.remoteNetworkId.url.toString())
+        clientLinkInfo[linkId] = ClientConnectionInfo(linkId, requestBase)
+        val requestTarget = requestBase.addPathSegment("connect")
+        val openRequest = HttpRequest.create()
+            .withUri(requestTarget)
+            .withMethod(HttpMethods.POST)
+            .withHeaders(listOf(Accept.create(MediaRanges.create(MediaTypes.APPLICATION_JSON))))
+        val connectFuture = Http.get(context.system)
+            .singleRequest(openRequest)
+            .thenApply { response -> OpenResponse(request, linkId, response) }
+            .exceptionally { error ->
+                OpenResponse(
+                    request,
+                    linkId,
+                    HttpResponse.create().withStatus(StatusCodes.NOT_FOUND),
+                    error
+                )
+            }
+
+        Patterns.pipe(connectFuture, context.dispatcher).to(self)
+    }
+
+    private fun onOpenResponse(message: OpenResponse) {
+        val link = clientLinkInfo[message.linkId] ?: return
+        val linkInfo = links[message.linkId] ?: return
+        if (message.error != null
+            || message.response.status().isFailure
+        ) {
+            log().error("link open failed $message")
+            message.response.discardEntityBytes(materializer)
+            clientLinkInfo.remove(message.linkId)
+            for (owner in owners) {
+                owner.tell(linkInfo, self)
+            }
+            return
+        }
+        val cookie = message.response.getHeader(SetCookie::class.java)
+        if (cookie.isEmpty || cookie.get().cookie().name() != COOKIE_NAME) {
+            log().error("Response missing set-Cookie header")
+            clientLinkInfo.remove(message.linkId)
+            for (owner in owners) {
+                owner.tell(linkInfo, self)
+            }
+            return
+        }
+        message.response.discardEntityBytes(materializer)
+        val httpCookie = cookie.get().cookie()
+        link.cookie = Cookie.create(httpCookie.name(), httpCookie.value())
+        link.refreshed = Clock.systemUTC().instant()
+        enableLink(message.linkId, LinkStatus.LINK_UP_ACTIVE)
+        getMail(message.linkId)
+    }
+
+    private fun getMail(linkId: LinkId) {
+        val linkInfo = clientLinkInfo[linkId] ?: return
+        val link = links[linkId]
+        if (link == null) {
+            clientLinkInfo.remove(linkId)
+            return
+        }
+        if (linkInfo.cookie == null) {
+            return
+        }
+        val requestTarget = linkInfo.baseUri
+            .addPathSegment("getmail")
+            .query(Query.create(akka.japi.Pair.create("maxMessages", "10")))
+        val headers = listOf(
+            Accept.create(MediaRanges.create(MediaTypes.APPLICATION_JSON)),
+            linkInfo.cookie!!
+        )
+        val getMailRequest = HttpRequest.create()
+            .withUri(requestTarget)
+            .withMethod(HttpMethods.POST)
+            .withHeaders(headers)
+        val connectFuture = Http.get(context.system)
+            .singleRequest(getMailRequest)
+            .thenApply { response -> MailGetResponse(linkId, response) }
+            .exceptionally { error ->
+                MailGetResponse(
+                    linkId,
+                    HttpResponse.create().withStatus(StatusCodes.NOT_FOUND),
+                    error
+                )
+            }
+
+        Patterns.pipe(connectFuture, context.dispatcher).to(self)
+    }
+
+    private fun onMailGetResponse(message: MailGetResponse) {
+        val link = clientLinkInfo[message.linkId] ?: return
+        val linkInfo = links[message.linkId] ?: return
+        if (message.error != null
+            || message.response.status().isFailure
+        ) {
+            log().error("link mail get failed $message")
+            message.response.discardEntityBytes(materializer)
+            clientLinkInfo.remove(message.linkId)
+            for (owner in owners) {
+                owner.tell(linkInfo, self)
+            }
+            return
+        }
+        val content = message.response.entity().dataBytes
+            .runFold(GetMailBodyContext(link, sender), { acc, b -> acc.concat(b) }, materializer)
+        Patterns.pipe(content, context.dispatcher).to(self)
+    }
+
+    private fun onMailGetReceivedBody(message: GetMailBodyContext) {
+        val linkStatus = links[message.context.linkId]
+        if (linkStatus == null || !linkStatus.status.active) {
+            val errorReply = HttpResponse.create().withStatus(StatusCodes.NOT_FOUND)
+            message.source.tell(errorReply, self)
+            return
+        }
+        val now = Clock.systemUTC().instant()
+        val payload = message.toBodyString()
+        //log().info("getmail payload = $payload")
+        val adapter = moshi.adapter(MessageStatus::class.java)
+        try {
+            val mail = adapter.fromJson(payload)
+            for (packet in mail!!.messages) {
+                onLinkReceivedMessage(LinkReceivedMessage(linkStatus.linkId, now, packet.bytes))
+            }
+            if (mail.messagesRemaining > 0) {
+                getMail(message.context.linkId)
+            }
+        } catch (ex: Exception) {
+            log().error("unable to read packets")
+            val errorReply = HttpResponse.create().withStatus(StatusCodes.UNPROCESSABLE_ENTITY)
+            message.source.tell(errorReply, self)
+            return
+        }
+        message.context.refreshed = now
     }
 
     private fun onCloseRequest(request: CloseRequest) {
         log().info("CloseRequest $request ${links[request.linkId]}")
+        clientLinkInfo.remove(request.linkId)
+        val serverInfo = serverReverseLinkInfo.remove(request.linkId)
+        if (serverInfo != null) {
+            serverLinkInfo.remove(serverInfo.cookieString)
+        }
+        closeLink(request.linkId)
     }
 
     private fun onCloseAll() {
         log().info("CloseAll Request")
+        clientLinkInfo.clear()
+        serverLinkInfo.clear()
+        serverReverseLinkInfo.clear()
+        for (link in links.values) {
+            closeLink(link.linkId)
+        }
     }
 
-    private fun onLinkSendMessage(message: LinkSendMessage) {
+    private fun onLinkSendMessage(request: LinkSendMessage) {
+        //log().info("onLinkSendMessage to ${request.linkId}")
+        val link = links[request.linkId] ?: return
+        if (link.status == LinkStatus.LINK_UP_PASSIVE) {
+            val linkInfo = serverReverseLinkInfo[request.linkId]
+            if (linkInfo != null) {
+                if (linkInfo.packets.size > MAX_BUFFER_SIZE) {
+                    log().warning("drop packets on ${link.linkId} due to full buffer")
+                    return
+                }
+                linkInfo.packets += request.msg
+            }
+        } else if (link.status == LinkStatus.LINK_UP_ACTIVE) {
+            val linkInfo = clientLinkInfo[request.linkId]
+            if (linkInfo?.cookie != null) {
+                val requestTarget = linkInfo.baseUri.addPathSegment("sendmail")
+                val mailMessage = MessageEnvelope(request.msg)
+                val adaptor = moshi.adapter(MessageEnvelope::class.java)
+                val json = adaptor.toJson(mailMessage)
+                val headers = listOf(
+                    Accept.create(MediaRanges.create(MediaTypes.APPLICATION_JSON)),
+                    linkInfo.cookie!!
+                )
+                val sendMailRequest = HttpRequest.create()
+                    .withUri(requestTarget)
+                    .withMethod(HttpMethods.POST)
+                    .withHeaders(headers)
+                    .withEntity(ContentTypes.APPLICATION_JSON, json)
+                val connectFuture = Http.get(context.system)
+                    .singleRequest(sendMailRequest)
+                    .thenApply { response -> SendMailResponse(request, request.linkId, response) }
+                    .exceptionally { error ->
+                        SendMailResponse(
+                            request,
+                            request.linkId,
+                            HttpResponse.create().withStatus(StatusCodes.NOT_FOUND),
+                            error
+                        )
+                    }
+
+                Patterns.pipe(connectFuture, context.dispatcher).to(self)
+            }
+        }
+    }
+
+    private fun onLinkSendResponse(response: SendMailResponse) {
+        response.response.discardEntityBytes(materializer)
+        val link = clientLinkInfo[response.linkId] ?: return
+        val linkInfo = links[response.linkId] ?: return
+        if (response.error != null
+            || response.response.status().isFailure
+        ) {
+            log().error("send mail get failed $response")
+            response.response.discardEntityBytes(materializer)
+            clientLinkInfo.remove(response.linkId)
+            for (owner in owners) {
+                owner.tell(linkInfo, self)
+            }
+            return
+        }
+        response.response.discardEntityBytes(materializer)
+        link.refreshed = Clock.systemUTC().instant()
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {
+        //log().info("send link received ${message.linkId}")
         for (owner in owners) {
             owner.tell(message, self)
         }
