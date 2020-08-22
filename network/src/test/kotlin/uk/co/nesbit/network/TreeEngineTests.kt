@@ -37,7 +37,7 @@ class TreeEngineTests {
         val keys = (0 until n + 3).map { keyService.generateNetworkID(it.toString()) }
         val roots = mutableListOf<SecureHash>()
         for (i in 0 until 3) {
-            roots += keys.minBy { SecureHash.secureHash(concatByteArrays(i.toByteArray(), it.bytes)) }!!
+            roots += keys.minByOrNull { SecureHash.secureHash(concatByteArrays(i.toByteArray(), it.bytes)) }!!
         }
         val nonRootKeys = keys - roots
         return Pair(nonRootKeys, roots)

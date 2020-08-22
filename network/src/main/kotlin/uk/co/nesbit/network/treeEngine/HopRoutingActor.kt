@@ -304,7 +304,7 @@ class HopRoutingActor(
             distMin: Int
     ) {
         if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
-            val gap = nearest.map { xorDistance(it.identity.id, networkAddress!!.identity.id) }.min()!! - distMin
+            val gap = nearest.map { xorDistance(it.identity.id, networkAddress!!.identity.id) }.minOrNull()!! - distMin
             if (gap == 0 && !gapZeroDone) {
                 gapZero.incrementAndGet()
                 gapZeroDone = true

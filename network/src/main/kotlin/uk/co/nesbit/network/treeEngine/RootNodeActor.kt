@@ -5,9 +5,11 @@ import akka.japi.pf.ReceiveBuilder
 import scala.concurrent.duration.Duration
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.PublicAddress
+import uk.co.nesbit.network.api.URLAddress
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
 import uk.co.nesbit.network.tcpnet.TcpNetworkActor
+import uk.co.nesbit.network.urlnet.URLNetworkActor
 import uk.co.nesbit.network.util.createProps
 
 class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractLoggingActor() {
@@ -31,35 +33,44 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         return supervisorStrategy
     }
 
-    private val physicalNetworkActor: ActorRef = if (networkConfig.networkId is PublicAddress) {
-        context.actorOf(
-                TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+    private val physicalNetworkActor: ActorRef = when (networkConfig.networkId) {
+        is PublicAddress -> {
+            context.actorOf(
+                    TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+                    "net"
+            )
+        }
+        is URLAddress -> {
+            context.actorOf(
+                URLNetworkActor.getProps(networkConfig, keyService).withDispatcher("akka.fixed-dispatcher"),
                 "net"
-        )
-    } else {
-        context.actorOf(
+            )
+        }
+        else -> {
+            context.actorOf(
                 PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
                 "net"
-        )
+            )
+        }
     }
 
     private val neighbourLinkActor: ActorRef =
-            context.actorOf(
-                    NeighbourLinkActor.getProps(
-                            keyService,
-                            networkConfig,
-                            physicalNetworkActor
-                    ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
-            )
+        context.actorOf(
+            NeighbourLinkActor.getProps(
+                keyService,
+                networkConfig,
+                physicalNetworkActor
+            ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
+        )
 
     private val hopRoutingActor: ActorRef =
-            context.actorOf(
-                    HopRoutingActor.getProps(
-                            keyService,
-                            networkConfig,
-                            neighbourLinkActor
-                    ).withDispatcher("akka.fixed-dispatcher"), "route"
-            )
+        context.actorOf(
+            HopRoutingActor.getProps(
+                keyService,
+                networkConfig,
+                neighbourLinkActor
+            ).withDispatcher("akka.fixed-dispatcher"), "route"
+        )
 
     override fun preStart() {
         super.preStart()

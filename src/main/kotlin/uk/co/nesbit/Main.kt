@@ -26,8 +26,8 @@ fun main(args: Array<String>) {
     //while(true) {
     val degree = 3
     val N = 1000
-    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
-    //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
+    val simNetwork = convertToHTTPNetwork(makeRandomNetwork(degree, N))
+    //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
@@ -39,10 +39,6 @@ fun main(args: Array<String>) {
         val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
-//    val num = Scanner(System.`in`).nextInt()
-//    val ref = actorSystem.actorSelection("akka://Akka/user/$num/neighbours")
-//    ref.tell(Nuke(), ActorRef.noSender())
-//    while (System.`in`.read() != 'q'.toInt());
     val random = Random()
     var round = 0
     val timeout = Timeout.create(Duration.ofSeconds(120L))
@@ -79,7 +75,7 @@ fun main(args: Array<String>) {
             println("get query $round timed out")
         }
     }
-    actorSystem.terminate().value()
+    //actorSystem.terminate().value()
 }
 
 private fun convertToTcpNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {
@@ -91,6 +87,17 @@ private fun convertToTcpNetwork(simNetwork: Map<Address, Set<Address>>): Map<Add
         tcpNetwork[tcpAddress] = tcpLinks
     }
     return tcpNetwork
+}
+
+private fun convertToHTTPNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {
+    val httpNetwork = mutableMapOf<Address, Set<Address>>()
+    for (networkAddress in simNetwork.keys) {
+        val httpAddress: Address = (networkAddress as NetworkAddress).toLocalHTTPAddress()
+        val links = simNetwork[networkAddress]!!
+        val httpLinks: Set<Address> = links.map { (it as NetworkAddress).toLocalHTTPAddress() }.toSet()
+        httpNetwork[httpAddress] = httpLinks
+    }
+    return httpNetwork
 }
 
 private fun diameter(graph: Map<Address, Set<Address>>): Pair<Int, Int> {
