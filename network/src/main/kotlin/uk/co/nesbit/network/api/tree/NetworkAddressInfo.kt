@@ -69,7 +69,7 @@ class NetworkAddressInfo(
         require(uniqueIds.size == path.size) {
             "No circular paths allowed"
         }
-        val minHash = uniqueIds.minBy { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }
+        val minHash = uniqueIds.minByOrNull { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }
         require(path.first() == minHash) {
             "root should always be lowest hash in chain"
         }

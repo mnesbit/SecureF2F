@@ -224,14 +224,14 @@ class NeighbourLinkActor(
         }
         val neighbourRoots = valid.map { it.treeState!!.roots[index] }
         val minRoot = (neighbourRoots + networkId)
-                .minBy { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }!!
+            .minByOrNull { SecureHash.secureHash(concatByteArrays(index.toByteArray(), it.bytes)) }!!
         if (minRoot == networkId) {
             currentParent.startPoint = 0
             currentParent.parent = null
             return
         }
         val withBestRoot = valid.filter { it.treeState!!.roots[index] == minRoot }
-        val minDepth = withBestRoot.map { it.treeState!!.depths[index] }.min()!!
+        val minDepth = withBestRoot.map { it.treeState!!.depths[index] }.minOrNull()!!
         currentParent.startPoint = currentParent.startPoint.rem(allStates.size)
         var parentSeen = false
         for (i in allStates.indices) {
