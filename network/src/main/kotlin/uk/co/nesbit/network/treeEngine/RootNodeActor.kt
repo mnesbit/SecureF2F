@@ -42,35 +42,35 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         }
         is URLAddress -> {
             context.actorOf(
-                    URLNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-                    "net"
+                URLNetworkActor.getProps(networkConfig, keyService).withDispatcher("akka.fixed-dispatcher"),
+                "net"
             )
         }
         else -> {
             context.actorOf(
-                    PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-                    "net"
+                PhysicalNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+                "net"
             )
         }
     }
 
-    private val neighbourLinkActor: ActorRef =
-            context.actorOf(
-                    NeighbourLinkActor.getProps(
-                            keyService,
-                            networkConfig,
-                            physicalNetworkActor
-                    ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
-            )
-
-    private val hopRoutingActor: ActorRef =
-            context.actorOf(
-                    HopRoutingActor.getProps(
-                            keyService,
-                            networkConfig,
-                            neighbourLinkActor
-                    ).withDispatcher("akka.fixed-dispatcher"), "route"
-            )
+//    private val neighbourLinkActor: ActorRef =
+//            context.actorOf(
+//                    NeighbourLinkActor.getProps(
+//                            keyService,
+//                            networkConfig,
+//                            physicalNetworkActor
+//                    ).withDispatcher("akka.fixed-dispatcher"), "neighbours"
+//            )
+//
+//    private val hopRoutingActor: ActorRef =
+//            context.actorOf(
+//                    HopRoutingActor.getProps(
+//                            keyService,
+//                            networkConfig,
+//                            neighbourLinkActor
+//                    ).withDispatcher("akka.fixed-dispatcher"), "route"
+//            )
 
     override fun preStart() {
         super.preStart()

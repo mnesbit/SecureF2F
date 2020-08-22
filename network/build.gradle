@@ -1,5 +1,7 @@
 description 'Akka based network routing simulator'
 
+apply plugin: 'kotlin-kapt'
+
 dependencies {
     // Actor framework
     api "com.typesafe.akka:akka-actor_2.13:$akka_version"
@@ -12,6 +14,10 @@ dependencies {
     implementation "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
 
     implementation "com.github.ben-manes.caffeine:caffeine:${caffeine_version}"
+
+    // JSON via Moshi
+    implementation "com.squareup.moshi:moshi-kotlin:${moshi_version}"
+    kapt "com.squareup.moshi:moshi-kotlin-codegen:${moshi_version}"
 
     api project(':avro')
     api project(':crypto')
