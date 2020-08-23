@@ -531,7 +531,12 @@ class NeighbourLinkActor(
     ): LinkState? {
         val neighbour = addresses[treeAddress.identity.id]
         if (neighbour != null) {
-            return linkStates[neighbour]
+            val linkState = linkStates[neighbour]
+            if (linkState?.identity != null
+                && linkState.sendSecureId != null
+            ) {
+                return linkState
+            }
         }
         val selfDistance = selfAddress.greedyDist(treeAddress)
         if (selfDistance == Int.MAX_VALUE) {
