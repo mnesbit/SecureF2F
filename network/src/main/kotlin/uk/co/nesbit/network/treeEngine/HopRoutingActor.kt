@@ -2,6 +2,7 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
+import akka.actor.Terminated
 import com.github.benmanes.caffeine.cache.Caffeine
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.Ecies
@@ -147,7 +148,7 @@ class HopRoutingActor(
 
     override fun preStart() {
         super.preStart()
-        //log().info("Starting NeighbourLinkActor")
+        //log().info("Starting HopRoutingActor")
         neighbourLinkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
                 "routeScanningStartup",
@@ -158,18 +159,19 @@ class HopRoutingActor(
 
     override fun postStop() {
         super.postStop()
-        //log().info("Stopped NeighbourLinkActor")
+        //log().info("Stopped HopRoutingActor")
     }
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        //log().info("Restart NeighbourLinkActor")
+        //log().info("Restart HopRoutingActor")
     }
 
     override fun onReceive(message: Any) {
         when (message) {
             is CheckRoutes -> onCheckRoutes()
             is WatchRequest -> onWatchRequest()
+            is Terminated -> onDeath(message)
             is NeighbourUpdate -> onNeighbourUpdate(message)
             is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
             is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
@@ -186,11 +188,15 @@ class HopRoutingActor(
         }
     }
 
+    private fun onDeath(message: Terminated) {
+        owners -= message.actor
+    }
+
     private fun onCheckRoutes() {
         timers.startSingleTimer(
-                "routeScanningPoller",
-                CheckRoutes(false),
-                (ROUTE_CHECK_INTERVAL_MS + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+            "routeScanningPoller",
+            CheckRoutes(false),
+            (ROUTE_CHECK_INTERVAL_MS + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         if (networkAddress == null) {
             return

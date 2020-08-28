@@ -2,6 +2,7 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
+import akka.actor.Terminated
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
@@ -114,6 +115,7 @@ class NeighbourLinkActor(
     override fun onReceive(message: Any) {
         when (message) {
             is WatchRequest -> onWatchRequest()
+            is Terminated -> onDeath(message)
             is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
@@ -130,13 +132,18 @@ class NeighbourLinkActor(
             owners += sender
             context.watch(sender)
         }
+        neighbourChanged = true
+    }
+
+    private fun onDeath(message: Terminated) {
+        owners -= message.actor
     }
 
     private fun onCheckStaticLinks() {
         timers.startSingleTimer(
-                "staticLinkPoller",
-                CheckStaticLinks(false),
-                (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+            "staticLinkPoller",
+            CheckStaticLinks(false),
+            (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         openStaticLinks()
         val now = clock.instant()
