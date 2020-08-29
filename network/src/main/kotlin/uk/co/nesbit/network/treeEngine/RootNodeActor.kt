@@ -67,7 +67,6 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         context.actorOf(
             HopRoutingActor.getProps(
                 keyService,
-                networkConfig,
                 neighbourLinkActor
             ).withDispatcher("akka.fixed-dispatcher"), "route"
         )

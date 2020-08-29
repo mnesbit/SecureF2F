@@ -11,7 +11,6 @@ import uk.co.nesbit.crypto.SecureHash.Companion.xorDistance
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.Message
-import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.mocknet.WatchRequest
@@ -48,7 +47,6 @@ class ClientDhtResponse(
 
 class HopRoutingActor(
         private val keyService: KeyService,
-        private val networkConfig: NetworkConfiguration,
         private val neighbourLinkActor: ActorRef
 ) :
         UntypedBaseActorWithLoggingAndTimers() {
@@ -56,11 +54,10 @@ class HopRoutingActor(
         @JvmStatic
         fun getProps(
                 keyService: KeyService,
-                networkConfig: NetworkConfiguration,
                 neighbourLinkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
-            return createProps(javaClass.enclosingClass, keyService, networkConfig, neighbourLinkActor)
+            return createProps(javaClass.enclosingClass, keyService, neighbourLinkActor)
         }
 
         const val REFRESH_INTERVAL = 20000L

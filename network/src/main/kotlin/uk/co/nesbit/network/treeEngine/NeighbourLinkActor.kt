@@ -25,7 +25,6 @@ class NeighbourSendGreedyMessage(val networkAddress: NetworkAddressInfo, val pay
 class NeighbourSendSphinxMessage(val nextHop: SecureHash, val message: SphinxRoutedMessage)
 class NeighbourReceivedGreedyMessage(val replyPath: List<VersionedIdentity>, val payload: ByteArray)
 class NeighbourUpdate(val localId: NetworkAddressInfo, val addresses: List<NetworkAddressInfo>)
-class Nuke
 
 class NeighbourLinkActor(
         private val keyService: KeyService,
@@ -121,7 +120,6 @@ class NeighbourLinkActor(
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
             is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
-            is Nuke -> throw java.lang.IllegalArgumentException()
             else -> throw IllegalArgumentException("Unknown message type")
         }
     }
