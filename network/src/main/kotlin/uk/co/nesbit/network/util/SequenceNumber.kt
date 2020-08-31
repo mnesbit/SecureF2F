@@ -95,6 +95,14 @@ object SequenceNumber {
         return (s0 >= 0) && (s0 < MAX8)
     }
 
+    @JvmStatic
+    fun increment8(s0: Int): Int {
+        if (s0 < MAX8 - 1) {
+            return s0 + 1
+        }
+        return 0
+    }
+
     private const val MAX16 = 65536
 
     @JvmStatic
@@ -112,11 +120,24 @@ object SequenceNumber {
         return (s0 >= 0) && (s0 < MAX16)
     }
 
+    @JvmStatic
+    fun increment16(s0: Int): Int {
+        if (s0 < MAX16 - 1) {
+            return s0 + 1
+        }
+        return 0
+    }
+
     private const val MAX32 = 4294967296L
+
+    private fun int32toULong(s0: Int): Long {
+        val intermediate = s0.toLong()
+        return intermediate and 0xFFFFFFFFL
+    }
 
     @JvmStatic
     fun distance32(s0: Int, s1: Int): Int {
-        return distanceL(s0.toLong(), s1.toLong(), MAX32).toInt()
+        return distanceL(int32toULong(s0), int32toULong(s1), MAX32).toInt()
     }
 
     @JvmStatic
@@ -127,5 +148,13 @@ object SequenceNumber {
     @JvmStatic
     fun inRange32(s0: Int): Boolean {
         return (s0 >= 0) && (s0 < MAX32)
+    }
+
+    @JvmStatic
+    fun increment32(s0: Int): Int {
+        if (int32toULong(s0) < MAX32 - 1L) {
+            return s0 + 1
+        }
+        return 0
     }
 }

@@ -431,9 +431,6 @@ class NeighbourLinkActor(
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
             is GreedyRoutedMessage -> processGreedyRoutedMessage(message.linkId, payloadMessage)
             is SphinxRoutedMessage -> processSphinxRoutedMessage(payloadMessage)
-            is AckMessage -> {
-                //
-            }
             else -> log().error("Unknown message type $message")
         }
     }

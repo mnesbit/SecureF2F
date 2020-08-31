@@ -36,30 +36,35 @@ class ClientDhtRequest(
 }
 
 class ClientDhtResponse(
-        val key: SecureHash,
-        val success: Boolean,
-        val data: ByteArray?
+    val key: SecureHash,
+    val success: Boolean,
+    val data: ByteArray?
 ) {
     override fun toString(): String {
         return "ClientDhtResponse($key, $success, ${data?.printHexBinary()})"
     }
 }
 
+class ClientSendMessage(val destination: SecureHash, val sessionMessage: DataPacket)
+class ClientSendResult(val destination: SecureHash, val sessionMessage: DataPacket, val sent: Boolean)
+class ClientReceivedMessage(val source: SecureHash, val sessionMessage: DataPacket)
+
 class HopRoutingActor(
-        private val keyService: KeyService,
-        private val neighbourLinkActor: ActorRef
+    private val keyService: KeyService,
+    private val neighbourLinkActor: ActorRef
 ) :
-        UntypedBaseActorWithLoggingAndTimers() {
+    UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
         fun getProps(
-                keyService: KeyService,
-                neighbourLinkActor: ActorRef
+            keyService: KeyService,
+            neighbourLinkActor: ActorRef
         ): Props {
             @Suppress("JAVA_CLASS_ON_COMPANION")
             return createProps(javaClass.enclosingClass, keyService, neighbourLinkActor)
         }
 
+        const val SHOW_GAP = true
         const val REFRESH_INTERVAL = 20000L
         const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
@@ -72,7 +77,7 @@ class HopRoutingActor(
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
         val gapZero = AtomicInteger(0)
-        val gapStart = Clock.systemUTC().instant()
+        val gapStart: Instant = Clock.systemUTC().instant()
 
 
         @JvmStatic
@@ -99,10 +104,10 @@ class HopRoutingActor(
 
     }
 
-    private class CheckRoutes(val first: Boolean)
+    private class CheckRoutes()
     private class KBucket(
-            val xorDistanceMin: Int, // inclusive
-            val xorDistanceMax: Int // exclusive
+        val xorDistanceMin: Int, // inclusive
+        val xorDistanceMax: Int // exclusive
     ) {
         val nodes: MutableList<NetworkAddressInfo> = mutableListOf()
     }
@@ -148,9 +153,9 @@ class HopRoutingActor(
         //log().info("Starting HopRoutingActor")
         neighbourLinkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
-                "routeScanningStartup",
-                CheckRoutes(true),
-                localRand.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
+            "routeScanningStartup",
+            CheckRoutes(),
+            localRand.nextInt(ROUTE_CHECK_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
 
@@ -173,6 +178,7 @@ class HopRoutingActor(
             is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
             is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
             is ClientDhtRequest -> onClientRequest(message)
+            is ClientSendMessage -> onClientSendMessage(message)
             else -> throw IllegalArgumentException("Unknown message type")
         }
     }
@@ -192,13 +198,13 @@ class HopRoutingActor(
     private fun onCheckRoutes() {
         timers.startSingleTimer(
             "routeScanningPoller",
-            CheckRoutes(false),
+            CheckRoutes(),
             (ROUTE_CHECK_INTERVAL_MS + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         if (networkAddress == null) {
             return
         }
-        val distMin = calcNearestNodeGap()
+        val distMin = if (SHOW_GAP) calcNearestNodeGap() else 0
         val now = Clock.systemUTC().instant()
         expireRequests(now)
         for (neighbour in neighbours.values) {
@@ -206,10 +212,13 @@ class HopRoutingActor(
             addToKBuckets(neighbour)
         }
         if (outstandingRequests.isEmpty()
-                && ChronoUnit.MILLIS.between(lastSent, now) >= (REFRESH_INTERVAL * (kbuckets.size - 1).coerceAtLeast(1))) {
+            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
+        ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
-            logNearestNodeGap(nearest, distMin)
+            if (SHOW_GAP) {
+                logNearestNodeGap(nearest, distMin)
+            }
             for (near in nearest) {
                 pollChosenNode(near, now)
             }
@@ -383,8 +392,7 @@ class HopRoutingActor(
 
     private fun findBucket(id: SecureHash): KBucket {
         val dist = xorDistance(networkAddress!!.identity.id, id)
-        val bucket = kbuckets.first { it.xorDistanceMin <= dist && dist < it.xorDistanceMax }
-        return bucket
+        return kbuckets.first { it.xorDistanceMin <= dist && dist < it.xorDistanceMax }
     }
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
@@ -484,6 +492,9 @@ class HopRoutingActor(
                 ++index
             }
         }
+        for (owner in owners) {
+            owner.tell(neighbourUpdate.localId, self)
+        }
     }
 
     private fun onNeighbourReceivedGreedyMessage(payloadMessage: NeighbourReceivedGreedyMessage) {
@@ -516,6 +527,7 @@ class HopRoutingActor(
         when (payload.javaClass) {
             DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, replyRoute)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
+            ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
             else -> log().error("Unknown message type")
         }
     }
@@ -599,6 +611,13 @@ class HopRoutingActor(
                 outstandingClientRequests -= parent
                 log().info("Client request returned data for ${parent.request.key}")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, response.data), self)
+            } else if (originalRequest.target.identity.id == parent.request.key
+                || routeCache.getIfPresent(parent.request.key) != null
+            ) {
+                outstandingClientRequests -= parent
+                addToKBuckets(originalRequest.target)
+                log().info("Client request found path to exact node")
+                parent.sender.tell(ClientDhtResponse(parent.request.key, true, null), self)
             } else {
                 extraClientQueries(parent, now)
             }
@@ -668,6 +687,7 @@ class HopRoutingActor(
                 when (payload.javaClass) {
                     DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
                     DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
+                    ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
                     else -> log().error("Unknown message type")
                 }
             } else {
@@ -711,4 +731,52 @@ class HopRoutingActor(
             sendDhtRequest(requestState, probe, request.key, request.data, now)
         }
     }
+
+    private fun onClientSendMessage(message: ClientSendMessage) {
+        if (networkAddress == null) {
+            log().warning("Node not ready for client data")
+            sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+            return
+        }
+        val clientDataMessage = ClientDataMessage(
+            networkAddress!!,
+            message.sessionMessage.sessionId,
+            message.sessionMessage.seqNo,
+            message.sessionMessage.ackSeqNo,
+            message.sessionMessage.receiveWindowSize,
+            message.sessionMessage.payload
+        )
+        val knownPath = routeCache.getIfPresent(message.destination)
+        if (knownPath == null) {
+            val bucket = findBucket(message.destination)
+            val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
+            if (destinationAddress == null) {
+                log().warning("Node not known ${message.destination}")
+                sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+                return
+            } else {
+                sendGreedyMessage(destinationAddress, clientDataMessage)
+            }
+        } else {
+            sendSphinxMessage(knownPath, clientDataMessage)
+        }
+        sender.tell(ClientSendResult(message.destination, message.sessionMessage, true), self)
+    }
+
+    private fun processClientDataMessage(clientDataMessage: ClientDataMessage) {
+        addToKBuckets(clientDataMessage.source)
+        routeCache.getIfPresent(clientDataMessage.source.identity.id)
+        val sessionMessage = DataPacket(
+            clientDataMessage.sessionId,
+            clientDataMessage.seqNo,
+            clientDataMessage.ackSeqNo,
+            clientDataMessage.receiveWindowSize,
+            clientDataMessage.payload
+        )
+        val receivedMessage = ClientReceivedMessage(clientDataMessage.source.identity.id, sessionMessage)
+        for (owner in owners) {
+            owner.tell(receivedMessage, self)
+        }
+    }
+
 }

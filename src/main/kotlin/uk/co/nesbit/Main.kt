@@ -2,6 +2,9 @@ package uk.co.nesbit
 
 import akka.actor.ActorSystem
 import akka.pattern.Patterns.ask
+import akka.stream.OverflowStrategy
+import akka.stream.javadsl.Sink
+import akka.stream.javadsl.Source
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.Await
@@ -11,9 +14,8 @@ import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.mocknet.DnsMockActor
-import uk.co.nesbit.network.treeEngine.ClientDhtRequest
-import uk.co.nesbit.network.treeEngine.ClientDhtResponse
-import uk.co.nesbit.network.treeEngine.TreeNode
+import uk.co.nesbit.network.mocknet.WatchRequest
+import uk.co.nesbit.network.treeEngine.*
 import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
 import java.time.Duration
@@ -26,7 +28,7 @@ fun main(args: Array<String>) {
     //while(true) {
     val degree = 3
     val N = 1000
-    val simNetwork = convertToHTTPNetwork(makeRandomNetwork(degree, N))
+    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
@@ -39,6 +41,110 @@ fun main(args: Array<String>) {
         val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
+    //pollDht(simNodes, actorSystem)
+    createStream(simNodes, actorSystem)
+    //actorSystem.terminate().value()
+}
+
+private fun createStream(
+    simNodes: MutableList<TreeNode>,
+    actorSystem: ActorSystem
+) {
+    val random = Random()
+    val timeout = Timeout.create(Duration.ofSeconds(120L))
+    var sourceName: String
+    var sourceAddress: SecureHash? = null
+    var destName: String
+    var destAddress: SecureHash? = null
+    while (true) {
+        Thread.sleep(1000L)
+        sourceName = simNodes[random.nextInt(simNodes.size)].name
+        val randomSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+        val sourceFut = ask(randomSourceNode, SelfAddressRequest(), timeout)
+        try {
+            val sourceResult = Await.result(sourceFut, timeout.duration()) as SelfAddressResponse
+            sourceAddress = sourceResult.address
+        } catch (ex: TimeoutException) {
+        }
+        if (sourceAddress == null) {
+            continue
+        }
+        destName = simNodes[random.nextInt(simNodes.size)].name
+        val randomDestNode = actorSystem.actorSelection("akka://Akka/user/$destName/session")
+        val destFut = ask(randomDestNode, SelfAddressRequest(), timeout)
+        try {
+            val destResult = Await.result(destFut, timeout.duration()) as SelfAddressResponse
+            destAddress = destResult.address
+        } catch (ex: TimeoutException) {
+        }
+        if (destAddress == null) {
+            continue
+        }
+        break
+    }
+    println("using $sourceName $sourceAddress -> $destName $destAddress")
+    var queryNo = 0
+    var sessionId: Long
+    while (true) {
+        Thread.sleep(1000L)
+        val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+        println("Send open query")
+        val openFut = ask(sessionSourceNode, OpenSessionRequest(destAddress!!, queryNo++), timeout)
+        try {
+            val destResult = Await.result(openFut, timeout.duration()) as OpenSessionResponse
+            println("result $destResult ${destResult.sessionId}")
+            if (destResult.success) {
+                sessionId = destResult.sessionId
+                break
+            }
+        } catch (ex: TimeoutException) {
+        }
+    }
+    println("Session $sessionId opened")
+    val destSource = Source.actorRef<Any>(
+        { elem -> Optional.empty() },
+        { elem -> Optional.empty() },
+        10,
+        OverflowStrategy.dropHead()
+    )
+    val printerRef = destSource.to(Sink.foreach { msg ->
+        if (msg is IncomingSession) {
+            println("New session ${msg.sessionId} from ${msg.source}")
+        } else if (msg is ReceiveSessionData) {
+            println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
+        } else {
+            println("unknown message type $msg")
+        }
+    }).run(actorSystem)
+    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
+    destNodeSel.tell(WatchRequest(), printerRef)
+
+    var packetNo = 0
+    while (true) {
+        Thread.sleep(1000L)
+        val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+        println("Send data query")
+        val sendFut = ask(
+            sessionSourceNode,
+            SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8)),
+            timeout
+        )
+        try {
+            val destResult = Await.result(sendFut, timeout.duration()) as SendSessionDataAck
+            println("result $destResult ${destResult.sessionId} ${destResult.success}")
+            if (destResult.success) {
+                packetNo++
+            }
+        } catch (ex: TimeoutException) {
+        }
+
+    }
+}
+
+private fun pollDht(
+    simNodes: MutableList<TreeNode>,
+    actorSystem: ActorSystem
+) {
     val random = Random()
     var round = 0
     val timeout = Timeout.create(Duration.ofSeconds(120L))
@@ -75,7 +181,6 @@ fun main(args: Array<String>) {
             println("get query $round timed out")
         }
     }
-    //actorSystem.terminate().value()
 }
 
 private fun convertToTcpNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {

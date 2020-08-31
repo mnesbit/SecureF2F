@@ -1,0 +1,31 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "ClientDataMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "source",
+      "type": "NetworkAddressInfo"
+    },
+    {
+      "name": "sessionId",
+      "type": "long"
+    },
+    {
+      "name": "seqNo",
+      "type": "int"
+    },
+    {
+      "name": "ackSeqNo",
+      "type": "int"
+    },
+    {
+      "name": "receiveWindowSize",
+      "type": "int"
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    }
+  ]
+}
