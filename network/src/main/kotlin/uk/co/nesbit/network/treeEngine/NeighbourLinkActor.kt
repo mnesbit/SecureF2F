@@ -2,6 +2,7 @@ package uk.co.nesbit.network.treeEngine
 
 import akka.actor.ActorRef
 import akka.actor.Props
+import akka.actor.Terminated
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
@@ -24,7 +25,6 @@ class NeighbourSendGreedyMessage(val networkAddress: NetworkAddressInfo, val pay
 class NeighbourSendSphinxMessage(val nextHop: SecureHash, val message: SphinxRoutedMessage)
 class NeighbourReceivedGreedyMessage(val replyPath: List<VersionedIdentity>, val payload: ByteArray)
 class NeighbourUpdate(val localId: NetworkAddressInfo, val addresses: List<NetworkAddressInfo>)
-class Nuke
 
 class NeighbourLinkActor(
         private val keyService: KeyService,
@@ -114,12 +114,12 @@ class NeighbourLinkActor(
     override fun onReceive(message: Any) {
         when (message) {
             is WatchRequest -> onWatchRequest()
+            is Terminated -> onDeath(message)
             is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
             is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
-            is Nuke -> throw java.lang.IllegalArgumentException()
             else -> throw IllegalArgumentException("Unknown message type")
         }
     }
@@ -130,13 +130,18 @@ class NeighbourLinkActor(
             owners += sender
             context.watch(sender)
         }
+        neighbourChanged = true
+    }
+
+    private fun onDeath(message: Terminated) {
+        owners -= message.actor
     }
 
     private fun onCheckStaticLinks() {
         timers.startSingleTimer(
-                "staticLinkPoller",
-                CheckStaticLinks(false),
-                (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
+            "staticLinkPoller",
+            CheckStaticLinks(false),
+            (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         openStaticLinks()
         val now = clock.instant()
@@ -426,9 +431,6 @@ class NeighbourLinkActor(
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
             is GreedyRoutedMessage -> processGreedyRoutedMessage(message.linkId, payloadMessage)
             is SphinxRoutedMessage -> processSphinxRoutedMessage(payloadMessage)
-            is AckMessage -> {
-                //
-            }
             else -> log().error("Unknown message type $message")
         }
     }

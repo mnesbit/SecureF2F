@@ -128,6 +128,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
 
     private fun onTerminated(message: Terminated) {
         if (message.actor == tcpActor) {
+            tcpActor = null
             //log().warning("Tcp actor exited stopping")
             context.parent.tell(TcpNetworkActor.LinkLost(linkId), self)
             context.stop(self)

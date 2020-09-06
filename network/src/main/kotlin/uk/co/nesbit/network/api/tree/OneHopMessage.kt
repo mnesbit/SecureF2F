@@ -27,14 +27,14 @@ class OneHopMessage private constructor(
                 .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/onehopmessage.avsc"))
 
         private val schemas = SchemaRegistry(
-                listOf(
-                        Pair(OneHopMessage::class.java, oneHopMessageSchema),
-                        Pair(Hello::class.java, Hello.helloSchema),
-                        Pair(TreeState::class.java, TreeState.treeStateSchema),
-                        Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
-                        Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
-                        Pair(AckMessage::class.java, AckMessage.ackMessageSchema)
-                )
+            listOf(
+                Pair(OneHopMessage::class.java, oneHopMessageSchema),
+                Pair(Hello::class.java, Hello.helloSchema),
+                Pair(TreeState::class.java, TreeState.treeStateSchema),
+                Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
+                Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
+                Pair(ClientDataMessage::class.java, ClientDataMessage.clientDataMessageSchema)
+            )
         )
 
         fun createOneHopMessage(value: Message): OneHopMessage {
@@ -44,8 +44,8 @@ class OneHopMessage private constructor(
         }
 
         fun deserialize(bytes: ByteArray): OneHopMessage {
-            val routeTableRecord = oneHopMessageSchema.deserialize(bytes)
-            return OneHopMessage(routeTableRecord)
+            val oneHopMessageRecord = oneHopMessageSchema.deserialize(bytes)
+            return OneHopMessage(oneHopMessageRecord)
         }
 
         fun deserializePayload(bytes: ByteArray): Message {

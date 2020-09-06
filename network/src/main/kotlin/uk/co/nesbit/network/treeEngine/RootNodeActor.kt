@@ -67,9 +67,16 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         context.actorOf(
             HopRoutingActor.getProps(
                 keyService,
-                networkConfig,
                 neighbourLinkActor
             ).withDispatcher("akka.fixed-dispatcher"), "route"
+        )
+
+    private val sessionActor: ActorRef =
+        context.actorOf(
+            SessionActor.getProps(
+                keyService,
+                hopRoutingActor
+            ).withDispatcher("akka.fixed-dispatcher"), "session"
         )
 
     override fun preStart() {
