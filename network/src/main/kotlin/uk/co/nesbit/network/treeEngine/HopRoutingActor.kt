@@ -69,7 +69,7 @@ class HopRoutingActor(
         const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 100L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 5L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
@@ -619,9 +619,11 @@ class HopRoutingActor(
                 log().info("Client request found path to exact node")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, null), self)
             } else {
+                log().info("Client request of key ${parent.request.key} replied from ${originalRequest.target.identity.id}")
                 extraClientQueries(parent, now)
             }
         } else { // write
+            log().info("Client request of key ${parent.request.key} replied from ${originalRequest.target.identity.id}")
             extraClientQueries(parent, now)
         }
     }

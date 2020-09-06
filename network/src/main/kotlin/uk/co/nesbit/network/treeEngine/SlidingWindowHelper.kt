@@ -1,5 +1,7 @@
 package uk.co.nesbit.network.treeEngine
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import uk.co.nesbit.network.util.SequenceNumber
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -28,9 +30,10 @@ class SlidingWindowHelper(val sessionId: Long) {
         val seqNo: Int,
         val payload: ByteArray,
         var lastSent: Instant,
-        var restransmitted: Boolean = false
+        var retransmitCount: Int = 0
     )
 
+    private val log: Logger = LoggerFactory.getLogger(SlidingWindowHelper::class.java)
     private val unsent = LinkedList<ByteArray>()
     private val sendBuffer = LinkedList<BufferedPacket>()
     private val receiveBuffer = LinkedList<DataPacket>()
@@ -42,6 +45,7 @@ class SlidingWindowHelper(val sessionId: Long) {
     private var receiveAckSeqNo: Int = 0
     private var sendWindowsSize: Int = START_WINDOW
     private var receiveWindowSize: Int = START_WINDOW
+    private var needAck: Boolean = true
 
     private fun rttTimeout(): Long {
         return ((rttScaled shr 2) + rttVarScaled) shr 1
@@ -70,6 +74,13 @@ class SlidingWindowHelper(val sessionId: Long) {
             return ChronoUnit.MILLIS.between(nearest.lastSent.plusMillis(rttTimeout()), now).coerceAtLeast(0L)
         }
         return rttTimeout()
+    }
+
+    fun getMaxRetransmits(): Int {
+        if (sendBuffer.isEmpty()) {
+            return 0
+        }
+        return sendBuffer.maxOf { it.retransmitCount }
     }
 
     fun sendPacket(payload: ByteArray): Boolean {
@@ -110,7 +121,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         for (packet in sendBuffer) {
             val age = ChronoUnit.MILLIS.between(packet.lastSent, now)
             if (age >= timeout || fastResend) {
-                packet.restransmitted = true
+                ++packet.retransmitCount
                 packet.lastSent = now
                 sendList += DataPacket(
                     sessionId,
@@ -141,7 +152,8 @@ class SlidingWindowHelper(val sessionId: Long) {
                 packet.payload
             )
         }
-        if (sendList.isEmpty()) {
+        if (sendList.isEmpty() && needAck) {
+            needAck = false
             sendList += DataPacket(
                 sessionId,
                 sendSeqNo,
@@ -150,6 +162,9 @@ class SlidingWindowHelper(val sessionId: Long) {
                 ByteArray(0)
             )
         }
+        for (item in sendList) {
+            log.info("send seq ${item.seqNo} ack ${item.ackSeqNo} window ${item.receiveWindowSize}")
+        }
         return sendList
     }
 
@@ -157,6 +172,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         if (message.sessionId != sessionId) {
             return
         }
+        log.info("receive seq ${message.seqNo} ack ${message.ackSeqNo} window ${message.receiveWindowSize}")
         receiveWindowSize = message.receiveWindowSize
         val ackComp = SequenceNumber.distance16(sendAckSeqNo, message.ackSeqNo)
         if (message.isAck && ackComp == 0) {
@@ -168,7 +184,7 @@ class SlidingWindowHelper(val sessionId: Long) {
                 val head = sendBuffer.peek()
                 if (SequenceNumber.compare16(head.seqNo, sendAckSeqNo) < 0) {
                     sendBuffer.poll()
-                    if (!head.restransmitted) {
+                    if (head.retransmitCount == 0) {
                         updateRtt(head.lastSent, now)
                         sendWindowsSize = (sendWindowsSize + 1).coerceAtMost(MAX_WINDOW)
                     }
@@ -180,6 +196,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         if (message.isAck) {
             return
         }
+        needAck = true
         if (receiveBuffer.size >= MAX_RECEIVE_BUFFER) {
             return
         }

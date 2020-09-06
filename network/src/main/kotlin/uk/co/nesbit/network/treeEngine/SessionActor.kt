@@ -64,6 +64,7 @@ class SessionActor(
         var lastUpdate: Instant,
         var open: Boolean = false
     ) {
+        var queryOpen: Boolean = false
         val windowProcessor = SlidingWindowHelper(sessionId)
     }
 
@@ -143,6 +144,14 @@ class SessionActor(
         //log().info("check sessions")
         for (session in sessions.values) {
             sendSessionMessages(session)
+            if (session.open &&
+                session.windowProcessor.getMaxRetransmits() >= 3 &&
+                !session.queryOpen
+            ) {
+                session.queryOpen = true
+                log().warning("too many retransmits re-probe for destination ${session.destination}")
+                routingActor.tell(ClientDhtRequest(session.destination, null), self)
+            }
         }
         setSessionTimer()
     }
@@ -222,29 +231,37 @@ class SessionActor(
             Instant.ofEpochMilli(0L)
         )
         sessions[sessionId] = newSession
+        newSession.queryOpen = true
         routingActor.tell(ClientDhtRequest(openRequest.destination, null), self)
     }
 
     private fun onInitialQuery(response: ClientDhtResponse) {
         log().info("Initial query for ${response.key} returned status ${response.success}")
-        val origin = sessions.values.firstOrNull { !it.open && it.destination == response.key }
-        if (origin != null) {
-            if (!response.success) {
-                sessions.remove(origin.sessionId)
-                origin.sender.tell(
-                    OpenSessionResponse(origin.destination, origin.clientId, origin.sessionId, false),
-                    self
-                )
-                return
+        val relevant = sessions.values.filter { it.destination == response.key }
+        if (response.success) {
+            for (session in relevant) {
+                session.queryOpen = false
+                if (!session.open) {
+                    session.open = true
+                    session.sender.tell(
+                        OpenSessionResponse(session.destination, session.clientId, session.sessionId, true),
+                        self
+                    )
+                    sendSessionMessages(session)
+                }
             }
-            origin.open = true
-            origin.sender.tell(
-                OpenSessionResponse(origin.destination, origin.clientId, origin.sessionId, true),
-                self
-            )
-            sendSessionMessages(origin)
-            setSessionTimer()
+        } else {
+            for (session in relevant) {
+                if (!session.open) {
+                    sessions.remove(session.sessionId)
+                    session.sender.tell(
+                        OpenSessionResponse(session.destination, session.clientId, session.sessionId, false),
+                        self
+                    )
+                }
+            }
         }
+        setSessionTimer()
     }
 
     private fun sendSessionMessages(session: SessionInfo) {
@@ -264,6 +281,9 @@ class SessionActor(
         if (!message.sent) {
             val sessions = sessions.values.filter { it.open && it.destination == message.destination }
             if (sessions.isNotEmpty()) {
+                for (session in sessions) {
+                    session.queryOpen = true
+                }
                 log().warning("re-probe for destination ${message.destination}")
                 routingActor.tell(ClientDhtRequest(message.destination, null), self)
             }
