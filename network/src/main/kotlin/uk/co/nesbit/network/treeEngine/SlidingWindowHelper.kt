@@ -101,6 +101,7 @@ class SlidingWindowHelper(val sessionId: Long) {
             if (SequenceNumber.compare16(head.seqNo, receiveAckSeqNo) < 0) {
                 received += head.payload
                 receiveBuffer.poll()
+                needAck = true // need to signal changed window
             } else {
                 break
             }
@@ -153,7 +154,9 @@ class SlidingWindowHelper(val sessionId: Long) {
             )
         }
         if (sendList.isEmpty() && needAck) {
-            needAck = false
+            if (receiveBuffer.none { SequenceNumber.compare16(it.seqNo, receiveAckSeqNo) >= 0 }) {
+                needAck = false
+            }
             sendList += DataPacket(
                 sessionId,
                 sendSeqNo,
