@@ -7,6 +7,7 @@ import akka.io.Tcp
 import akka.io.TcpMessage
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
+import uk.co.nesbit.network.mocknet.Congested
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
@@ -63,6 +64,7 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Untyped
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is ConnectResult -> onRequestCompleted(message)
             is LinkLost -> onLinkLost(message)
+            is Congested -> onCongested(message)
             is Tcp.Bound -> onServerListening(message)
             is Tcp.CommandFailed -> onFailedCommand(message)
             is Tcp.Connected -> onConnected(message)
@@ -160,6 +162,12 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Untyped
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {
+        for (owner in owners) {
+            owner.tell(message, self)
+        }
+    }
+
+    private fun onCongested(message: Congested) {
         for (owner in owners) {
             owner.tell(message, self)
         }

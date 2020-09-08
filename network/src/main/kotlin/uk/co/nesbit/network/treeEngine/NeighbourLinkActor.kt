@@ -12,6 +12,7 @@ import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
+import uk.co.nesbit.network.mocknet.Congested
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
@@ -117,10 +118,11 @@ class NeighbourLinkActor(
             is Terminated -> onDeath(message)
             is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
+            is Congested -> onCongested(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
             is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
-            else -> throw IllegalArgumentException("Unknown message type")
+            else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
 
@@ -402,6 +404,10 @@ class NeighbourLinkActor(
         openStaticLinks()
     }
 
+    private fun onCongested(message: Congested) {
+        log().info("congestion on ${message.linkId}")
+    }
+
     private fun sendHello(linkId: LinkId) {
         //log().info("Send hello message to $linkId")
         val helloMessage = Hello.createHello(networkId, keyService)
@@ -431,7 +437,7 @@ class NeighbourLinkActor(
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
             is GreedyRoutedMessage -> processGreedyRoutedMessage(message.linkId, payloadMessage)
             is SphinxRoutedMessage -> processSphinxRoutedMessage(payloadMessage)
-            else -> log().error("Unknown message type $message")
+            else -> log().error("Unknown message type ${message.javaClass.name}")
         }
     }
 

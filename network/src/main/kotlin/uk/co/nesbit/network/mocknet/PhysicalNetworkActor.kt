@@ -10,6 +10,8 @@ import uk.co.nesbit.network.util.createProps
 import java.time.Clock
 import java.util.concurrent.atomic.AtomicInteger
 
+class Congested(val linkId: LinkId)
+
 class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : UntypedBaseActorWithLoggingAndTimers() {
     companion object {
         @JvmStatic
@@ -18,12 +20,20 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             return createProps(javaClass.enclosingClass, networkConfig)
         }
 
+        const val MAX_BUFFER_SIZE = 100
+
         val linkIdCounter = AtomicInteger(0)
     }
 
     internal data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
     internal data class ConnectResult(val linkId: LinkId, val opened: Boolean)
     internal data class ConnectionDrop(val initiatorLinkId: LinkId)
+    private class WireMessage(val seqNo: Int, val linkId: LinkId, val msg: ByteArray)
+    private class WireAck(val seqNo: Int, val linkId: LinkId)
+    private class LinkState {
+        var sequenceNumber: Int = 0
+        val unacked = mutableListOf<Int>()
+    }
 
     private val networkId: NetworkAddress get() = networkConfig.networkId as NetworkAddress
     private val owners = mutableSetOf<ActorRef>()
@@ -34,6 +44,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
 
     private val dnsSelector = context.actorSelection("/user/Dns")
+    private val linkBuffers = mutableMapOf<LinkId, LinkState>()
 
     override fun preStart() {
         super.preStart()
@@ -69,7 +80,8 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             is ConnectResult -> onConnectResult(message)
             is ConnectionDrop -> onConnectionDrop(message)
             is Terminated -> onDeath(message)
-            is LinkReceivedMessage -> onWireMessage(message)
+            is WireMessage -> onWireMessage(message)
+            is WireAck -> onWireAck(message)
             is LinkSendMessage -> onLinkSendMessage(message)
             is CloseAllRequest -> onCloseAll()
         }
@@ -109,6 +121,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             val newLinkInfo = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = newLinkInfo
             targets -= linkId
+            linkBuffers.remove(linkId)
             val reverseForeignLink = reverseForeignLinks.remove(linkId)
             if (reverseForeignLink != null) {
                 foreignLinks -= reverseForeignLink
@@ -207,22 +220,38 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         }
     }
 
-    private fun onWireMessage(msg: LinkReceivedMessage) {
+    private fun onWireMessage(msg: WireMessage) {
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         if (links[activeLink]?.status?.active == true) {
             val renumberedMessage =
-                    LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
+                LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
             for (owner in owners) {
                 owner.tell(renumberedMessage, self)
             }
+            sender.tell(WireAck(msg.seqNo, msg.linkId), self)
         }
     }
 
+    private fun onWireAck(msg: WireAck) {
+        val linkState = linkBuffers[msg.linkId]
+        linkState?.unacked?.remove(msg.seqNo)
+    }
+
     private fun onLinkSendMessage(msg: LinkSendMessage) {
-        val target = targets[msg.linkId]
+        val target = targets[msg.linkId] ?: return
+        val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
+        if (linkState.unacked.size > MAX_BUFFER_SIZE) {
+            log().warning("dropping packet due to full buffer")
+            for (owner in owners) {
+                owner.tell(Congested(msg.linkId), self)
+            }
+            return
+        }
+        val seqNo = linkState.sequenceNumber++
+        linkState.unacked += seqNo
         val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
-        val renumberedMessage = LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
-        target?.tell(renumberedMessage, self)
+        val renumberedMessage = WireMessage(seqNo, activeLink, msg.msg)
+        target.tell(renumberedMessage, self)
     }
 
     private fun onCloseAll() {

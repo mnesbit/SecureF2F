@@ -21,6 +21,7 @@ import com.squareup.moshi.Moshi
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
+import uk.co.nesbit.network.mocknet.Congested
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.InstantTimeAdapter
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
@@ -709,7 +710,10 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             val linkInfo = serverReverseLinkInfo[request.linkId]
             if (linkInfo != null) {
                 if (linkInfo.packets.size > MAX_BUFFER_SIZE) {
-                    log().warning("drop packets on ${link.linkId} due to full buffer")
+                    log().warning("drop packets on ${request.linkId} due to full buffer")
+                    for (owner in owners) {
+                        owner.tell(Congested(request.linkId), self)
+                    }
                     return
                 }
                 linkInfo.packets += request.msg
@@ -720,7 +724,10 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
                 if (linkInfo.packets.size < MAX_BUFFER_SIZE) {
                     linkInfo.packets += request.msg
                 } else {
-                    log().warning("drop packets on ${link.linkId} due to full buffer")
+                    log().warning("drop packets on ${request.linkId} due to full buffer")
+                    for (owner in owners) {
+                        owner.tell(Congested(request.linkId), self)
+                    }
                 }
                 if (!linkInfo.pendingSend) {
                     sendMail(linkInfo)

@@ -12,6 +12,7 @@ import uk.co.nesbit.network.api.PublicAddress
 import uk.co.nesbit.network.api.net.CloseRequest
 import uk.co.nesbit.network.api.net.LinkReceivedMessage
 import uk.co.nesbit.network.api.net.LinkSendMessage
+import uk.co.nesbit.network.mocknet.Congested
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
 import java.net.InetSocketAddress
@@ -81,6 +82,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
         //log().info("LinkSendMessage ${message.msg.size} bytes ${message.msg.printHexBinary()}")
         if (bufferedWrites.size >= MAX_BUFFER_SIZE) {
             log().warning("dropping packet due to full buffer")
+            context.parent.tell(Congested(linkId), self)
             return
         }
         val packetBuilder = ByteString.newBuilder()

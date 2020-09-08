@@ -108,7 +108,7 @@ class SessionActor(
             is OpenSessionRequest -> onOpenSession(message)
             is SendSessionData -> onSendSessionData(message)
             is ClientSendResult -> onSendResult(message)
-            else -> throw IllegalArgumentException("Unknown message type $message")
+            else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
 

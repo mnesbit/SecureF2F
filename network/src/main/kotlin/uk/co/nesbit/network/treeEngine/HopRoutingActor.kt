@@ -179,7 +179,7 @@ class HopRoutingActor(
             is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
             is ClientDhtRequest -> onClientRequest(message)
             is ClientSendMessage -> onClientSendMessage(message)
-            else -> throw IllegalArgumentException("Unknown message type")
+            else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
 
@@ -212,7 +212,7 @@ class HopRoutingActor(
             addToKBuckets(neighbour)
         }
         if (outstandingRequests.isEmpty()
-            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL
+            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
@@ -528,7 +528,7 @@ class HopRoutingActor(
             DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, replyRoute)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
             ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
-            else -> log().error("Unknown message type")
+            else -> log().error("Unknown message type ${payload.javaClass.name}")
         }
     }
 
@@ -688,7 +688,7 @@ class HopRoutingActor(
                     DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
                     DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
                     ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
-                    else -> log().error("Unknown message type")
+                    else -> log().error("Unknown message type ${payload.javaClass.name}")
                 }
             } else {
                 val forwardMessage = SphinxRoutedMessage(messageResult.forwardMessage!!.messageBytes)
