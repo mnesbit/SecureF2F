@@ -20,6 +20,10 @@
       "type": "int"
     },
     {
+      "name": "selectiveAck",
+      "type": "int"
+    },
+    {
       "name": "receiveWindowSize",
       "type": "int"
     },

@@ -212,7 +212,7 @@ class HopRoutingActor(
             addToKBuckets(neighbour)
         }
         if (outstandingRequests.isEmpty()
-            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
+            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             round++
@@ -588,6 +588,7 @@ class HopRoutingActor(
             addToKBuckets(node)
         }
         if (originalRequest != null) {
+            routeCache.getIfPresent(originalRequest.target.identity.id)
             updateTimeoutEstimate(originalRequest)
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
@@ -611,11 +612,8 @@ class HopRoutingActor(
                 outstandingClientRequests -= parent
                 log().info("Client request returned data for ${parent.request.key}")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, response.data), self)
-            } else if (originalRequest.target.identity.id == parent.request.key
-                || routeCache.getIfPresent(parent.request.key) != null
-            ) {
+            } else if (originalRequest.target.identity.id == parent.request.key) {
                 outstandingClientRequests -= parent
-                addToKBuckets(originalRequest.target)
                 log().info("Client request found path to exact node")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, null), self)
             } else {
@@ -745,6 +743,7 @@ class HopRoutingActor(
             message.sessionMessage.sessionId,
             message.sessionMessage.seqNo,
             message.sessionMessage.ackSeqNo,
+            message.sessionMessage.selectiveAck,
             message.sessionMessage.receiveWindowSize,
             message.sessionMessage.payload
         )
@@ -772,6 +771,7 @@ class HopRoutingActor(
             clientDataMessage.sessionId,
             clientDataMessage.seqNo,
             clientDataMessage.ackSeqNo,
+            clientDataMessage.selectiveAck,
             clientDataMessage.receiveWindowSize,
             clientDataMessage.payload
         )

@@ -252,6 +252,7 @@ class SessionActor(
             }
         } else {
             for (session in relevant) {
+                session.queryOpen = false
                 if (!session.open) {
                     sessions.remove(session.sessionId)
                     session.sender.tell(

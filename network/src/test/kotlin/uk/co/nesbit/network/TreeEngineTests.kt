@@ -406,6 +406,7 @@ class TreeEngineTests {
             123456789L,
             5555,
             3333,
+            0x88,
             23,
             "hello".toByteArray(Charsets.UTF_8)
         )
