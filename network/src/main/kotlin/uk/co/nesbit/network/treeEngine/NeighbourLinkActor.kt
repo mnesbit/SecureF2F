@@ -12,7 +12,6 @@ import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
-import uk.co.nesbit.network.mocknet.Congested
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
 import uk.co.nesbit.network.util.createProps
@@ -60,6 +59,7 @@ class NeighbourLinkActor(
         var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
         var verified: Boolean = false
+        var congested: Boolean = false
     }
 
     private class ParentInfo(
@@ -118,7 +118,7 @@ class NeighbourLinkActor(
             is Terminated -> onDeath(message)
             is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
-            is Congested -> onCongested(message)
+            is LinkSendStatus -> onLinkSendStatus(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
             is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
@@ -404,8 +404,9 @@ class NeighbourLinkActor(
         openStaticLinks()
     }
 
-    private fun onCongested(message: Congested) {
-        log().info("congestion on ${message.linkId}")
+    private fun onLinkSendStatus(message: LinkSendStatus) {
+        val linkState = linkStates[message.linkId]
+        linkState?.congested = !message.sent
     }
 
     private fun sendHello(linkId: LinkId) {
