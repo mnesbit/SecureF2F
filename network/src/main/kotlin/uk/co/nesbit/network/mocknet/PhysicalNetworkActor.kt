@@ -236,14 +236,12 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
         if (linkState.seqNo - linkState.receiveAckSeqNo > MAX_BUFFER_SIZE) {
             log().warning("dropping packet due to full buffer")
-            sender.tell(LinkSendStatus(msg.linkId, false), self)
             return
         }
         val seqNo = linkState.seqNo++
         val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
         val renumberedMessage = WireMessage(activeLink, seqNo, linkState.sendAckSeqNo, msg.msg)
         target.tell(renumberedMessage, self)
-        sender.tell(LinkSendStatus(msg.linkId, true), self)
     }
 
     private fun onCloseAll() {

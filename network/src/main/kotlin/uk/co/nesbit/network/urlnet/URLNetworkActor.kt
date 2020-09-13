@@ -710,21 +710,17 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             if (linkInfo != null) {
                 if (linkInfo.packets.size > MAX_BUFFER_SIZE) {
                     log().warning("drop packets on ${request.linkId} due to full buffer")
-                    sender.tell(LinkSendStatus(request.linkId, false), self)
                     return
                 }
                 linkInfo.packets += request.msg
-                sender.tell(LinkSendStatus(request.linkId, true), self)
             }
         } else if (link.status == LinkStatus.LINK_UP_ACTIVE) {
             val linkInfo = clientLinkInfo[request.linkId]
             if (linkInfo?.cookie != null) {
                 if (linkInfo.packets.size < MAX_BUFFER_SIZE) {
                     linkInfo.packets += request.msg
-                    sender.tell(LinkSendStatus(request.linkId, true), self)
                 } else {
                     log().warning("drop packets on ${request.linkId} due to full buffer")
-                    sender.tell(LinkSendStatus(request.linkId, false), self)
                 }
                 if (!linkInfo.pendingSend) {
                     sendMail(linkInfo)

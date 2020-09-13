@@ -14,7 +14,6 @@ import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.LinkReceivedMessage
 import uk.co.nesbit.network.api.net.LinkSendMessage
-import uk.co.nesbit.network.api.net.LinkSendStatus
 import uk.co.nesbit.network.api.net.OpenRequest
 import uk.co.nesbit.network.mocknet.*
 import uk.co.nesbit.network.util.seconds
@@ -373,9 +372,6 @@ class NetworkTest {
                     val msg1 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate2.linkId, msg1.linkId)
                     assertArrayEquals("Hello1".toByteArray(), msg1.msg)
-                    val sendAck1 = expectMsgClass(LinkSendStatus::class.java)
-                    assertEquals(linkUpdate1.linkId, sendAck1.linkId)
-                    assertEquals(true, sendAck1.sent)
                     // Send message from 2 to 1
                     physicalNetworkActor2.tell(
                         LinkSendMessage(
@@ -384,9 +380,6 @@ class NetworkTest {
                         ), testActor()
                     )
                     val msg2 = expectMsgClass(LinkReceivedMessage::class.java)
-                    val sendAck2 = expectMsgClass(LinkSendStatus::class.java)
-                    assertEquals(linkUpdate2.linkId, sendAck2.linkId)
-                    assertEquals(true, sendAck2.sent)
                     assertEquals(linkUpdate1.linkId, msg2.linkId)
                     assertArrayEquals("Hello2".toByteArray(), msg2.msg)
                 }

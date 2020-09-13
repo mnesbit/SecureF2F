@@ -59,7 +59,6 @@ class NeighbourLinkActor(
         var sendSecureId: ByteArray? = null
         var treeState: TreeState? = null
         var verified: Boolean = false
-        var congested: Boolean = false
     }
 
     private class ParentInfo(
@@ -118,7 +117,6 @@ class NeighbourLinkActor(
             is Terminated -> onDeath(message)
             is CheckStaticLinks -> onCheckStaticLinks()
             is LinkInfo -> onLinkStatusChange(message)
-            is LinkSendStatus -> onLinkSendStatus(message)
             is LinkReceivedMessage -> onLinkReceivedMessage(message)
             is NeighbourSendGreedyMessage -> onSendGreedyMessage(message)
             is NeighbourSendSphinxMessage -> onSendSphinxMessage(message)
@@ -402,11 +400,6 @@ class NeighbourLinkActor(
             neighbourChanged = true
         }
         openStaticLinks()
-    }
-
-    private fun onLinkSendStatus(message: LinkSendStatus) {
-        val linkState = linkStates[message.linkId]
-        linkState?.congested = !message.sent
     }
 
     private fun sendHello(linkId: LinkId) {
