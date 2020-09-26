@@ -40,6 +40,9 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
     private var ackedSeqNo: Long = 0L
     private var nackedSeqNo: Long = 0L
     private var leadIn: Int = 0
+    private var received: Int = 0
+    private var written: Int = 0
+    private var dropped: Int = 0
     private val bufferedWrites: Queue<ByteString> = LinkedList<ByteString>()
     private var bufferedReads: ByteString = ByteString.emptyByteString()
 
@@ -78,9 +81,11 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
     }
 
     private fun onLinkSendMessage(message: LinkSendMessage) {
+        ++written
         //log().info("LinkSendMessage ${message.msg.size} bytes ${message.msg.printHexBinary()}")
         if (bufferedWrites.size >= MAX_BUFFER_SIZE) {
-            log().warning("dropping packet due to full buffer")
+            ++dropped
+            log().warning("dropping packet on ${linkId} due to full buffer $dropped $written $received")
             return
         }
         val packetBuilder = ByteString.newBuilder()
@@ -188,6 +193,7 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
             //log().info("link received message $length")
             val buff1 = bufferedReads.drop(4)
             val packet = buff1.take(length).toArray()
+            ++received
             //log().info("packet ${packet.size} bytes ${packet.printHexBinary()}")
             context.parent.tell(LinkReceivedMessage(linkId, Clock.systemUTC().instant(), packet), self)
             bufferedReads = buff1.drop(length)

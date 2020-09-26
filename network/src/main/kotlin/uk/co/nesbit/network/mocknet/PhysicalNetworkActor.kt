@@ -43,6 +43,9 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
 
     private val dnsSelector = context.actorSelection("/user/Dns")
     private val linkBuffers = mutableMapOf<LinkId, LinkState>()
+    private var received: Int = 0
+    private var written: Int = 0
+    private var dropped: Int = 0
 
     override fun preStart() {
         super.preStart()
@@ -218,6 +221,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     }
 
     private fun onWireMessage(msg: WireMessage) {
+        ++received
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         if (links[activeLink]?.status?.active == true) {
             val renumberedMessage =
@@ -233,9 +237,11 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
 
     private fun onLinkSendMessage(msg: LinkSendMessage) {
         val target = targets[msg.linkId] ?: return
+        ++written
         val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
         if (linkState.seqNo - linkState.receiveAckSeqNo > MAX_BUFFER_SIZE) {
-            log().warning("dropping packet due to full buffer")
+            ++dropped
+            log().warning("dropping packet on ${msg.linkId} due to full buffer $dropped $written $received")
             return
         }
         val seqNo = linkState.seqNo++

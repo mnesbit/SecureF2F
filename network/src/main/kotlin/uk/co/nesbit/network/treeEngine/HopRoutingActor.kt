@@ -215,7 +215,7 @@ class HopRoutingActor(
             && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
-            round++
+            ++round
             if (SHOW_GAP) {
                 logNearestNodeGap(nearest, distMin)
             }
@@ -525,7 +525,7 @@ class HopRoutingActor(
             routeCache.put(replyRoute.last().id, replyRoute)
         }
         when (payload.javaClass) {
-            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, replyRoute)
+            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
             ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
             else -> log().error("Unknown message type ${payload.javaClass.name}")
@@ -545,25 +545,10 @@ class HopRoutingActor(
         return response
     }
 
-    private fun processDhtRequest(request: DhtRequest, replyPath: List<VersionedIdentity>) {
-        //log().info("got DhtRequest")
-        val response = processDhtRequestInternal(request)
-        if (replyPath.size > sphinxEncoder.maxRouteLength) {
-            sendGreedyMessage(request.sourceAddress, response)
-        } else {
-            sendSphinxMessage(replyPath, response)
-        }
-    }
-
     private fun processDhtRequest(request: DhtRequest) {
         //log().info("got DhtRequest")
         val response = processDhtRequestInternal(request)
-        val knownPath = routeCache.getIfPresent(request.sourceAddress.identity.id)
-        if (knownPath == null) {
-            sendGreedyMessage(request.sourceAddress, response)
-        } else {
-            sendSphinxMessage(knownPath, response)
-        }
+        sendGreedyMessage(request.sourceAddress, response)
     }
 
     private fun estimateMessageHops(target: NetworkAddressInfo): Int {
@@ -572,6 +557,9 @@ class HopRoutingActor(
             return directRoute.size
         } else {
             if (networkAddress == null) {
+                return 1
+            }
+            if (neighbours.containsKey(target.identity.id)) {
                 return 1
             }
             return networkAddress!!.greedyDist(target).coerceAtMost(sphinxEncoder.maxRouteLength)

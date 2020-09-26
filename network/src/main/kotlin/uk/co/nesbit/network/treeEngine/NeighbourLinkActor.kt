@@ -319,7 +319,6 @@ class NeighbourLinkActor(
         }
     }
 
-
     private fun sendMessageToLink(
             linkState: LinkState,
             message: Message
@@ -447,7 +446,7 @@ class NeighbourLinkActor(
                     log().warning("drop rate up $localQueueLatency $heartbeatRate")
                 }
             } else if (localQueueLatency < LATENCY_LOW) {
-                heartbeatRate = (heartbeatRate - 1000L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
+                heartbeatRate = (heartbeatRate - 200L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
                     log().warning("drop rate down $localQueueLatency $heartbeatRate")
