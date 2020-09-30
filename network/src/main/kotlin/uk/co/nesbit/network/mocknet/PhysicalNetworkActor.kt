@@ -229,7 +229,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             for (owner in owners) {
                 owner.tell(renumberedMessage, self)
             }
-            val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
+            val linkState = linkBuffers.getOrPut(activeLink) { LinkState() }
             linkState.receiveAckSeqNo = msg.ackSeqNo
             linkState.sendAckSeqNo = msg.seqNo
         }
