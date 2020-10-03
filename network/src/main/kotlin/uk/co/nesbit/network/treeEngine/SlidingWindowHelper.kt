@@ -24,7 +24,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         const val MAX_RECEIVE_BUFFER = 100
         const val START_WINDOW = 8
         const val MAX_WINDOW = 128
-        const val START_RTT = 10000L
+        const val START_RTT = 2000L
     }
 
     private class BufferedPacket(
@@ -47,6 +47,7 @@ class SlidingWindowHelper(val sessionId: Long) {
     private var sendWindowsSize: Int = START_WINDOW
     private var receiveWindowSize: Int = START_WINDOW
     private var needAck: Boolean = true
+    private var established: Boolean = false
 
     private fun rttTimeout(): Long {
         return ((rttScaled shr 2) + rttVarScaled) shr 1
@@ -95,6 +96,8 @@ class SlidingWindowHelper(val sessionId: Long) {
         }
         return sendBuffer.maxOf { it.retransmitCount }
     }
+
+    fun isEstablished(): Boolean = established
 
     fun sendPacket(payload: ByteArray): Boolean {
         require(payload.size > 0) {
@@ -170,7 +173,8 @@ class SlidingWindowHelper(val sessionId: Long) {
             )
         }
         if (sendList.isEmpty() && needAck) {
-            if (receiveBuffer.none { SequenceNumber.compare16(it.seqNo, receiveAckSeqNo) >= 0 }) {
+            if (receiveBuffer.none { SequenceNumber.compare16(it.seqNo, receiveAckSeqNo) >= 0 }
+                && established) {
                 needAck = false
             }
             sendList += DataPacket(
@@ -194,6 +198,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         }
         log.info("receive seq ${message.seqNo} ack ${message.ackSeqNo}  sack ${message.selectiveAck.toString(2)} window ${message.receiveWindowSize}")
         receiveWindowSize = message.receiveWindowSize
+        established = true
         val ackComp = SequenceNumber.distance16(sendAckSeqNo, message.ackSeqNo)
         if (message.isAck && ackComp == 0) {
             ++dupAckCount
