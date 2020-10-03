@@ -623,16 +623,21 @@ class NeighbourLinkActor(
             log().warning("Unable to route to ${messageRequest.networkAddress}")
             return
         }
-        val hopCountMax = (3 * selfAddress.greedyDist(messageRequest.networkAddress)) / 2
+        val estimatedHops = selfAddress.greedyDist(messageRequest.networkAddress)
+        if (estimatedHops == Int.MAX_VALUE) {
+            log().warning("Unable to route to ${messageRequest.networkAddress}")
+            return
+        }
+        val hopCountMax = (3 * estimatedHops) / 2
         val greedyRoutedMessage = GreedyRoutedMessage.createGreedRoutedMessage(
-                messageRequest.networkAddress,
-                hopCountMax,
-                messageRequest.payload,
-                nextHop.sendSecureId!!,
-                keyService.getVersion(networkId),
-                nextHop.identity!!,
-                keyService,
-                clock.instant()
+            messageRequest.networkAddress,
+            hopCountMax,
+            messageRequest.payload,
+            nextHop.sendSecureId!!,
+            keyService.getVersion(networkId),
+            nextHop.identity!!,
+            keyService,
+            clock.instant()
         )
         sendMessageToLink(nextHop, greedyRoutedMessage)
     }
