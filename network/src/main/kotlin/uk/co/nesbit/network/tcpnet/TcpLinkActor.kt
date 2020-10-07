@@ -161,17 +161,22 @@ class TcpLinkActor(private val linkId: LinkId, private val connectTo: PublicAddr
             log().error("bad ack ${message.seqNo} expected $ackedSeqNo")
         }
         if (writesBlocked) {
-            if (message.seqNo >= nackedSeqNo && bufferedWrites.isNotEmpty()) {
-                if (leadIn > 0) {
-                    //log().info("send single $ackedSeqNo")
-                    tcpActor!!.tell(TcpMessage.write(bufferedWrites.peek(), Ack(ackedSeqNo)), self)
-                    --leadIn
-                } else {
-                    //log().info("send all")
-                    for ((offset, data) in bufferedWrites.withIndex()) {
-                        tcpActor!!.tell(TcpMessage.write(data, Ack(ackedSeqNo + offset)), self)
+            if (message.seqNo >= nackedSeqNo) {
+                if (bufferedWrites.isNotEmpty()) {
+                    if (leadIn > 0) {
+                        //log().info("send single $ackedSeqNo")
+                        tcpActor!!.tell(TcpMessage.write(bufferedWrites.peek(), Ack(ackedSeqNo)), self)
+                        --leadIn
+                    } else {
+                        //log().info("send all")
+                        for ((offset, data) in bufferedWrites.withIndex()) {
+                            tcpActor!!.tell(TcpMessage.write(data, Ack(ackedSeqNo + offset)), self)
+                        }
+                        writesBlocked = false
                     }
+                } else {
                     writesBlocked = false
+                    leadIn = 0
                 }
             }
         }
