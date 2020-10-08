@@ -168,7 +168,7 @@ class NeighbourLinkActor(
             } else {
                 val treeState = linkState.treeState
                 if (treeState != null && treeState.stale(now)) {
-                    log().info("Stale state")
+                    log().info("Stale state ${linkState.linkId}")
                     linkState.treeState = null
                     linkState.verified = false
                     neighbourChanged = true

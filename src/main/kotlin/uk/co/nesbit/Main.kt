@@ -27,7 +27,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
-    val N = 1000
+    val N = 4000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
@@ -121,9 +121,9 @@ private fun createStream(
 
     var packetNo = 0
     while (true) {
-        Thread.sleep(1000L)
+        Thread.sleep(200L)
         val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
-        println("Send data query")
+        println("Send data query $packetNo")
         val sendFut = ask(
             sessionSourceNode,
             SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8)),

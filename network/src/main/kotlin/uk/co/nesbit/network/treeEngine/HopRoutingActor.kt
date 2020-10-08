@@ -69,7 +69,7 @@ class HopRoutingActor(
         const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 5L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 200L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
@@ -147,6 +147,7 @@ class HopRoutingActor(
     private val localRand = Random(keyService.random.nextLong())
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
+    private val clientCache = Caffeine.newBuilder().maximumSize(20L).build<SecureHash, NetworkAddressInfo>()
 
     override fun preStart() {
         super.preStart()
@@ -397,17 +398,25 @@ class HopRoutingActor(
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
         if (networkAddress!!.roots
-                        .zip(node.roots)
-                        .count { x -> x.first == x.second } < 2) {
+                .zip(node.roots)
+                .count { x -> x.first == x.second } < 2
+        ) {
+            clientCache.invalidate(node.identity.id)
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
             return
         }
+        val clientCachedAddress = clientCache.getIfPresent(node.identity.id)
+        if (clientCachedAddress != null
+            && clientCachedAddress.identity.currentVersion.version < node.identity.currentVersion.version
+        ) {
+            clientCache.put(node.identity.id, node)
+        }
         val bucket = findBucket(node.identity.id)
         val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
         if (current != null
-                && current.identity.currentVersion.version > node.identity.currentVersion.version
+            && current.identity.currentVersion.version > node.identity.currentVersion.version
         ) {
             return
         }
@@ -479,6 +488,7 @@ class HopRoutingActor(
                         .count { x -> x.first == x.second } < 2
             }
         }
+        clientCache.invalidateAll()
         var index = 1
         while (index < kbuckets.size) {
             val bucket = kbuckets[index]
@@ -599,8 +609,10 @@ class HopRoutingActor(
             if (response.data != null) {
                 outstandingClientRequests -= parent
                 log().info("Client request returned data for ${parent.request.key}")
+                clientCache.put(originalRequest.target.identity.id, originalRequest.target)
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, response.data), self)
             } else if (originalRequest.target.identity.id == parent.request.key) {
+                clientCache.put(originalRequest.target.identity.id, originalRequest.target)
                 outstandingClientRequests -= parent
                 log().info("Client request found path to exact node")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, null), self)
@@ -735,15 +747,20 @@ class HopRoutingActor(
             message.sessionMessage.receiveWindowSize,
             message.sessionMessage.payload
         )
+        val cachedAddress = clientCache.getIfPresent(message.destination)
         val knownPath = routeCache.getIfPresent(message.destination)
         if (knownPath == null) {
-            val bucket = findBucket(message.destination)
-            val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
-            if (destinationAddress == null) {
-                log().warning("Node not known ${message.destination}")
-                sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
-                return
+            if (cachedAddress != null) {
+                sendGreedyMessage(cachedAddress, clientDataMessage)
             } else {
+                val bucket = findBucket(message.destination)
+                val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
+                if (destinationAddress == null) {
+                    log().warning("Node not known ${message.destination}")
+                    sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+                    return
+                }
+                clientCache.put(destinationAddress.identity.id, destinationAddress)
                 sendGreedyMessage(destinationAddress, clientDataMessage)
             }
         } else {
@@ -753,7 +770,7 @@ class HopRoutingActor(
     }
 
     private fun processClientDataMessage(clientDataMessage: ClientDataMessage) {
-        addToKBuckets(clientDataMessage.source)
+        clientCache.put(clientDataMessage.source.identity.id, clientDataMessage.source)
         routeCache.getIfPresent(clientDataMessage.source.identity.id)
         val sessionMessage = DataPacket(
             clientDataMessage.sessionId,
