@@ -200,9 +200,10 @@ class SlidingWindowHelper(val sessionId: Long) {
         receiveWindowSize = message.receiveWindowSize
         established = true
         val ackComp = SequenceNumber.distance16(sendAckSeqNo, message.ackSeqNo)
-        if (message.isAck && ackComp == 0) {
+        if (message.isAck && ackComp == 0 && sendBuffer.isNotEmpty()) {
             ++dupAckCount
-        } else if (SequenceNumber.inRange16(ackComp) && ackComp > 0) {
+        }
+        if (SequenceNumber.inRange16(ackComp) && ackComp > 0) {
             dupAckCount = 0
             sendAckSeqNo = message.ackSeqNo
             val packetItr = sendBuffer.iterator()
