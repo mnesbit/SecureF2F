@@ -230,7 +230,6 @@ class SlidingWindowHelper(val sessionId: Long) {
         if (message.isAck) {
             return
         }
-        needAck = true
         if (receiveBuffer.size >= MAX_RECEIVE_BUFFER) {
             return
         }
@@ -247,12 +246,14 @@ class SlidingWindowHelper(val sessionId: Long) {
             } else if (comp > 0) {
                 receiveBuffer.add(index, message)
                 added = true
+                needAck = true
                 break
             }
             ++index
         }
         if (!added) {
             receiveBuffer.add(message)
+            needAck = true
         }
         for (item in receiveBuffer) {
             if (item.seqNo == receiveAckSeqNo) {
