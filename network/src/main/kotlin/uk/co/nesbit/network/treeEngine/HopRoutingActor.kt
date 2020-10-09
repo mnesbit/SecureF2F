@@ -65,8 +65,7 @@ class HopRoutingActor(
         }
 
         const val SHOW_GAP = true
-        const val REFRESH_INTERVAL = 20000L
-        const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
+        const val ROUTE_CHECK_INTERVAL_MS = 5000L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 200L
@@ -74,6 +73,7 @@ class HopRoutingActor(
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 10
+        const val TOKEN_RATE = 4.0
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
         val gapZero = AtomicInteger(0)
@@ -121,12 +121,12 @@ class HopRoutingActor(
     )
 
     private class ClientRequestState(
-            val sendTime: Instant,
-            val sender: ActorRef,
-            val request: ClientDhtRequest,
-            val probes: MutableSet<SecureHash> = mutableSetOf(),
-            var failed: Int = 0,
-            var responses: Int = 0
+        val sendTime: Instant,
+        val sender: ActorRef,
+        val request: ClientDhtRequest,
+        val probes: MutableSet<SecureHash> = mutableSetOf(),
+        var failed: Int = 0,
+        var responses: Int = 0
     )
 
     private val owners = mutableSetOf<ActorRef>()
@@ -136,6 +136,9 @@ class HopRoutingActor(
     private val kbuckets = mutableListOf(KBucket(0, 257))
     private var bucketRefresh: Int = 0
     private var round: Int = 0
+    private var tokens: Double = 0.0
+    private var tokenRate: Double = TOKEN_RATE
+    private var phase: Int = 0
     private var gapNEstimate: Int = 0
     private var gapCalcStable: Int = 0
     private var gapZeroDone = false
@@ -212,18 +215,33 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (outstandingRequests.isEmpty()
-            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
+        tokens += tokenRate
+        if (neighbours.isNotEmpty()
+            && outstandingRequests.size < (ALPHA + 1)
+            && tokens >= 0
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             ++round
             if (SHOW_GAP) {
                 logNearestNodeGap(nearest, distMin)
             }
-            for (near in nearest) {
-                pollChosenNode(near, now)
+            tokens = 0.0
+            if (nearest.isNotEmpty()) {
+                if (phase < nearest.size) {
+                    pollChosenNode(nearest[phase], now)
+                    ++phase
+                } else if (phase < ALPHA) {
+                    val neighboursList = neighbours.values.toList()
+                    pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
+                    ++phase
+                } else {
+                    pollRandomNode(now)
+                    phase = 0
+                }
+            } else {
+                val neighboursList = neighbours.values.toList()
+                pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
             }
-            pollRandomNode(now)
             lastSent = now
         }
     }
@@ -302,6 +320,7 @@ class HopRoutingActor(
                 data
         )
         val hops = estimateMessageHops(destination)
+        tokens -= 2.0 * hops
         val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
         val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
@@ -484,10 +503,12 @@ class HopRoutingActor(
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
                 networkAddress!!.roots
-                        .zip(it.roots)
-                        .count { x -> x.first == x.second } < 2
+                    .zip(it.roots)
+                    .count { x -> x.first == x.second } < 2
             }
         }
+        tokens = 0.0
+        tokenRate = TOKEN_RATE
         clientCache.invalidateAll()
         var index = 1
         while (index < kbuckets.size) {
