@@ -18,12 +18,20 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             return createProps(javaClass.enclosingClass, networkConfig)
         }
 
+        const val MAX_BUFFER_SIZE = 100
+
         val linkIdCounter = AtomicInteger(0)
     }
 
     internal data class ConnectRequest(val sourceNetworkId: NetworkAddress, val linkId: LinkId)
     internal data class ConnectResult(val linkId: LinkId, val opened: Boolean)
     internal data class ConnectionDrop(val initiatorLinkId: LinkId)
+    private class WireMessage(val linkId: LinkId, val seqNo: Int, val ackSeqNo: Int, val msg: ByteArray)
+    private class LinkState {
+        var seqNo: Int = 0
+        var sendAckSeqNo: Int = 0
+        var receiveAckSeqNo: Int = 0
+    }
 
     private val networkId: NetworkAddress get() = networkConfig.networkId as NetworkAddress
     private val owners = mutableSetOf<ActorRef>()
@@ -34,6 +42,10 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
 
     private val dnsSelector = context.actorSelection("/user/Dns")
+    private val linkBuffers = mutableMapOf<LinkId, LinkState>()
+    private var received: Int = 0
+    private var written: Int = 0
+    private var dropped: Int = 0
 
     override fun preStart() {
         super.preStart()
@@ -69,7 +81,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             is ConnectResult -> onConnectResult(message)
             is ConnectionDrop -> onConnectionDrop(message)
             is Terminated -> onDeath(message)
-            is LinkReceivedMessage -> onWireMessage(message)
+            is WireMessage -> onWireMessage(message)
             is LinkSendMessage -> onLinkSendMessage(message)
             is CloseAllRequest -> onCloseAll()
         }
@@ -109,6 +121,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             val newLinkInfo = linkInfo.copy(status = LinkStatus.LINK_DOWN)
             links[linkId] = newLinkInfo
             targets -= linkId
+            linkBuffers.remove(linkId)
             val reverseForeignLink = reverseForeignLinks.remove(linkId)
             if (reverseForeignLink != null) {
                 foreignLinks -= reverseForeignLink
@@ -207,22 +220,34 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         }
     }
 
-    private fun onWireMessage(msg: LinkReceivedMessage) {
+    private fun onWireMessage(msg: WireMessage) {
+        ++received
         val activeLink = foreignLinks[msg.linkId] ?: msg.linkId
         if (links[activeLink]?.status?.active == true) {
             val renumberedMessage =
-                    LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
+                LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
             for (owner in owners) {
                 owner.tell(renumberedMessage, self)
             }
+            val linkState = linkBuffers.getOrPut(activeLink) { LinkState() }
+            linkState.receiveAckSeqNo = msg.ackSeqNo
+            linkState.sendAckSeqNo = msg.seqNo
         }
     }
 
     private fun onLinkSendMessage(msg: LinkSendMessage) {
-        val target = targets[msg.linkId]
+        val target = targets[msg.linkId] ?: return
+        ++written
+        val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
+        if (linkState.seqNo - linkState.receiveAckSeqNo > MAX_BUFFER_SIZE) {
+            ++dropped
+            log().warning("dropping packet on ${msg.linkId} due to full buffer $dropped $written $received")
+            return
+        }
+        val seqNo = linkState.seqNo++
         val activeLink = reverseForeignLinks[msg.linkId] ?: msg.linkId
-        val renumberedMessage = LinkReceivedMessage(activeLink, Clock.systemUTC().instant(), msg.msg)
-        target?.tell(renumberedMessage, self)
+        val renumberedMessage = WireMessage(activeLink, seqNo, linkState.sendAckSeqNo, msg.msg)
+        target.tell(renumberedMessage, self)
     }
 
     private fun onCloseAll() {

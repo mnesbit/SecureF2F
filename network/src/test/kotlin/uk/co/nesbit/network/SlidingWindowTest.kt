@@ -24,7 +24,7 @@ class SlidingWindowTest {
             assertEquals(true, slide1.sendPacket(getPacket(i)))
         }
         assertEquals(false, slide1.sendPacket(getPacket(11)))
-        val toSend1 = slide1.pollForTransmit(Instant.ofEpochSecond(1L))
+        val toSend1 = slide1.pollForTransmit(Instant.ofEpochMilli(1L))
         assertEquals(START_WINDOW, toSend1.size)
         var seq = 0
         for (packet in toSend1) {
@@ -32,37 +32,39 @@ class SlidingWindowTest {
             assertEquals(MAX_RECEIVE_BUFFER, packet.receiveWindowSize)
             assertEquals(seq++, packet.seqNo)
             assertEquals(0, packet.ackSeqNo)
-            slide2.processMessage(packet, Instant.ofEpochSecond(2L))
+            slide2.processMessage(packet, Instant.ofEpochMilli(2L))
         }
         val received1 = slide2.pollReceivedPackets()
         assertEquals(START_WINDOW, received1.size)
         for (i in received1.indices) {
             assertArrayEquals(getPacket(i), received1[i])
         }
-        val reply1 = slide2.pollForTransmit(Instant.ofEpochSecond(3L))
+        val reply1 = slide2.pollForTransmit(Instant.ofEpochMilli(3L))
         assertEquals(1, reply1.size)
         assertEquals(START_WINDOW, reply1.single().ackSeqNo)
         assertEquals(0, reply1.single().seqNo)
-        val toSend2 = slide1.pollForTransmit(Instant.ofEpochSecond(4L))
+        val toSend2 = slide1.pollForTransmit(Instant.ofEpochMilli(4L))
         assertEquals(1, toSend2.size) // ack packet only
         assertEquals(true, toSend2.single().isAck)
-        slide1.processMessage(reply1.first(), Instant.ofEpochSecond(5L))
-        val toSend3 = slide1.pollForTransmit(Instant.ofEpochSecond(6L))
+        slide1.processMessage(reply1.first(), Instant.ofEpochMilli(5L))
+        val toSend3 = slide1.pollForTransmit(Instant.ofEpochMilli(6L))
         assertEquals(MAX_SEND_BUFFER - toSend1.size, toSend3.size)
         for (packet in toSend3) {
             assertEquals(1L, packet.sessionId)
             assertEquals(MAX_RECEIVE_BUFFER, packet.receiveWindowSize)
             assertEquals(seq++, packet.seqNo)
             assertEquals(0, packet.ackSeqNo)
-            slide2.processMessage(packet, Instant.ofEpochSecond(7L))
+            slide2.processMessage(packet, Instant.ofEpochMilli(7L))
         }
-        val reply2 = slide2.pollForTransmit(Instant.ofEpochSecond(8L))
+        val reply2 = slide2.pollForTransmit(Instant.ofEpochMilli(8L))
         assertEquals(1, reply2.size)
         assertEquals(MAX_SEND_BUFFER, reply2.single().ackSeqNo)
-        slide1.processMessage(reply2.first(), Instant.ofEpochSecond(9L))
-        val toSend4 = slide1.pollForTransmit(Instant.ofEpochSecond(10L))
-        assertEquals(1, toSend4.size) // ack packet only
-        assertEquals(true, toSend4.single().isAck)
+        slide1.processMessage(reply2.first(), Instant.ofEpochMilli(9L))
+        val toSend4 = slide1.pollForTransmit(Instant.ofEpochMilli(10L))
+        assertEquals(1, toSend4.size)
+        assertEquals(true, toSend4.first().isAck)
+        val toSend5 = slide1.pollForTransmit(Instant.ofEpochMilli(11L))
+        assertEquals(0, toSend5.size)
     }
 
     @Test
@@ -105,7 +107,7 @@ class SlidingWindowTest {
             for (item in reply) {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
-            if (received.isEmpty() && send.size == 1 && send.first().isAck) {
+            if (received.isEmpty() && send.isEmpty() && reply.isEmpty()) {
                 break
             }
         }
@@ -145,7 +147,6 @@ class SlidingWindowTest {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
         }
-        var breakCount = 0
         while (true) {
             val send = slide1.pollForTransmit(Clock.systemUTC().instant())
             for (item in send) {
@@ -159,13 +160,8 @@ class SlidingWindowTest {
             for (item in reply) {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
-            if (received.isEmpty() && send.size == 1 && send.first().isAck) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+            if (received.isEmpty() && send.isEmpty() && reply.isEmpty()) {
+                break
             }
         }
         assertEquals(sendSeq, receiveSeq)
@@ -205,7 +201,6 @@ class SlidingWindowTest {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
         }
-        var breakCount = 0
         while (true) {
             val send = slide1.pollForTransmit(Clock.systemUTC().instant())
             for (item in send) {
@@ -219,13 +214,8 @@ class SlidingWindowTest {
             for (item in reply) {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
-            if (received.isEmpty() && send.size == 1 && send.first().isAck) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+            if (received.isEmpty() && send.isEmpty() && reply.isEmpty()) {
+                break
             }
         }
         assertEquals(sendSeq, receiveSeq)
@@ -259,7 +249,6 @@ class SlidingWindowTest {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
         }
-        var breakCount = 0
         while (true) {
             val send = slide1.pollForTransmit(Clock.systemUTC().instant())
             for (item in send) {
@@ -273,13 +262,8 @@ class SlidingWindowTest {
             for (item in reply) {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
-            if (received.isEmpty() && send.size == 1 && send.first().isAck) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+            if (received.isEmpty() && send.isEmpty() && reply.isEmpty()) {
+                break
             }
         }
         assertEquals(sendSeq, receiveSeq)
@@ -326,7 +310,6 @@ class SlidingWindowTest {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
         }
-        var breakCount = 0
         while (true) {
             val send1 = slide1.pollForTransmit(Clock.systemUTC().instant())
             val received1 = slide1.pollReceivedPackets()
@@ -346,15 +329,10 @@ class SlidingWindowTest {
             }
             if (received1.isEmpty()
                 && received2.isEmpty()
-                && send1.size == 1 && send1.first().isAck
-                && send2.size == 1 && send2.first().isAck
+                && send1.isEmpty()
+                && send2.isEmpty()
             ) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+                break
             }
         }
         assertEquals(sendSeq1, receiveSeq2)
@@ -414,7 +392,6 @@ class SlidingWindowTest {
                 }
             }
         }
-        var breakCount = 0
         while (true) {
             val send1 = slide1.pollForTransmit(Clock.systemUTC().instant())
             val received1 = slide1.pollReceivedPackets()
@@ -434,15 +411,10 @@ class SlidingWindowTest {
             }
             if (received1.isEmpty()
                 && received2.isEmpty()
-                && send1.size == 1 && send1.first().isAck
-                && send2.size == 1 && send2.first().isAck
+                && send1.isEmpty()
+                && send2.isEmpty()
             ) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+                break
             }
         }
         assertEquals(sendSeq1, receiveSeq2)
@@ -468,7 +440,6 @@ class SlidingWindowTest {
             }
         }
         assertEquals(MAX_RECEIVE_BUFFER + MAX_SEND_BUFFER, sendSeq)
-        var breakCount = 0
         var receiveSeq = 0
         while (true) {
             val send = slide1.pollForTransmit(Clock.systemUTC().instant())
@@ -483,13 +454,8 @@ class SlidingWindowTest {
             for (item in reply) {
                 slide1.processMessage(item, Clock.systemUTC().instant())
             }
-            if (received.isEmpty() && send.size == 1 && send.first().isAck) {
-                ++breakCount
-                if (breakCount > 4) { // allow for dup ack mechanism
-                    break
-                }
-            } else {
-                breakCount = 0
+            if (received.isEmpty() && send.isEmpty() && reply.isEmpty()) {
+                break
             }
         }
         assertEquals(sendSeq, receiveSeq)

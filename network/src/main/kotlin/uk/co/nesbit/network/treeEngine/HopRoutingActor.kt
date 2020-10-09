@@ -65,15 +65,15 @@ class HopRoutingActor(
         }
 
         const val SHOW_GAP = true
-        const val REFRESH_INTERVAL = 20000L
-        const val ROUTE_CHECK_INTERVAL_MS = REFRESH_INTERVAL / 4L
+        const val ROUTE_CHECK_INTERVAL_MS = 5000L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 5L
+        const val REQUEST_TIMEOUT_INCREMENT_MS = 200L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 10
+        const val TOKEN_RATE = 4.0
 
         val bestDist = ConcurrentHashMap<SecureHash, Int>()
         val gapZero = AtomicInteger(0)
@@ -121,12 +121,12 @@ class HopRoutingActor(
     )
 
     private class ClientRequestState(
-            val sendTime: Instant,
-            val sender: ActorRef,
-            val request: ClientDhtRequest,
-            val probes: MutableSet<SecureHash> = mutableSetOf(),
-            var failed: Int = 0,
-            var responses: Int = 0
+        val sendTime: Instant,
+        val sender: ActorRef,
+        val request: ClientDhtRequest,
+        val probes: MutableSet<SecureHash> = mutableSetOf(),
+        var failed: Int = 0,
+        var responses: Int = 0
     )
 
     private val owners = mutableSetOf<ActorRef>()
@@ -136,6 +136,9 @@ class HopRoutingActor(
     private val kbuckets = mutableListOf(KBucket(0, 257))
     private var bucketRefresh: Int = 0
     private var round: Int = 0
+    private var tokens: Double = 0.0
+    private var tokenRate: Double = TOKEN_RATE
+    private var phase: Int = 0
     private var gapNEstimate: Int = 0
     private var gapCalcStable: Int = 0
     private var gapZeroDone = false
@@ -147,6 +150,7 @@ class HopRoutingActor(
     private val localRand = Random(keyService.random.nextLong())
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
+    private val clientCache = Caffeine.newBuilder().maximumSize(20L).build<SecureHash, NetworkAddressInfo>()
 
     override fun preStart() {
         super.preStart()
@@ -179,7 +183,7 @@ class HopRoutingActor(
             is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
             is ClientDhtRequest -> onClientRequest(message)
             is ClientSendMessage -> onClientSendMessage(message)
-            else -> throw IllegalArgumentException("Unknown message type")
+            else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
 
@@ -211,18 +215,33 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        if (outstandingRequests.isEmpty()
-            && ChronoUnit.MILLIS.between(lastSent, now) >= REFRESH_INTERVAL * ((kbuckets.size - 1).coerceAtLeast(1))
+        tokens += tokenRate
+        if (neighbours.isNotEmpty()
+            && outstandingRequests.size < (ALPHA + 1)
+            && tokens >= 0
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
-            round++
+            ++round
             if (SHOW_GAP) {
                 logNearestNodeGap(nearest, distMin)
             }
-            for (near in nearest) {
-                pollChosenNode(near, now)
+            tokens = 0.0
+            if (nearest.isNotEmpty()) {
+                if (phase < nearest.size) {
+                    pollChosenNode(nearest[phase], now)
+                    ++phase
+                } else if (phase < ALPHA) {
+                    val neighboursList = neighbours.values.toList()
+                    pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
+                    ++phase
+                } else {
+                    pollRandomNode(now)
+                    phase = 0
+                }
+            } else {
+                val neighboursList = neighbours.values.toList()
+                pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
             }
-            pollRandomNode(now)
             lastSent = now
         }
     }
@@ -301,6 +320,7 @@ class HopRoutingActor(
                 data
         )
         val hops = estimateMessageHops(destination)
+        tokens -= 2.0 * hops
         val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
         val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
@@ -397,17 +417,25 @@ class HopRoutingActor(
 
     private fun addToKBuckets(node: NetworkAddressInfo) {
         if (networkAddress!!.roots
-                        .zip(node.roots)
-                        .count { x -> x.first == x.second } < 2) {
+                .zip(node.roots)
+                .count { x -> x.first == x.second } < 2
+        ) {
+            clientCache.invalidate(node.identity.id)
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
             return
         }
+        val clientCachedAddress = clientCache.getIfPresent(node.identity.id)
+        if (clientCachedAddress != null
+            && clientCachedAddress.identity.currentVersion.version < node.identity.currentVersion.version
+        ) {
+            clientCache.put(node.identity.id, node)
+        }
         val bucket = findBucket(node.identity.id)
         val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
         if (current != null
-                && current.identity.currentVersion.version > node.identity.currentVersion.version
+            && current.identity.currentVersion.version > node.identity.currentVersion.version
         ) {
             return
         }
@@ -475,10 +503,13 @@ class HopRoutingActor(
         for (bucket in kbuckets) {
             bucket.nodes.removeIf {
                 networkAddress!!.roots
-                        .zip(it.roots)
-                        .count { x -> x.first == x.second } < 2
+                    .zip(it.roots)
+                    .count { x -> x.first == x.second } < 2
             }
         }
+        tokens = 0.0
+        tokenRate = TOKEN_RATE
+        clientCache.invalidateAll()
         var index = 1
         while (index < kbuckets.size) {
             val bucket = kbuckets[index]
@@ -525,10 +556,10 @@ class HopRoutingActor(
             routeCache.put(replyRoute.last().id, replyRoute)
         }
         when (payload.javaClass) {
-            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest, replyRoute)
+            DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
             ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
-            else -> log().error("Unknown message type")
+            else -> log().error("Unknown message type ${payload.javaClass.name}")
         }
     }
 
@@ -545,25 +576,10 @@ class HopRoutingActor(
         return response
     }
 
-    private fun processDhtRequest(request: DhtRequest, replyPath: List<VersionedIdentity>) {
-        //log().info("got DhtRequest")
-        val response = processDhtRequestInternal(request)
-        if (replyPath.size > sphinxEncoder.maxRouteLength) {
-            sendGreedyMessage(request.sourceAddress, response)
-        } else {
-            sendSphinxMessage(replyPath, response)
-        }
-    }
-
     private fun processDhtRequest(request: DhtRequest) {
         //log().info("got DhtRequest")
         val response = processDhtRequestInternal(request)
-        val knownPath = routeCache.getIfPresent(request.sourceAddress.identity.id)
-        if (knownPath == null) {
-            sendGreedyMessage(request.sourceAddress, response)
-        } else {
-            sendSphinxMessage(knownPath, response)
-        }
+        sendGreedyMessage(request.sourceAddress, response)
     }
 
     private fun estimateMessageHops(target: NetworkAddressInfo): Int {
@@ -572,6 +588,9 @@ class HopRoutingActor(
             return directRoute.size
         } else {
             if (networkAddress == null) {
+                return 1
+            }
+            if (neighbours.containsKey(target.identity.id)) {
                 return 1
             }
             return networkAddress!!.greedyDist(target).coerceAtMost(sphinxEncoder.maxRouteLength)
@@ -588,6 +607,7 @@ class HopRoutingActor(
             addToKBuckets(node)
         }
         if (originalRequest != null) {
+            routeCache.getIfPresent(originalRequest.target.identity.id)
             updateTimeoutEstimate(originalRequest)
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
@@ -610,12 +630,11 @@ class HopRoutingActor(
             if (response.data != null) {
                 outstandingClientRequests -= parent
                 log().info("Client request returned data for ${parent.request.key}")
+                clientCache.put(originalRequest.target.identity.id, originalRequest.target)
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, response.data), self)
-            } else if (originalRequest.target.identity.id == parent.request.key
-                || routeCache.getIfPresent(parent.request.key) != null
-            ) {
+            } else if (originalRequest.target.identity.id == parent.request.key) {
+                clientCache.put(originalRequest.target.identity.id, originalRequest.target)
                 outstandingClientRequests -= parent
-                addToKBuckets(originalRequest.target)
                 log().info("Client request found path to exact node")
                 parent.sender.tell(ClientDhtResponse(parent.request.key, true, null), self)
             } else {
@@ -690,7 +709,7 @@ class HopRoutingActor(
                     DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
                     DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
                     ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
-                    else -> log().error("Unknown message type")
+                    else -> log().error("Unknown message type ${payload.javaClass.name}")
                 }
             } else {
                 val forwardMessage = SphinxRoutedMessage(messageResult.forwardMessage!!.messageBytes)
@@ -745,18 +764,24 @@ class HopRoutingActor(
             message.sessionMessage.sessionId,
             message.sessionMessage.seqNo,
             message.sessionMessage.ackSeqNo,
+            message.sessionMessage.selectiveAck,
             message.sessionMessage.receiveWindowSize,
             message.sessionMessage.payload
         )
+        val cachedAddress = clientCache.getIfPresent(message.destination)
         val knownPath = routeCache.getIfPresent(message.destination)
         if (knownPath == null) {
-            val bucket = findBucket(message.destination)
-            val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
-            if (destinationAddress == null) {
-                log().warning("Node not known ${message.destination}")
-                sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
-                return
+            if (cachedAddress != null) {
+                sendGreedyMessage(cachedAddress, clientDataMessage)
             } else {
+                val bucket = findBucket(message.destination)
+                val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
+                if (destinationAddress == null) {
+                    log().warning("Node not known ${message.destination}")
+                    sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+                    return
+                }
+                clientCache.put(destinationAddress.identity.id, destinationAddress)
                 sendGreedyMessage(destinationAddress, clientDataMessage)
             }
         } else {
@@ -766,12 +791,13 @@ class HopRoutingActor(
     }
 
     private fun processClientDataMessage(clientDataMessage: ClientDataMessage) {
-        addToKBuckets(clientDataMessage.source)
+        clientCache.put(clientDataMessage.source.identity.id, clientDataMessage.source)
         routeCache.getIfPresent(clientDataMessage.source.identity.id)
         val sessionMessage = DataPacket(
             clientDataMessage.sessionId,
             clientDataMessage.seqNo,
             clientDataMessage.ackSeqNo,
+            clientDataMessage.selectiveAck,
             clientDataMessage.receiveWindowSize,
             clientDataMessage.payload
         )

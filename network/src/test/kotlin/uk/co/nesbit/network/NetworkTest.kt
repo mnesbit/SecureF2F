@@ -364,20 +364,20 @@ class NetworkTest {
                     assertEquals(LinkStatus.LINK_UP_ACTIVE, linkUpdate1.status)
                     // Send message from 1 to 2
                     physicalNetworkActor1.tell(
-                            LinkSendMessage(
-                                    linkUpdate1.linkId,
-                                    "Hello1".toByteArray()
-                            ), testActor()
+                        LinkSendMessage(
+                            linkUpdate1.linkId,
+                            "Hello1".toByteArray()
+                        ), testActor()
                     )
                     val msg1 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate2.linkId, msg1.linkId)
                     assertArrayEquals("Hello1".toByteArray(), msg1.msg)
                     // Send message from 2 to 1
                     physicalNetworkActor2.tell(
-                            LinkSendMessage(
-                                    linkUpdate2.linkId,
-                                    "Hello2".toByteArray()
-                            ), testActor()
+                        LinkSendMessage(
+                            linkUpdate2.linkId,
+                            "Hello2".toByteArray()
+                        ), testActor()
                     )
                     val msg2 = expectMsgClass(LinkReceivedMessage::class.java)
                     assertEquals(linkUpdate1.linkId, msg2.linkId)

@@ -88,6 +88,9 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     ) {
         var opened: Boolean = false
         val packets = mutableListOf<ByteArray>()
+        var sent: Int = 0
+        var received: Int = 0
+        var dropped: Int = 0
     }
 
     private data class ClientConnectionInfo(
@@ -99,6 +102,9 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         var pendingSend: Boolean = false
         var cookie: Cookie? = null
         val packets = mutableListOf<ByteArray>()
+        var sent: Int = 0
+        var received: Int = 0
+        var dropped: Int = 0
     }
 
     private class SendMailBodyContext(
@@ -440,7 +446,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         val adapter = moshi.adapter(MessageStatus::class.java)
         try {
             val mail = adapter.fromJson(payload)
-            for (packet in mail!!.messages) {
+            message.context.received += mail!!.messages.size
+            for (packet in mail.messages) {
                 onLinkReceivedMessage(LinkReceivedMessage(message.context.linkId, now, packet.bytes))
             }
         } catch (ex: Exception) {
@@ -669,7 +676,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         val adapter = moshi.adapter(MessageStatus::class.java)
         try {
             val mail = adapter.fromJson(payload)
-            for (packet in mail!!.messages) {
+            message.context.received += mail!!.messages.size
+            for (packet in mail.messages) {
                 onLinkReceivedMessage(LinkReceivedMessage(linkStatus.linkId, now, packet.bytes))
             }
             if (mail.messagesRemaining > 0) {
@@ -708,8 +716,10 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         if (link.status == LinkStatus.LINK_UP_PASSIVE) {
             val linkInfo = serverReverseLinkInfo[request.linkId]
             if (linkInfo != null) {
+                ++linkInfo.sent
                 if (linkInfo.packets.size > MAX_BUFFER_SIZE) {
-                    log().warning("drop packets on ${link.linkId} due to full buffer")
+                    ++linkInfo.dropped
+                    log().warning("dropping packet on ${request.linkId} due to full buffer ${linkInfo.dropped} ${linkInfo.sent} ${linkInfo.received}")
                     return
                 }
                 linkInfo.packets += request.msg
@@ -717,10 +727,12 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         } else if (link.status == LinkStatus.LINK_UP_ACTIVE) {
             val linkInfo = clientLinkInfo[request.linkId]
             if (linkInfo?.cookie != null) {
+                ++linkInfo.sent
                 if (linkInfo.packets.size < MAX_BUFFER_SIZE) {
                     linkInfo.packets += request.msg
                 } else {
-                    log().warning("drop packets on ${link.linkId} due to full buffer")
+                    ++linkInfo.dropped
+                    log().warning("dropping packet on ${request.linkId} due to full buffer ${linkInfo.dropped} ${linkInfo.sent} ${linkInfo.received}")
                 }
                 if (!linkInfo.pendingSend) {
                     sendMail(linkInfo)

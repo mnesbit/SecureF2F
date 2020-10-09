@@ -13,6 +13,7 @@ import uk.co.nesbit.network.util.millis
 import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 class SelfAddressRequest
@@ -54,6 +55,7 @@ class SessionActor(
         }
 
         const val ACK_INTERVAL_MS = 5000L
+        const val CONNECT_TIMEOUT = 10000L
     }
 
     private class SessionInfo(
@@ -61,6 +63,7 @@ class SessionActor(
         val clientId: Int,
         val destination: SecureHash,
         val sender: ActorRef,
+        val opened: Instant,
         var lastUpdate: Instant,
         var open: Boolean = false
     ) {
@@ -108,7 +111,7 @@ class SessionActor(
             is OpenSessionRequest -> onOpenSession(message)
             is SendSessionData -> onSendSessionData(message)
             is ClientSendResult -> onSendResult(message)
-            else -> throw IllegalArgumentException("Unknown message type $message")
+            else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
 
@@ -142,7 +145,17 @@ class SessionActor(
 
     private fun onCheckSessions() {
         //log().info("check sessions")
+        val now = clock.instant()
+        val failedSessions = mutableListOf<SessionInfo>()
         for (session in sessions.values) {
+            if (session.open &&
+                !session.windowProcessor.isEstablished() &&
+                ChronoUnit.MILLIS.between(session.opened, now) >= CONNECT_TIMEOUT
+            ) {
+                session.open = false
+                failedSessions += session
+                continue
+            }
             sendSessionMessages(session)
             if (session.open &&
                 session.windowProcessor.getMaxRetransmits() >= 3 &&
@@ -152,6 +165,13 @@ class SessionActor(
                 log().warning("too many retransmits re-probe for destination ${session.destination}")
                 routingActor.tell(ClientDhtRequest(session.destination, null), self)
             }
+        }
+        for (session in failedSessions) {
+            sessions.remove(session.sessionId)
+            session.sender.tell(
+                OpenSessionResponse(session.destination, session.clientId, session.sessionId, false),
+                self
+            )
         }
         setSessionTimer()
     }
@@ -173,12 +193,14 @@ class SessionActor(
     private fun onClientReceivedMessage(message: ClientReceivedMessage) {
         log().info("packet from ${message.source}")
         val session = sessions.getOrPut(message.sessionMessage.sessionId) {
+            val now = clock.instant()
             val incomingSession = SessionInfo(
                 message.sessionMessage.sessionId,
                 -1,
                 message.source,
                 self,
-                clock.instant(),
+                now,
+                now,
                 true
             )
             val signal = IncomingSession(message.source, incomingSession.sessionId)
@@ -189,6 +211,14 @@ class SessionActor(
             incomingSession
         }
         if (session.open) {
+            if (!session.windowProcessor.isEstablished()
+                && session.sender != self
+            ) {
+                session.sender.tell(
+                    OpenSessionResponse(session.destination, session.clientId, session.sessionId, true),
+                    self
+                )
+            }
             session.windowProcessor.processMessage(message.sessionMessage, clock.instant())
             sendSessionMessages(session)
             val received = session.windowProcessor.pollReceivedPackets()
@@ -228,6 +258,7 @@ class SessionActor(
             openRequest.clientId,
             openRequest.destination,
             sender,
+            clock.instant(),
             Instant.ofEpochMilli(0L)
         )
         sessions[sessionId] = newSession
@@ -243,15 +274,12 @@ class SessionActor(
                 session.queryOpen = false
                 if (!session.open) {
                     session.open = true
-                    session.sender.tell(
-                        OpenSessionResponse(session.destination, session.clientId, session.sessionId, true),
-                        self
-                    )
                     sendSessionMessages(session)
                 }
             }
         } else {
             for (session in relevant) {
+                session.queryOpen = false
                 if (!session.open) {
                     sessions.remove(session.sessionId)
                     session.sender.tell(

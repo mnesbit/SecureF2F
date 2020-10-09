@@ -156,7 +156,7 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Untyped
 
     private fun onLinkSendMessage(message: LinkSendMessage) {
         val target = linkHandlers[message.linkId]
-        target?.tell(message, self)
+        target?.forward(message, context)
     }
 
     private fun onLinkReceivedMessage(message: LinkReceivedMessage) {

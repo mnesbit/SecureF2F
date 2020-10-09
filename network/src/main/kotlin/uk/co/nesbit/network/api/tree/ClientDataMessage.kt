@@ -13,6 +13,7 @@ class ClientDataMessage(
     val sessionId: Long,
     val seqNo: Int,
     val ackSeqNo: Int,
+    val selectiveAck: Int,
     val receiveWindowSize: Int,
     val payload: ByteArray
 ) : Message {
@@ -21,6 +22,7 @@ class ClientDataMessage(
         clientDataMessageRecord.getTyped("sessionId"),
         clientDataMessageRecord.getTyped("seqNo"),
         clientDataMessageRecord.getTyped("ackSeqNo"),
+        clientDataMessageRecord.getTyped("selectiveAck"),
         clientDataMessageRecord.getTyped("receiveWindowSize"),
         clientDataMessageRecord.getTyped("payload")
     )
@@ -43,6 +45,7 @@ class ClientDataMessage(
         clientDataMessageRecord.putTyped("sessionId", sessionId)
         clientDataMessageRecord.putTyped("seqNo", seqNo)
         clientDataMessageRecord.putTyped("ackSeqNo", ackSeqNo)
+        clientDataMessageRecord.putTyped("selectiveAck", selectiveAck)
         clientDataMessageRecord.putTyped("receiveWindowSize", receiveWindowSize)
         clientDataMessageRecord.putTyped("payload", payload)
         return clientDataMessageRecord
@@ -58,6 +61,7 @@ class ClientDataMessage(
         if (sessionId != other.sessionId) return false
         if (seqNo != other.seqNo) return false
         if (ackSeqNo != other.ackSeqNo) return false
+        if (selectiveAck != other.selectiveAck) return false
         if (receiveWindowSize != other.receiveWindowSize) return false
         if (!payload.contentEquals(other.payload)) return false
 
@@ -69,6 +73,7 @@ class ClientDataMessage(
         result = 31 * result + sessionId.hashCode()
         result = 31 * result + seqNo
         result = 31 * result + ackSeqNo
+        result = 31 * result + selectiveAck
         result = 31 * result + receiveWindowSize
         result = 31 * result + payload.contentHashCode()
         return result
