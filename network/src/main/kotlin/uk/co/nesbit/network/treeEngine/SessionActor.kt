@@ -13,7 +13,6 @@ import uk.co.nesbit.network.util.millis
 import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 class SelfAddressRequest
@@ -55,7 +54,6 @@ class SessionActor(
         }
 
         const val ACK_INTERVAL_MS = 5000L
-        const val CONNECT_TIMEOUT = 10000L
     }
 
     private class SessionInfo(
@@ -63,7 +61,6 @@ class SessionActor(
         val clientId: Int,
         val destination: SecureHash,
         val sender: ActorRef,
-        val opened: Instant,
         var lastUpdate: Instant,
         var open: Boolean = false
     ) {
@@ -145,13 +142,9 @@ class SessionActor(
 
     private fun onCheckSessions() {
         //log().info("check sessions")
-        val now = clock.instant()
         val failedSessions = mutableListOf<SessionInfo>()
         for (session in sessions.values) {
-            if (session.open &&
-                !session.windowProcessor.isEstablished() &&
-                ChronoUnit.MILLIS.between(session.opened, now) >= CONNECT_TIMEOUT
-            ) {
+            if (session.windowProcessor.isTerminated()) {
                 session.open = false
                 failedSessions += session
                 continue
@@ -199,7 +192,6 @@ class SessionActor(
                 -1,
                 message.source,
                 self,
-                now,
                 now,
                 true
             )
@@ -258,7 +250,6 @@ class SessionActor(
             openRequest.clientId,
             openRequest.destination,
             sender,
-            clock.instant(),
             Instant.ofEpochMilli(0L)
         )
         sessions[sessionId] = newSession
