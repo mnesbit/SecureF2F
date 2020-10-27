@@ -278,10 +278,11 @@ class SlidingWindowHelper(val sessionId: Long) {
 
     fun getNearestDeadline(now: Instant): Long {
         val nearest = sendBuffer.minByOrNull { it.lastSent }
+        val rttTimeout = rttTimeout()
         if (nearest != null) {
-            return ChronoUnit.MILLIS.between(nearest.lastSent.plusMillis(rttTimeout()), now).coerceAtLeast(0L)
+            return ChronoUnit.MILLIS.between(now, nearest.lastSent.plusMillis(rttTimeout())).coerceAtLeast(0L)
         }
-        return rttTimeout()
+        return rttTimeout
     }
 
     fun getMaxRetransmits(): Int {
@@ -352,7 +353,9 @@ class SlidingWindowHelper(val sessionId: Long) {
     }
 
     fun closeSession(now: Instant) {
-        if (connectionState != ConnectionState.Closed) {
+        if (connectionState != ConnectionState.Closing
+            && connectionState != ConnectionState.Closed
+        ) {
             closingStarted = now
             connectionState = ConnectionState.Closing
         }

@@ -4,6 +4,8 @@ import akka.actor.ActorRef
 import akka.actor.Props
 import akka.actor.Terminated
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.network.api.LinkStatus
+import uk.co.nesbit.network.api.active
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.NetworkAddressInfo
 import uk.co.nesbit.network.mocknet.WatchRequest
@@ -17,21 +19,29 @@ import kotlin.math.abs
 
 class SelfAddressRequest
 data class SelfAddressResponse(val address: SecureHash?)
+
 data class OpenSessionRequest(
     val destination: SecureHash,
     val clientId: Int
 )
 
-data class OpenSessionResponse(
-    val destination: SecureHash,
-    val clientId: Int,
-    val sessionId: Long,
-    val success: Boolean
-)
+data class CloseSessionRequest(
+    val clientId: Int?,
+    val sessionId: Long?,
+    val destination: SecureHash?
+) {
+    init {
+        require(sessionId != null || destination != null) {
+            "At least sessionId, or destination must be specified"
+        }
+    }
+}
 
-data class IncomingSession(
-    val source: SecureHash,
-    val sessionId: Long
+data class SessionStatusInfo(
+    val clientId: Int?,
+    val sessionId: Long,
+    val destination: SecureHash,
+    val status: LinkStatus
 )
 
 class SendSessionData(val sessionId: Long, val payload: ByteArray)
@@ -56,23 +66,33 @@ class SessionActor(
         const val ACK_INTERVAL_MS = 5000L
     }
 
-    private class SessionInfo(
-        val sessionId: Long,
-        val clientId: Int,
-        val destination: SecureHash,
-        val sender: ActorRef,
-        var lastUpdate: Instant,
-        var open: Boolean = false
-    ) {
-        var queryOpen: Boolean = false
-        val windowProcessor = SlidingWindowHelper(sessionId)
+    private enum class SessionState {
+        Created,
+        Querying,
+        RouteFound,
+        Established,
+        Closing,
+        Closed
     }
 
     private class CheckSessions
 
+    private class SessionInfo(
+        val sessionId: Long,
+        val clientId: Int?,
+        val destination: SecureHash,
+        var sender: ActorRef?,
+    ) {
+        var routeFound: Boolean = false
+        var state: SessionState = SessionState.Created
+        var status: LinkStatus? = null
+        val windowProcessor = SlidingWindowHelper(sessionId)
+    }
+
     private val owners = mutableSetOf<ActorRef>()
     private var selfAddress: SecureHash? = null
     private val sessions = mutableMapOf<Long, SessionInfo>()
+    private val routeRequests = mutableSetOf<SecureHash>()
     private val clock: Clock = Clock.systemUTC()
 
     override fun preStart() {
@@ -103,9 +123,10 @@ class SessionActor(
             is NetworkAddressInfo -> onSelfAddress(message)
             is SelfAddressRequest -> onSelfAddressRequest()
             is CheckSessions -> onCheckSessions()
-            is ClientDhtResponse -> onInitialQuery(message)
-            is ClientReceivedMessage -> onClientReceivedMessage(message)
+            is ClientDhtResponse -> onPeerAddressQuery(message)
+            is ClientReceivedMessage -> onSessionDataReceived(message)
             is OpenSessionRequest -> onOpenSession(message)
+            is CloseSessionRequest -> onCloseSession(message)
             is SendSessionData -> onSendSessionData(message)
             is ClientSendResult -> onSendResult(message)
             else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
@@ -123,13 +144,6 @@ class SessionActor(
     private fun onDeath(message: Terminated) {
         log().info("actor died ${message.actor}")
         owners -= message.actor
-        val sessionsItr = sessions.iterator()
-        while (sessionsItr.hasNext()) {
-            val session = sessionsItr.next()
-            if (session.value.sender == message.actor) {
-                sessionsItr.remove()
-            }
-        }
     }
 
     private fun onSelfAddress(addressInfo: NetworkAddressInfo) {
@@ -141,30 +155,13 @@ class SessionActor(
     }
 
     private fun onCheckSessions() {
-        //log().info("check sessions")
-        val failedSessions = mutableListOf<SessionInfo>()
-        for (session in sessions.values) {
-            if (session.windowProcessor.isTerminated()) {
-                session.open = false
-                failedSessions += session
-                continue
+        val now = clock.instant()
+        val sessionItr = sessions.iterator()
+        while (sessionItr.hasNext()) {
+            val session = sessionItr.next().value
+            if (!processSession(session, now)) {
+                sessionItr.remove()
             }
-            sendSessionMessages(session)
-            if (session.open &&
-                session.windowProcessor.getMaxRetransmits() >= 3 &&
-                !session.queryOpen
-            ) {
-                session.queryOpen = true
-                log().warning("too many retransmits re-probe for destination ${session.destination}")
-                routingActor.tell(ClientDhtRequest(session.destination, null), self)
-            }
-        }
-        for (session in failedSessions) {
-            sessions.remove(session.sessionId)
-            session.sender.tell(
-                OpenSessionResponse(session.destination, session.clientId, session.sessionId, false),
-                self
-            )
         }
         setSessionTimer()
     }
@@ -173,138 +170,214 @@ class SessionActor(
         val now = clock.instant()
         var nearest = ACK_INTERVAL_MS
         for (session in sessions.values) {
-            if (session.open) {
+            if (session.routeFound && !session.windowProcessor.isTerminated()) {
                 val deadline = session.windowProcessor.getNearestDeadline(now)
                 if (deadline < nearest) {
                     nearest = deadline
                 }
             }
         }
-        timers.startSingleTimer("CheckSessions", CheckSessions(), ACK_INTERVAL_MS.millis())
+        timers.startSingleTimer("CheckSessions", CheckSessions(), nearest.millis())
     }
 
-    private fun onClientReceivedMessage(message: ClientReceivedMessage) {
-        log().info("packet from ${message.source}")
-        val session = sessions.getOrPut(message.sessionMessage.sessionId) {
-            val now = clock.instant()
-            val incomingSession = SessionInfo(
-                message.sessionMessage.sessionId,
-                -1,
-                message.source,
-                self,
-                now,
-                true
+    private fun sendStatusUpdate(session: SessionInfo, newState: LinkStatus) {
+        if (session.status != newState) {
+            session.status = newState
+            val update = SessionStatusInfo(
+                session.clientId,
+                session.sessionId,
+                session.destination,
+                newState
             )
-            val signal = IncomingSession(message.source, incomingSession.sessionId)
-            log().info("new incoming session created $signal")
-            for (owner in owners) {
-                owner.tell(signal, self)
+            if (session.sender == null) {
+                for (owner in owners) {
+                    owner.tell(update, self)
+                }
+            } else {
+                session.sender!!.tell(update, self)
             }
-            incomingSession
         }
-        if (session.open) {
-            if (!session.windowProcessor.isEstablished()
-                && session.sender != self
-            ) {
-                session.sender.tell(
-                    OpenSessionResponse(session.destination, session.clientId, session.sessionId, true),
-                    self
-                )
+    }
+
+    private fun sendSessionMessages(session: SessionInfo, now: Instant) {
+        val messages = session.windowProcessor.pollForTransmit(now)
+        for (message in messages) {
+            routingActor.tell(ClientSendMessage(session.destination, message), self)
+        }
+    }
+
+    private fun processSession(session: SessionInfo, now: Instant): Boolean {
+        val prevState = session.state
+        if (session.windowProcessor.isTerminated() && session.state != SessionState.Closed) {
+            session.state = SessionState.Closing
+        }
+        when (session.state) {
+            SessionState.Created -> {
+                if (session.destination !in routeRequests) {
+                    routeRequests += session.destination
+                    log().warning("probe for destination ${session.destination}")
+                    routingActor.tell(ClientDhtRequest(session.destination, null), self)
+                }
+                session.state = SessionState.Querying
             }
-            session.windowProcessor.processMessage(message.sessionMessage, clock.instant())
-            sendSessionMessages(session)
-            val received = session.windowProcessor.pollReceivedPackets()
-            for (packet in received) {
-                val sessionReceive = ReceiveSessionData(session.sessionId, packet)
-                if (session.sender == self) {
-                    for (owner in owners) {
-                        owner.tell(sessionReceive, self)
-                    }
+            SessionState.Querying -> { // wait for reply
+                if (session.destination !in routeRequests) {
+                    routeRequests += session.destination
+                    log().warning("re-probe for destination ${session.destination}")
+                    routingActor.tell(ClientDhtRequest(session.destination, null), self)
+                }
+                session.state = SessionState.Querying
+            }
+            SessionState.RouteFound -> {
+                session.routeFound = true
+                if (session.windowProcessor.isEstablished()) {
+                    log().info("session link ${session.sessionId} established")
+                    session.state = SessionState.Established
+                    val newState = if (session.sender != null) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
+                    sendStatusUpdate(session, newState)
+                    sendSessionMessages(session, now)
                 } else {
-                    session.sender.tell(sessionReceive, self)
+                    session.state = SessionState.RouteFound
+                    sendSessionMessages(session, now)
                 }
             }
-            setSessionTimer()
+            SessionState.Established -> {
+                session.state = SessionState.Established
+                sendSessionMessages(session, now)
+            }
+            SessionState.Closing -> {
+                log().info("session link ${session.sessionId} closing")
+                sendStatusUpdate(session, LinkStatus.LINK_DOWN)
+                if (!session.routeFound) {
+                    session.state = SessionState.Closed
+                } else {
+                    if (!session.windowProcessor.isTerminated()) {
+                        log().info("closing session link ${session.sessionId}")
+                        session.windowProcessor.closeSession(now)
+                        sendSessionMessages(session, now)
+                    } else {
+                        session.state = SessionState.Closed
+                    }
+                }
+            }
+            SessionState.Closed -> {
+                session.state = SessionState.Closed // terminal state await cleanup
+            }
         }
+        log().info("process ${session.sessionId} prev state $prevState new state ${session.state}")
+        return (session.state != SessionState.Closed)
     }
 
     private fun onOpenSession(openRequest: OpenSessionRequest) {
         log().info("onOpenSession $openRequest")
         val sessionId = abs(keyService.random.nextLong())
         if (selfAddress == null) {
-            sender.tell(OpenSessionResponse(openRequest.destination, openRequest.clientId, sessionId, false), self)
-            return
-        }
-        val existing =
-            sessions.values.firstOrNull { it.destination == openRequest.destination && it.clientId == openRequest.clientId }
-        if (existing != null) {
-            log().error("Re-use of client id")
             sender.tell(
-                OpenSessionResponse(openRequest.destination, openRequest.clientId, existing.sessionId, false),
-                self
+                SessionStatusInfo(
+                    openRequest.clientId,
+                    sessionId,
+                    openRequest.destination,
+                    LinkStatus.LINK_DOWN
+                ), self
             )
             return
         }
+        val existing = sessions.values.firstOrNull {
+            it.destination == openRequest.destination && it.clientId == openRequest.clientId
+        }
+        if (existing != null) {
+            log().error("Re-use of client id")
+            sender.tell(
+                SessionStatusInfo(
+                    openRequest.clientId,
+                    sessionId,
+                    openRequest.destination,
+                    LinkStatus.LINK_DOWN
+                ), self
+            )
+            return
+        }
+        val now = clock.instant()
         val newSession = SessionInfo(
             sessionId,
             openRequest.clientId,
             openRequest.destination,
-            sender,
-            Instant.ofEpochMilli(0L)
+            sender
         )
         sessions[sessionId] = newSession
-        newSession.queryOpen = true
-        routingActor.tell(ClientDhtRequest(openRequest.destination, null), self)
+        if (!processSession(newSession, now)) {
+            sessions.remove(sessionId)
+        }
+        setSessionTimer()
     }
 
-    private fun onInitialQuery(response: ClientDhtResponse) {
-        log().info("Initial query for ${response.key} returned status ${response.success}")
-        val relevant = sessions.values.filter { it.destination == response.key }
-        if (response.success) {
-            for (session in relevant) {
-                session.queryOpen = false
-                if (!session.open) {
-                    session.open = true
-                    sendSessionMessages(session)
+    private fun onCloseSession(request: CloseSessionRequest) {
+        log().info("close request $request")
+        val session = if (request.sessionId != null) {
+            val sessionById = sessions[request.sessionId]
+            if (sessionById == null) {
+                log().warning("Session not found for close")
+                return
+            }
+            if (request.destination != null) {
+                if (sessionById.destination != request.destination) {
+                    log().warning("destination of session for close does not match expected")
+                    return
+                }
+                if (sessionById.clientId != request.clientId) {
+                    log().warning("clientId of session for close does not match expected")
+                    return
                 }
             }
+            sessionById
         } else {
-            for (session in relevant) {
-                session.queryOpen = false
-                if (!session.open) {
-                    sessions.remove(session.sessionId)
-                    session.sender.tell(
-                        OpenSessionResponse(session.destination, session.clientId, session.sessionId, false),
-                        self
-                    )
+            val sessionByClientIdAndDestination =
+                sessions.values.firstOrNull { it.clientId == request.clientId && it.destination == request.destination }
+            if (sessionByClientIdAndDestination == null) {
+                log().warning("No session found by clientId and destination to close")
+                return
+            }
+            sessionByClientIdAndDestination
+        }
+        val now = clock.instant()
+        session.state = SessionState.Closing
+        if (!processSession(session, now)) {
+            sessions.remove(session.sessionId)
+        }
+        setSessionTimer()
+    }
+
+    private fun onPeerAddressQuery(response: ClientDhtResponse) {
+        log().info("Route query for ${response.key} returned status ${response.success}")
+        routeRequests -= response.key
+        val relevant = sessions.values.filter { it.destination == response.key }
+        val now = clock.instant()
+        for (session in relevant) {
+            if (response.success) {
+                if (session.state == SessionState.Querying) {
+                    session.state = SessionState.RouteFound
                 }
+            } else {
+                session.state = SessionState.Closing
+            }
+            if (!processSession(session, now)) {
+                sessions.remove(session.sessionId)
             }
         }
         setSessionTimer()
     }
 
-    private fun sendSessionMessages(session: SessionInfo) {
-        if (!session.open) {
-            return
-        }
-        val now = clock.instant()
-        val messages = session.windowProcessor.pollForTransmit(now)
-        session.lastUpdate = now
-        for (message in messages) {
-            routingActor.tell(ClientSendMessage(session.destination, message), self)
-        }
-    }
-
     private fun onSendResult(message: ClientSendResult) {
         log().info("session send result ${message.destination} ${message.sent}")
         if (!message.sent) {
-            val sessions = sessions.values.filter { it.open && it.destination == message.destination }
+            val now = clock.instant()
+            val sessions =
+                sessions.values.filter { it.state == SessionState.Established && it.destination == message.destination }
             if (sessions.isNotEmpty()) {
                 for (session in sessions) {
-                    session.queryOpen = true
+                    session.state = SessionState.Querying
+                    processSession(session, now)
                 }
-                log().warning("re-probe for destination ${message.destination}")
-                routingActor.tell(ClientDhtRequest(message.destination, null), self)
             }
         }
     }
@@ -317,7 +390,7 @@ class SessionActor(
             sender.tell(SendSessionDataAck(message.sessionId, false), self)
             return
         }
-        if (!session.open) {
+        if (session.status?.active != true) {
             log().warning("Session not open")
             sender.tell(SendSessionDataAck(message.sessionId, false), self)
             return
@@ -327,9 +400,44 @@ class SessionActor(
             sender.tell(SendSessionDataAck(message.sessionId, false), self)
             return
         }
-        sendSessionMessages(session)
+        val now = clock.instant()
+        if (!processSession(session, now)) {
+            sessions.remove(session.sessionId)
+        }
         setSessionTimer()
         sender.tell(SendSessionDataAck(message.sessionId, true), self)
+    }
+
+    private fun onSessionDataReceived(message: ClientReceivedMessage) {
+        log().info("packet from ${message.source}")
+        val session = sessions.getOrPut(message.sessionMessage.sessionId) {
+            val incomingSession = SessionInfo(
+                message.sessionMessage.sessionId,
+                null,
+                message.source,
+                null
+            )
+            incomingSession.state = SessionState.RouteFound
+            log().info("new incoming session created ${message.sessionMessage.sessionId}")
+            incomingSession
+        }
+        val now = clock.instant()
+        session.windowProcessor.processMessage(message.sessionMessage, now)
+        val received = session.windowProcessor.pollReceivedPackets()
+        for (packet in received) {
+            val sessionReceive = ReceiveSessionData(session.sessionId, packet)
+            if (session.sender == null) {
+                for (owner in owners) {
+                    owner.tell(sessionReceive, self)
+                }
+            } else {
+                session.sender!!.tell(sessionReceive, self)
+            }
+        }
+        if (!processSession(session, now)) {
+            sessions.remove(session.sessionId)
+        }
+        setSessionTimer()
     }
 
 }
