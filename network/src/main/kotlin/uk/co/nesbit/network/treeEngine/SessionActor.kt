@@ -15,14 +15,15 @@ import uk.co.nesbit.network.util.millis
 import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 class SelfAddressRequest
 data class SelfAddressResponse(val address: SecureHash?)
 
 data class OpenSessionRequest(
-    val destination: SecureHash,
-    val clientId: Int
+    val clientId: Int,
+    val destination: SecureHash
 )
 
 data class CloseSessionRequest(
@@ -44,8 +45,10 @@ data class SessionStatusInfo(
     val status: LinkStatus
 )
 
+data class RemoteConnectionAcknowledge(val sessionId: Long, val clientId: Int, val accept: Boolean)
+
 class SendSessionData(val sessionId: Long, val payload: ByteArray)
-class SendSessionDataAck(val sessionId: Long, val success: Boolean)
+data class SendSessionDataAck(val sessionId: Long, val success: Boolean)
 class ReceiveSessionData(val sessionId: Long, val payload: ByteArray)
 
 class SessionActor(
@@ -64,12 +67,14 @@ class SessionActor(
         }
 
         const val ACK_INTERVAL_MS = 5000L
+        const val PASSIVE_OPEN_TIMEOUT = 15000L
     }
 
     private enum class SessionState {
         Created,
         Querying,
         RouteFound,
+        PassiveOpen,
         Established,
         Closing,
         Closed
@@ -77,10 +82,12 @@ class SessionActor(
 
     private class CheckSessions
 
-    private class SessionInfo(
+    private data class SessionInfo(
         val sessionId: Long,
-        val clientId: Int?,
         val destination: SecureHash,
+        val passiveOpen: Boolean,
+        val creationTime: Instant,
+        var clientId: Int?,
         var sender: ActorRef?,
     ) {
         var routeFound: Boolean = false
@@ -129,6 +136,7 @@ class SessionActor(
             is CloseSessionRequest -> onCloseSession(message)
             is SendSessionData -> onSendSessionData(message)
             is ClientSendResult -> onSendResult(message)
+            is RemoteConnectionAcknowledge -> onRemoteConnectionAcknowledge(message)
             else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
@@ -189,6 +197,7 @@ class SessionActor(
                 session.destination,
                 newState
             )
+            log().info("Session status signal $update to ${session.sender}")
             if (session.sender == null) {
                 for (owner in owners) {
                     owner.tell(update, self)
@@ -208,7 +217,15 @@ class SessionActor(
 
     private fun processSession(session: SessionInfo, now: Instant): Boolean {
         val prevState = session.state
-        if (session.windowProcessor.isTerminated() && session.state != SessionState.Closed) {
+        if (session.windowProcessor.isTerminated()
+            && session.state != SessionState.Closed
+        ) {
+            session.state = SessionState.Closing
+        }
+        if (session.state == SessionState.PassiveOpen
+            && ChronoUnit.MILLIS.between(session.creationTime, now) >= PASSIVE_OPEN_TIMEOUT
+        ) {
+            log().warning("Passive open of session ${session.sessionId} not acknowledged by client")
             session.state = SessionState.Closing
         }
         when (session.state) {
@@ -233,7 +250,7 @@ class SessionActor(
                 if (session.windowProcessor.isEstablished()) {
                     log().info("session link ${session.sessionId} established")
                     session.state = SessionState.Established
-                    val newState = if (session.sender != null) LinkStatus.LINK_UP_ACTIVE else LinkStatus.LINK_UP_PASSIVE
+                    val newState = if (session.passiveOpen) LinkStatus.LINK_UP_PASSIVE else LinkStatus.LINK_UP_ACTIVE
                     sendStatusUpdate(session, newState)
                     sendSessionMessages(session, now)
                 } else {
@@ -241,9 +258,28 @@ class SessionActor(
                     sendSessionMessages(session, now)
                 }
             }
+            SessionState.PassiveOpen -> {
+                session.routeFound = true
+                if (session.windowProcessor.isEstablished()) {
+                    sendStatusUpdate(session, LinkStatus.LINK_UP_PASSIVE)
+                    sendSessionMessages(session, now)
+                } else {
+                    sendSessionMessages(session, now)
+                }
+                session.state = SessionState.PassiveOpen
+            }
             SessionState.Established -> {
-                session.state = SessionState.Established
-                sendSessionMessages(session, now)
+                if (session.windowProcessor.getMaxRetransmits() >= 3) {
+                    if (session.destination !in routeRequests) {
+                        routeRequests += session.destination
+                        log().warning("excessive retries re-probe for destination ${session.destination}")
+                        routingActor.tell(ClientDhtRequest(session.destination, null), self)
+                    }
+                    session.state = SessionState.Querying
+                } else {
+                    session.state = SessionState.Established
+                    sendSessionMessages(session, now)
+                }
             }
             SessionState.Closing -> {
                 log().info("session link ${session.sessionId} closing")
@@ -300,8 +336,10 @@ class SessionActor(
         val now = clock.instant()
         val newSession = SessionInfo(
             sessionId,
-            openRequest.clientId,
             openRequest.destination,
+            false,
+            now,
+            openRequest.clientId,
             sender
         )
         sessions[sessionId] = newSession
@@ -341,6 +379,34 @@ class SessionActor(
         }
         val now = clock.instant()
         session.state = SessionState.Closing
+        if (!processSession(session, now)) {
+            sessions.remove(session.sessionId)
+        }
+        setSessionTimer()
+    }
+
+    private fun onRemoteConnectionAcknowledge(ack: RemoteConnectionAcknowledge) {
+        log().info("Remote connection ack $ack")
+        val session = sessions[ack.sessionId]
+        if (session == null) {
+            log().error("Session not found ${ack.sessionId} to confirm")
+            return
+        }
+        if (session.sender != null
+            || !session.passiveOpen
+            || session.state != SessionState.PassiveOpen
+        ) {
+            log().error("Session not in correct state to confirm $session")
+            return
+        }
+        if (ack.accept) {
+            session.sender = sender
+            session.clientId = ack.clientId
+            session.state = SessionState.RouteFound
+        } else {
+            session.state = SessionState.Closing
+        }
+        val now = clock.instant()
         if (!processSession(session, now)) {
             sessions.remove(session.sessionId)
         }
@@ -410,27 +476,25 @@ class SessionActor(
 
     private fun onSessionDataReceived(message: ClientReceivedMessage) {
         log().info("packet from ${message.source}")
+        val now = clock.instant()
         val session = sessions.getOrPut(message.sessionMessage.sessionId) {
             val incomingSession = SessionInfo(
                 message.sessionMessage.sessionId,
-                null,
                 message.source,
+                true,
+                now,
+                null,
                 null
             )
-            incomingSession.state = SessionState.RouteFound
+            incomingSession.state = SessionState.PassiveOpen
             log().info("new incoming session created ${message.sessionMessage.sessionId}")
             incomingSession
         }
-        val now = clock.instant()
         session.windowProcessor.processMessage(message.sessionMessage, now)
-        val received = session.windowProcessor.pollReceivedPackets()
-        for (packet in received) {
-            val sessionReceive = ReceiveSessionData(session.sessionId, packet)
-            if (session.sender == null) {
-                for (owner in owners) {
-                    owner.tell(sessionReceive, self)
-                }
-            } else {
+        if (session.sender != null) {
+            val received = session.windowProcessor.pollReceivedPackets()
+            for (packet in received) {
+                val sessionReceive = ReceiveSessionData(session.sessionId, packet)
                 session.sender!!.tell(sessionReceive, self)
             }
         }

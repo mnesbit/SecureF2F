@@ -85,13 +85,33 @@ private fun createStream(
         break
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
+    val destSourcePair = Source.actorRef<Any>(
+        { elem -> Optional.empty() },
+        { elem -> Optional.empty() },
+        10,
+        OverflowStrategy.dropHead()
+    ).preMaterialize(actorSystem)
+    val printerRef = destSourcePair.first()
+    val destSource = destSourcePair.second()
+    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
+    destSource.to(Sink.foreach { msg ->
+        if (msg is SessionStatusInfo) {
+            println("New session $msg")
+            destNodeSel.tell(RemoteConnectionAcknowledge(msg.sessionId, 999, true), printerRef)
+        } else if (msg is ReceiveSessionData) {
+            println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
+        } else {
+            println("unknown message type $msg")
+        }
+    }).run(actorSystem)
+    destNodeSel.tell(WatchRequest(), printerRef)
     var queryNo = 0
     var sessionId: Long
     while (true) {
         Thread.sleep(1000L)
         val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
         println("Send open query")
-        val openFut = ask(sessionSourceNode, OpenSessionRequest(destAddress!!, queryNo++), timeout)
+        val openFut = ask(sessionSourceNode, OpenSessionRequest(queryNo++, destAddress!!), timeout)
         try {
             val destResult = Await.result(openFut, timeout.duration()) as SessionStatusInfo
             println("result $destResult ${destResult.sessionId}")
@@ -103,23 +123,6 @@ private fun createStream(
         }
     }
     println("Session $sessionId opened")
-    val destSource = Source.actorRef<Any>(
-        { elem -> Optional.empty() },
-        { elem -> Optional.empty() },
-        10,
-        OverflowStrategy.dropHead()
-    )
-    val printerRef = destSource.to(Sink.foreach { msg ->
-        if (msg is SessionStatusInfo) {
-            println("New session $msg")
-        } else if (msg is ReceiveSessionData) {
-            println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
-        } else {
-            println("unknown message type $msg")
-        }
-    }).run(actorSystem)
-    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
-    destNodeSel.tell(WatchRequest(), printerRef)
 
     var packetNo = 0
     while (packetNo < 1000) {
