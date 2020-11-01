@@ -2,12 +2,16 @@ package uk.co.nesbit.network.treeEngine
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import uk.co.nesbit.network.treeEngine.DataPacket.Companion.CLOSE_MARKER
+import uk.co.nesbit.network.treeEngine.DataPacket.Companion.OPEN_ACK_MARKER
+import uk.co.nesbit.network.treeEngine.DataPacket.Companion.OPEN_MARKER
+import uk.co.nesbit.network.treeEngine.DataPacket.Companion.RESET_MARKER
 import uk.co.nesbit.network.util.SequenceNumber
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
 
-class DataPacket(
+data class DataPacket(
     val sessionId: Long,
     val seqNo: Int,
     val ackSeqNo: Int,
@@ -15,7 +19,58 @@ class DataPacket(
     val receiveWindowSize: Int,
     val payload: ByteArray
 ) {
+    companion object {
+        const val OPEN_MARKER = -0xA110
+        const val OPEN_ACK_MARKER = -0xE110
+        const val CLOSE_MARKER = -0xDEAD
+        const val RESET_MARKER = -0xAAAA
+
+        val AckBody = ByteArray(0)
+    }
+
+    enum class DataPacketType {
+        NORMAL,
+        ACK,
+        OPEN,
+        OPEN_ACK,
+        CLOSE,
+        RESET
+    }
+
     val isAck: Boolean = payload.isEmpty()
+
+    val packetType: DataPacketType
+        get() {
+            if (receiveWindowSize < 0 || selectiveAck < 0) {
+                if (!isAck) {
+                    return DataPacketType.RESET
+                }
+                if (seqNo == 0
+                    && (receiveWindowSize == OPEN_MARKER)
+                    && (selectiveAck == OPEN_MARKER)
+                ) {
+                    return DataPacketType.OPEN
+                }
+                if (seqNo == 0
+                    && ackSeqNo == 0
+                    && (receiveWindowSize == OPEN_ACK_MARKER)
+                    && (selectiveAck == OPEN_ACK_MARKER)
+                ) {
+                    return DataPacketType.OPEN_ACK
+                }
+                if ((receiveWindowSize == CLOSE_MARKER)
+                    && (selectiveAck == CLOSE_MARKER)
+                ) {
+                    return DataPacketType.CLOSE
+                }
+                return DataPacketType.RESET
+            }
+
+            if (!isAck) {
+                return DataPacketType.NORMAL
+            }
+            return DataPacketType.ACK
+        }
 }
 
 class SlidingWindowHelper(val sessionId: Long) {
@@ -25,14 +80,26 @@ class SlidingWindowHelper(val sessionId: Long) {
         const val START_WINDOW = 8
         const val MAX_WINDOW = 128
         const val START_RTT = 2000L
+        const val OPEN_TIMEOUT = 15000L
+        const val CLOSE_TIMEOUT = 15000L
     }
 
     private class BufferedPacket(
         val seqNo: Int,
+        val isClose: Boolean,
         val payload: ByteArray,
         var lastSent: Instant,
         var retransmitCount: Int = 0
     )
+
+    private enum class ConnectionState {
+        Created,
+        InitialOpenSent,
+        InitialOpenReceived,
+        Established,
+        Closing,
+        Closed
+    }
 
     private val log: Logger = LoggerFactory.getLogger(SlidingWindowHelper::class.java)
     private val unsent = LinkedList<ByteArray>()
@@ -47,14 +114,18 @@ class SlidingWindowHelper(val sessionId: Long) {
     private var sendWindowsSize: Int = START_WINDOW
     private var receiveWindowSize: Int = START_WINDOW
     private var needAck: Boolean = true
-    private var established: Boolean = false
+    private var connectionState: ConnectionState = ConnectionState.Created
+    private var openStarted: Instant = Instant.MAX
+    private var closingStarted: Instant = Instant.MAX
+    private var closeAcked: Boolean = false
+    private var closeReceived: Boolean = false
 
     private fun rttTimeout(): Long {
         return ((rttScaled shr 2) + rttVarScaled) shr 1
     }
 
     private fun updateRtt(sentTime: Instant, ackTime: Instant) {
-        val replyTime = ChronoUnit.MILLIS.between(sentTime, ackTime)
+        val replyTime = ChronoUnit.MILLIS.between(sentTime, ackTime).coerceAtLeast(1L)
         // Van Jacobson Algorithm for RTT
         if (rttVarScaled == 0L) {
             rttScaled = replyTime shl 3
@@ -82,12 +153,136 @@ class SlidingWindowHelper(val sessionId: Long) {
         return selectiveAck
     }
 
+    private fun updateState(packet: DataPacket, now: Instant) {
+        val flags = packet.packetType
+        when (connectionState) {
+            ConnectionState.Created -> {
+                when (flags) {
+                    DataPacket.DataPacketType.OPEN -> {
+                        needAck = true
+                        connectionState = ConnectionState.InitialOpenReceived
+                    }
+                    DataPacket.DataPacketType.OPEN_ACK -> {
+                        needAck = true
+                        connectionState = ConnectionState.InitialOpenReceived
+                    }
+                    DataPacket.DataPacketType.CLOSE -> {
+                        closingStarted = now
+                        connectionState = ConnectionState.Closing
+                    }
+                    DataPacket.DataPacketType.RESET -> {
+                        closingStarted = now.minusMillis(3L * rttTimeout())
+                        shutdownSession()
+                    }
+                    else -> {
+                        connectionState = ConnectionState.Created
+                    }
+                }
+            }
+            ConnectionState.InitialOpenSent -> {
+                when (flags) {
+                    DataPacket.DataPacketType.OPEN -> {
+                        connectionState = ConnectionState.InitialOpenReceived
+                    }
+                    DataPacket.DataPacketType.OPEN_ACK -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.CLOSE -> {
+                        closingStarted = now
+                        connectionState = ConnectionState.Closing
+                    }
+                    DataPacket.DataPacketType.RESET -> {
+                        closingStarted = now.minusMillis(3L * rttTimeout())
+                        shutdownSession()
+                    }
+                    else -> {
+                        connectionState = ConnectionState.InitialOpenSent
+                    }
+                }
+            }
+            ConnectionState.InitialOpenReceived -> {
+                when (flags) {
+                    DataPacket.DataPacketType.OPEN_ACK -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.ACK -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.NORMAL -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.CLOSE -> {
+                        closingStarted = now
+                        connectionState = ConnectionState.Closing
+                    }
+                    DataPacket.DataPacketType.RESET -> {
+                        closingStarted = now.minusMillis(3L * rttTimeout())
+                        shutdownSession()
+                    }
+                    else -> {
+                        connectionState = ConnectionState.InitialOpenReceived
+                    }
+                }
+            }
+            ConnectionState.Established -> {
+                when (flags) {
+                    DataPacket.DataPacketType.OPEN -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.OPEN_ACK -> {
+                        needAck = true
+                        connectionState = ConnectionState.Established
+                    }
+                    DataPacket.DataPacketType.CLOSE -> {
+                        closingStarted = now
+                        connectionState = ConnectionState.Closing
+                    }
+                    DataPacket.DataPacketType.RESET -> {
+                        closingStarted = now.minusMillis(3L * rttTimeout())
+                        shutdownSession()
+                    }
+                    else -> {
+                        connectionState = ConnectionState.Established
+                    }
+                }
+            }
+            ConnectionState.Closing -> {
+                when (flags) {
+                    DataPacket.DataPacketType.RESET -> {
+                        closingStarted = now.minusMillis(3L * rttTimeout())
+                        shutdownSession()
+                    }
+                    else -> {
+                        connectionState = ConnectionState.Closing
+                    }
+                }
+            }
+            ConnectionState.Closed -> {
+                // Terminal state do nothing
+                shutdownSession()
+            }
+        }
+    }
+
+    private fun shutdownSession() {
+        connectionState = ConnectionState.Closed
+        unsent.clear()
+        sendBuffer.clear()
+        receiveBuffer.clear()
+    }
+
     fun getNearestDeadline(now: Instant): Long {
         val nearest = sendBuffer.minByOrNull { it.lastSent }
+        val rttTimeout = rttTimeout()
         if (nearest != null) {
-            return ChronoUnit.MILLIS.between(nearest.lastSent.plusMillis(rttTimeout()), now).coerceAtLeast(0L)
+            return ChronoUnit.MILLIS.between(now, nearest.lastSent.plusMillis(rttTimeout())).coerceAtLeast(0L)
         }
-        return rttTimeout()
+        return rttTimeout
     }
 
     fun getMaxRetransmits(): Int {
@@ -97,11 +292,18 @@ class SlidingWindowHelper(val sessionId: Long) {
         return sendBuffer.maxOf { it.retransmitCount }
     }
 
-    fun isEstablished(): Boolean = established
+    fun isEstablished(): Boolean = (connectionState == ConnectionState.Established)
+
+    fun isTerminated(): Boolean = (connectionState == ConnectionState.Closed)
 
     fun sendPacket(payload: ByteArray): Boolean {
         require(payload.size > 0) {
             "Data array cannot be empty"
+        }
+        if (connectionState == ConnectionState.Closing
+            || connectionState == ConnectionState.Closed
+        ) {
+            return false
         }
         if (unsent.size >= MAX_SEND_BUFFER) {
             return false
@@ -111,10 +313,15 @@ class SlidingWindowHelper(val sessionId: Long) {
     }
 
     fun pollReceivedPackets(): List<ByteArray> {
+        if (connectionState != ConnectionState.Established
+            && connectionState != ConnectionState.Closing
+        ) {
+            return emptyList()
+        }
         val received = mutableListOf<ByteArray>()
         while (receiveBuffer.isNotEmpty()) {
             val head = receiveBuffer.peek()
-            if (SequenceNumber.compare16(head.seqNo, receiveAckSeqNo) < 0) {
+            if (SequenceNumber.distance16(receiveAckSeqNo, head.seqNo) < 0) {
                 received += head.payload
                 receiveBuffer.poll()
                 needAck = true // need to signal changed window
@@ -126,6 +333,67 @@ class SlidingWindowHelper(val sessionId: Long) {
     }
 
     fun pollForTransmit(now: Instant): List<DataPacket> {
+        return when (connectionState) {
+            ConnectionState.Created,
+            ConnectionState.InitialOpenSent,
+            ConnectionState.InitialOpenReceived -> connectionOpenPollForTransmit(now)
+            ConnectionState.Established -> establishedPollForTransmit(now)
+            ConnectionState.Closing -> connectionClosingPollForTransmit(now)
+            ConnectionState.Closed -> listOf(
+                DataPacket(
+                    sessionId,
+                    sendSeqNo,
+                    receiveAckSeqNo,
+                    RESET_MARKER,
+                    RESET_MARKER,
+                    DataPacket.AckBody
+                )
+            )
+        }
+    }
+
+    fun closeSession(now: Instant) {
+        if (connectionState != ConnectionState.Closing
+            && connectionState != ConnectionState.Closed
+        ) {
+            closingStarted = now
+            connectionState = ConnectionState.Closing
+        }
+    }
+
+    private fun connectionOpenPollForTransmit(now: Instant): List<DataPacket> {
+        if (connectionState == ConnectionState.Created) {
+            connectionState = ConnectionState.InitialOpenSent
+        }
+        if (openStarted == Instant.MAX) {
+            openStarted = now
+        } else if (ChronoUnit.MILLIS.between(openStarted, now) >= OPEN_TIMEOUT) {
+            shutdownSession()
+            return listOf(
+                DataPacket(
+                    sessionId,
+                    sendSeqNo,
+                    receiveAckSeqNo,
+                    RESET_MARKER,
+                    RESET_MARKER,
+                    DataPacket.AckBody
+                )
+            )
+        }
+        val packetType = if (connectionState == ConnectionState.InitialOpenReceived) OPEN_ACK_MARKER else OPEN_MARKER
+        return listOf(
+            DataPacket(
+                sessionId,
+                0,
+                0,
+                packetType,
+                packetType,
+                DataPacket.AckBody
+            )
+        )
+    }
+
+    private fun establishedPollForTransmit(now: Instant): List<DataPacket> {
         val sendList = mutableListOf<DataPacket>()
         val timeout = rttTimeout()
         val availableReceiveWindowSize = MAX_RECEIVE_BUFFER - receiveBuffer.size
@@ -145,8 +413,8 @@ class SlidingWindowHelper(val sessionId: Long) {
                     sessionId,
                     packet.seqNo,
                     receiveAckSeqNo,
-                    selectiveAck,
-                    availableReceiveWindowSize,
+                    if (!packet.isClose) selectiveAck else CLOSE_MARKER,
+                    if (!packet.isClose) availableReceiveWindowSize else CLOSE_MARKER,
                     packet.payload
                 )
                 resend = true
@@ -161,7 +429,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         ) {
             val seqNo = sendSeqNo
             sendSeqNo = SequenceNumber.increment16(sendSeqNo)
-            val packet = BufferedPacket(seqNo, unsent.poll(), now)
+            val packet = BufferedPacket(seqNo, false, unsent.poll(), now)
             sendBuffer.offer(packet)
             sendList += DataPacket(
                 sessionId,
@@ -173,8 +441,8 @@ class SlidingWindowHelper(val sessionId: Long) {
             )
         }
         if (sendList.isEmpty() && needAck) {
-            if (receiveBuffer.none { SequenceNumber.compare16(it.seqNo, receiveAckSeqNo) >= 0 }
-                && established) {
+            if (receiveBuffer.none { SequenceNumber.distance16(receiveAckSeqNo, it.seqNo) >= 0 }
+                && isEstablished()) {
                 needAck = false
             }
             sendList += DataPacket(
@@ -183,64 +451,97 @@ class SlidingWindowHelper(val sessionId: Long) {
                 receiveAckSeqNo,
                 selectiveAck,
                 availableReceiveWindowSize,
-                ByteArray(0)
+                DataPacket.AckBody
             )
         }
         for (item in sendList) {
-            log.info("send seq ${item.seqNo} ack ${item.ackSeqNo} sack ${item.selectiveAck.toString(2)} window ${item.receiveWindowSize}")
+            log.info("send ${item.packetType} seq ${item.seqNo} ack ${item.ackSeqNo} sack ${item.selectiveAck.toString(2)} window ${item.receiveWindowSize}")
         }
         return sendList
     }
 
-    fun processMessage(message: DataPacket, now: Instant) {
-        if (message.sessionId != sessionId) {
-            return
+    private fun connectionClosingPollForTransmit(now: Instant): List<DataPacket> {
+        if (closeReceived
+            && closeAcked
+            && ChronoUnit.MILLIS.between(closingStarted, now) > 3L * rttTimeout()
+        ) {
+            shutdownSession()
+            return emptyList()
+        } else if (ChronoUnit.MILLIS.between(closingStarted, now) > CLOSE_TIMEOUT) {
+            shutdownSession()
+            return listOf(
+                DataPacket(
+                    sessionId,
+                    sendSeqNo,
+                    receiveAckSeqNo,
+                    RESET_MARKER,
+                    RESET_MARKER,
+                    DataPacket.AckBody
+                )
+            )
         }
-        log.info("receive seq ${message.seqNo} ack ${message.ackSeqNo}  sack ${message.selectiveAck.toString(2)} window ${message.receiveWindowSize}")
-        receiveWindowSize = message.receiveWindowSize
-        established = true
-        val ackComp = SequenceNumber.distance16(sendAckSeqNo, message.ackSeqNo)
-        if (message.isAck && ackComp == 0 && sendBuffer.isNotEmpty()) {
-            ++dupAckCount
+        if (unsent.isEmpty() && !sendBuffer.any { it.isClose }) {
+            val seqNo = sendSeqNo
+            sendSeqNo = SequenceNumber.increment16(sendSeqNo)
+            val packet = BufferedPacket(seqNo, true, DataPacket.AckBody, Instant.EPOCH)
+            sendBuffer.offer(packet)
         }
-        if (SequenceNumber.inRange16(ackComp) && ackComp > 0) {
-            dupAckCount = 0
-            sendAckSeqNo = message.ackSeqNo
-            val packetItr = sendBuffer.iterator()
-            while (packetItr.hasNext()) {
-                val packet = packetItr.next()
-                val dist = SequenceNumber.distance16(message.ackSeqNo, packet.seqNo)
-                var drop = false
-                if (dist < 0) {
+        needAck = false
+        return establishedPollForTransmit(now)
+    }
+
+    private fun updateReceiveAckSeqNo() {
+        for (item in receiveBuffer) {
+            if (item.seqNo == receiveAckSeqNo) {
+                receiveAckSeqNo = SequenceNumber.increment16(receiveAckSeqNo)
+            }
+        }
+    }
+
+    private fun updateSendAckSeqNo(
+        message: DataPacket,
+        packetType: DataPacket.DataPacketType,
+        now: Instant
+    ) {
+        dupAckCount = 0
+        sendAckSeqNo = message.ackSeqNo
+        val packetItr = sendBuffer.iterator()
+        while (packetItr.hasNext()) {
+            val packet = packetItr.next()
+            val dist = SequenceNumber.distance16(message.ackSeqNo, packet.seqNo)
+            var drop = false
+            if (dist < 0) { // offset 0 ignored as it is always one beyond consolidated seqNo
+                drop = true
+            } else if (dist > 0 && dist < 16) {
+                if ((packetType == DataPacket.DataPacketType.NORMAL
+                            || packetType == DataPacket.DataPacketType.ACK)
+                    && message.selectiveAck and (1 shl (dist - 1)) == 0
+                ) {
                     drop = true
-                } else if (dist > 0 && dist < 16) {
-                    if (message.selectiveAck and (1 shl (dist - 1)) == 0) {
-                        drop = true
-                    }
                 }
-                if (drop) {
+            }
+            if (drop) {
+                if (!packet.isClose) {
                     packetItr.remove()
                     if (packet.retransmitCount == 0) {
                         updateRtt(packet.lastSent, now)
                         sendWindowsSize = (sendWindowsSize + 1).coerceAtMost(MAX_WINDOW)
                     }
+                } else {
+                    closeAcked = true
                 }
             }
         }
-        if (message.isAck) {
-            return
-        }
+    }
+
+    private fun processNewData(message: DataPacket) {
         if (receiveBuffer.size >= MAX_RECEIVE_BUFFER) {
-            return
-        }
-        val distance = SequenceNumber.distance16(receiveAckSeqNo, message.seqNo)
-        if (!SequenceNumber.inRange16(distance)) {
             return
         }
         var index = 0
         var added = false
         for (item in receiveBuffer) {
-            val comp = SequenceNumber.compare16(item.seqNo, message.seqNo)
+            val comp = SequenceNumber.distance16(message.seqNo, item.seqNo)
             if (comp == 0) {
                 return
             } else if (comp > 0) {
@@ -255,10 +556,63 @@ class SlidingWindowHelper(val sessionId: Long) {
             receiveBuffer.add(message)
             needAck = true
         }
-        for (item in receiveBuffer) {
-            if (item.seqNo == receiveAckSeqNo) {
+        updateReceiveAckSeqNo()
+    }
+
+    fun processMessage(message: DataPacket, now: Instant) {
+        if (message.sessionId != sessionId) {
+            shutdownSession()
+            return
+        }
+        val packetType = message.packetType
+        log.info(
+            "receive $packetType message seq ${message.seqNo} ack ${message.ackSeqNo}  sack ${
+                message.selectiveAck.toString(
+                    2
+                )
+            } window ${message.receiveWindowSize}"
+        )
+        if (packetType == DataPacket.DataPacketType.RESET) {
+            updateState(message, now)
+            return
+        }
+        val ackComp = SequenceNumber.distance16(sendAckSeqNo, message.ackSeqNo)
+        val sendComp = SequenceNumber.distance16(sendSeqNo, message.ackSeqNo)
+        if (ackComp < -MAX_WINDOW || (sendComp > 0)) {
+            shutdownSession()
+            return
+        }
+        updateState(message, now)
+        if (packetType == DataPacket.DataPacketType.NORMAL
+            || packetType == DataPacket.DataPacketType.ACK
+        ) {
+            receiveWindowSize = message.receiveWindowSize
+        }
+        if (message.isAck && ackComp == 0 && sendBuffer.isNotEmpty()) {
+            ++dupAckCount
+        }
+        if (ackComp > 0) { // only process innovations
+            updateSendAckSeqNo(message, packetType, now)
+        }
+        val distance = SequenceNumber.distance16(receiveAckSeqNo, message.seqNo)
+        if (distance < -MAX_WINDOW || distance > MAX_WINDOW) {
+            shutdownSession()
+            return
+        }
+        if (distance < 0) {
+            return
+        }
+        if (packetType == DataPacket.DataPacketType.CLOSE) {
+            updateReceiveAckSeqNo()
+            if (message.seqNo == receiveAckSeqNo) {
+                closeReceived = true
                 receiveAckSeqNo = SequenceNumber.increment16(receiveAckSeqNo)
             }
+            return
         }
+        if (message.isAck) {
+            return
+        }
+        processNewData(message)
     }
 }

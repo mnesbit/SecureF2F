@@ -1,5 +1,6 @@
 package uk.co.nesbit
 
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.pattern.Patterns.ask
 import akka.stream.OverflowStrategy
@@ -13,6 +14,7 @@ import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.Address
 import uk.co.nesbit.network.api.NetworkAddress
 import uk.co.nesbit.network.api.NetworkConfiguration
+import uk.co.nesbit.network.api.active
 import uk.co.nesbit.network.mocknet.DnsMockActor
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.treeEngine.*
@@ -27,7 +29,7 @@ fun main(args: Array<String>) {
     println("Hello")
     //while(true) {
     val degree = 3
-    val N = 4000
+    val N = 1000
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
@@ -83,17 +85,37 @@ private fun createStream(
         break
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
+    val destSourcePair = Source.actorRef<Any>(
+        { elem -> Optional.empty() },
+        { elem -> Optional.empty() },
+        10,
+        OverflowStrategy.dropHead()
+    ).preMaterialize(actorSystem)
+    val printerRef = destSourcePair.first()
+    val destSource = destSourcePair.second()
+    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
+    destSource.to(Sink.foreach { msg ->
+        if (msg is SessionStatusInfo) {
+            println("New session $msg")
+            destNodeSel.tell(RemoteConnectionAcknowledge(msg.sessionId, 999, true), printerRef)
+        } else if (msg is ReceiveSessionData) {
+            println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
+        } else {
+            println("unknown message type $msg")
+        }
+    }).run(actorSystem)
+    destNodeSel.tell(WatchRequest(), printerRef)
     var queryNo = 0
     var sessionId: Long
     while (true) {
         Thread.sleep(1000L)
         val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
         println("Send open query")
-        val openFut = ask(sessionSourceNode, OpenSessionRequest(destAddress!!, queryNo++), timeout)
+        val openFut = ask(sessionSourceNode, OpenSessionRequest(queryNo++, destAddress!!), timeout)
         try {
-            val destResult = Await.result(openFut, timeout.duration()) as OpenSessionResponse
+            val destResult = Await.result(openFut, timeout.duration()) as SessionStatusInfo
             println("result $destResult ${destResult.sessionId}")
-            if (destResult.success) {
+            if (destResult.status.active) {
                 sessionId = destResult.sessionId
                 break
             }
@@ -101,26 +123,9 @@ private fun createStream(
         }
     }
     println("Session $sessionId opened")
-    val destSource = Source.actorRef<Any>(
-        { elem -> Optional.empty() },
-        { elem -> Optional.empty() },
-        10,
-        OverflowStrategy.dropHead()
-    )
-    val printerRef = destSource.to(Sink.foreach { msg ->
-        if (msg is IncomingSession) {
-            println("New session ${msg.sessionId} from ${msg.source}")
-        } else if (msg is ReceiveSessionData) {
-            println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
-        } else {
-            println("unknown message type $msg")
-        }
-    }).run(actorSystem)
-    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
-    destNodeSel.tell(WatchRequest(), printerRef)
 
     var packetNo = 0
-    while (true) {
+    while (packetNo < 1000) {
         Thread.sleep(200L)
         val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
         println("Send data query $packetNo")
@@ -137,7 +142,11 @@ private fun createStream(
             }
         } catch (ex: TimeoutException) {
         }
-
+    }
+    val sessionNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+    sessionNode.tell(CloseSessionRequest(null, sessionId, null), ActorRef.noSender())
+    while (true) {
+        Thread.sleep(1000L)
     }
 }
 
