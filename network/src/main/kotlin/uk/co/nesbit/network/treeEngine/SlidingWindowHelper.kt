@@ -455,7 +455,7 @@ class SlidingWindowHelper(val sessionId: Long) {
             )
         }
         for (item in sendList) {
-            log.info("send seq ${item.seqNo} ack ${item.ackSeqNo} sack ${item.selectiveAck.toString(2)} window ${item.receiveWindowSize}")
+            log.info("send ${item.packetType} seq ${item.seqNo} ack ${item.ackSeqNo} sack ${item.selectiveAck.toString(2)} window ${item.receiveWindowSize}")
         }
         return sendList
     }
@@ -466,16 +466,7 @@ class SlidingWindowHelper(val sessionId: Long) {
             && ChronoUnit.MILLIS.between(closingStarted, now) > 3L * rttTimeout()
         ) {
             shutdownSession()
-            return listOf(
-                DataPacket(
-                    sessionId,
-                    sendSeqNo,
-                    receiveAckSeqNo,
-                    RESET_MARKER,
-                    RESET_MARKER,
-                    DataPacket.AckBody
-                )
-            )
+            return emptyList()
         } else if (ChronoUnit.MILLIS.between(closingStarted, now) > CLOSE_TIMEOUT) {
             shutdownSession()
             return listOf(
@@ -530,12 +521,13 @@ class SlidingWindowHelper(val sessionId: Long) {
                 }
             }
             if (drop) {
-                packetItr.remove()
-                if (packet.retransmitCount == 0) {
-                    updateRtt(packet.lastSent, now)
-                    sendWindowsSize = (sendWindowsSize + 1).coerceAtMost(MAX_WINDOW)
-                }
-                if (packet.isClose) {
+                if (!packet.isClose) {
+                    packetItr.remove()
+                    if (packet.retransmitCount == 0) {
+                        updateRtt(packet.lastSent, now)
+                        sendWindowsSize = (sendWindowsSize + 1).coerceAtMost(MAX_WINDOW)
+                    }
+                } else {
                     closeAcked = true
                 }
             }
