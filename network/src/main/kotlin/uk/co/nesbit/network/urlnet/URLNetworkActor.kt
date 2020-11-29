@@ -1,6 +1,7 @@
 package uk.co.nesbit.network.urlnet
 
 import akka.actor.ActorRef
+import akka.actor.PoisonPill
 import akka.actor.Props
 import akka.actor.Terminated
 import akka.http.javadsl.Http
@@ -10,10 +11,14 @@ import akka.http.javadsl.model.headers.Accept
 import akka.http.javadsl.model.headers.Cookie
 import akka.http.javadsl.model.headers.HttpCookie
 import akka.http.javadsl.model.headers.SetCookie
+import akka.http.javadsl.model.ws.Message
+import akka.http.javadsl.model.ws.WebSocketUpgrade
 import akka.pattern.Patterns
 import akka.stream.Materializer
+import akka.stream.OverflowStrategy
 import akka.stream.javadsl.Flow
 import akka.stream.javadsl.Sink
+import akka.stream.javadsl.Source
 import akka.util.ByteString
 import akka.util.Timeout
 import com.squareup.moshi.JsonClass
@@ -126,7 +131,6 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
 
     private class GetMailBodyContext(
         val context: ClientConnectionInfo,
-        val source: ActorRef,
         val error: Throwable? = null
     ) {
         private var body: ByteString = ByteString.emptyByteString()
@@ -140,6 +144,14 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             return body.decodeString(Charsets.UTF_8)
         }
     }
+
+    private data class WebSocketMessage(val webSocketId: Int, val message: Message)
+
+    private class WebSocketInfo(
+        val webSocketId: Int,
+        val actorRef: ActorRef,
+        var linkId: LinkId? = null
+    )
 
     @JsonClass(generateAdapter = true)
     internal class StatusInfo(
@@ -155,6 +167,9 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             Base64.getDecoder().decode(data)
         }
     }
+
+    @JsonClass(generateAdapter = true)
+    internal class WebSocketLogin(val sessionId: String)
 
     @JsonClass(generateAdapter = true)
     internal class MessageStatus(
@@ -184,6 +199,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     private val serverLinkInfo = mutableMapOf<String, ConnectionInfo>()
     private val serverReverseLinkInfo = mutableMapOf<LinkId, ConnectionInfo>()
     private val clientLinkInfo = mutableMapOf<LinkId, ClientConnectionInfo>()
+    private var webSocketIdNos = 0
+    private val websockets = mutableMapOf<Int, WebSocketInfo>()
 
     override fun preStart() {
         super.preStart()
@@ -239,6 +256,7 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             is SendMailBodyContext -> onSendMailReceivedBody(message)
             is MailGetResponse -> onMailGetResponse(message)
             is GetMailBodyContext -> onMailGetReceivedBody(message)
+            is WebSocketMessage -> onWebSocketMessage(message)
             else -> log().warning("Unrecognised message $message")
         }
     }
@@ -286,6 +304,14 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     private fun onDeath(death: Terminated) {
         //log().info("got Terminated $death")
         owners -= death.actor
+        val webSocketItr = websockets.iterator()
+        while (webSocketItr.hasNext()) {
+            val info = webSocketItr.next()
+            if (info.value.actorRef == death.actor) {
+                log().info("bye ${info.value.webSocketId}")
+                webSocketItr.remove()
+            }
+        }
     }
 
     private fun onServerBinding(message: BindResult) {
@@ -338,10 +364,70 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
         if (!message.request.entity().isKnownEmpty) {
             return sendErrorResponse(message, StatusCodes.UNPROCESSABLE_ENTITY)
         }
+        val webSocketAttribute = message.request.getAttribute(AttributeKeys.webSocketUpgrade)
+        if (webSocketAttribute.isPresent) {
+            return processWebSocketRequest(message, webSocketAttribute)
+        }
         return when (message.request.uri.path()) {
             "/link/status" -> processGetStatus(message)
             else -> sendErrorResponse(message, StatusCodes.NOT_FOUND)
         }
+    }
+
+    private fun processWebSocketRequest(
+        message: HttpRequestAndSource,
+        webSocketAttribute: Optional<WebSocketUpgrade>
+    ): HttpResponse {
+        if (message.request.uri.path() != "/link/notify") {
+            return sendErrorResponse(message, StatusCodes.NOT_FOUND)
+        }
+        val source = Source.actorRef<Message>(
+            { elem -> Optional.empty() },
+            { elem -> Optional.empty() },
+            10,
+            OverflowStrategy.dropHead()
+        ).preMaterialize(materializer)
+        val webSocketInfo = WebSocketInfo(webSocketIdNos++, source.first())
+        log().info("new websocket created id ${webSocketInfo.webSocketId}")
+        websockets[webSocketInfo.webSocketId] = webSocketInfo
+        val sink = Sink.foreach<Message> { msg ->
+            self.tell(WebSocketMessage(webSocketInfo.webSocketId, msg), ActorRef.noSender())
+        }
+        val upgrade = webSocketAttribute.get()
+        message.request.discardEntityBytes(materializer)
+        context.watch(webSocketInfo.actorRef)
+        return upgrade.handleMessagesWith(sink, source.second())
+    }
+
+    private fun onWebSocketMessage(message: WebSocketMessage) {
+        val info = websockets[message.webSocketId]
+        if (info == null) {
+            log().warning("websocket message for unknown websocket $message")
+            return
+        }
+        if (!message.message.isText) {
+            log().error("Only text message type handled dropping websocket")
+            info.actorRef.tell(PoisonPill.getInstance(), self) // kill the websocket
+            return
+        }
+        if (info.linkId != null) {
+            log().error("only one login packet allowed per websocket")
+            info.actorRef.tell(PoisonPill.getInstance(), self) // kill the websocket
+            return
+        }
+        val messageText = message.message.asTextMessage().strictText
+        log().info("got websocket data ${messageText}")
+        val adapter = moshi.adapter(WebSocketLogin::class.java)
+        val session = try {
+            val login = adapter.fromJson(messageText)
+            serverLinkInfo[login!!.sessionId]!!
+        } catch (ex: Exception) {
+            log().error("Unable to read websocket login")
+            info.actorRef.tell(PoisonPill.getInstance(), self) // kill the websocket
+            return
+        }
+        log().info("websocket id ${info.linkId} linked to linkId ${session.linkId}")
+        info.linkId = session.linkId
     }
 
     private fun processGetStatus(message: HttpRequestAndSource): HttpResponse {
@@ -364,6 +450,10 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
     }
 
     private fun processHttpPost(message: HttpRequestAndSource): HttpResponse? {
+        val webSocketAttribute = message.request.getAttribute(AttributeKeys.webSocketUpgrade)
+        if (webSocketAttribute.isPresent) {
+            return sendErrorResponse(message, StatusCodes.NOT_FOUND)
+        }
         return when (message.request.uri.path()) {
             "/link/connect" -> processConnectRequest(message)
             "/link/sendmail" -> processMessageDelivery(message)
@@ -655,8 +745,8 @@ class URLNetworkActor(private val networkConfig: NetworkConfiguration, private v
             return
         }
         val content = message.response.entity().dataBytes
-            .runFold(GetMailBodyContext(link, sender), { acc, b -> acc.concat(b) }, materializer)
-            .exceptionally { error -> GetMailBodyContext(link, sender, error) }
+            .runFold(GetMailBodyContext(link), { acc, b -> acc.concat(b) }, materializer)
+            .exceptionally { error -> GetMailBodyContext(link, error) }
         Patterns.pipe(content, context.dispatcher).to(self)
     }
 
