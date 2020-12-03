@@ -3,16 +3,15 @@ buildscript {
         akkanet_version = '1.0.0-SNAPSHOT'
         junit_version = '4.12'
         junit5_version = '5.1.0'
-        rx_version = '2.2.13'
-        bouncycastle_version = '1.66'
+        bouncycastle_version = '1.67'
         eddsa_version = '0.3.0'
-        tink_version = '1.4.0'
+        tink_version = '1.5.0'
         avro_version = '1.10.0'
-        akka_version = '2.6.8'
-        akka_http_version = '10.2.0'
-        caffeine_version = '2.8.5'
+        akka_version = '2.6.10'
+        akka_http_version = '10.2.1'
+        caffeine_version = '2.8.6'
         disruptor_version = '3.4.2'
-        moshi_version = '1.9.3'
+        moshi_version = '1.11.0'
     }
 
     repositories {
