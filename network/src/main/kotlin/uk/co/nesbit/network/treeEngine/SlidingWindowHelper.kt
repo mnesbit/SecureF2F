@@ -280,7 +280,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         val nearest = sendBuffer.minByOrNull { it.lastSent }
         val rttTimeout = rttTimeout()
         if (nearest != null) {
-            return ChronoUnit.MILLIS.between(now, nearest.lastSent.plusMillis(rttTimeout())).coerceAtLeast(0L)
+            return ChronoUnit.MILLIS.between(now, nearest.lastSent.plusMillis(rttTimeout())).coerceAtLeast(1L)
         }
         return rttTimeout
     }
@@ -406,7 +406,8 @@ class SlidingWindowHelper(val sessionId: Long) {
         var resend = false
         for (packet in sendBuffer) {
             val age = ChronoUnit.MILLIS.between(packet.lastSent, now)
-            if (age >= timeout || fastResend) {
+            val backoff = 1L shl packet.retransmitCount
+            if (age >= timeout * backoff || fastResend) {
                 ++packet.retransmitCount
                 packet.lastSent = now
                 sendList += DataPacket(

@@ -68,6 +68,7 @@ class SessionActor(
 
         const val ACK_INTERVAL_MS = 5000L
         const val PASSIVE_OPEN_TIMEOUT = 15000L
+        const val MAX_RETRIES = 5
     }
 
     private enum class SessionState {
@@ -269,7 +270,7 @@ class SessionActor(
                 session.state = SessionState.PassiveOpen
             }
             SessionState.Established -> {
-                if (session.windowProcessor.getMaxRetransmits() >= 3) {
+                if (session.windowProcessor.getMaxRetransmits() >= MAX_RETRIES) {
                     if (session.destination !in routeRequests) {
                         routeRequests += session.destination
                         log().warning("excessive retries re-probe for destination ${session.destination}")
