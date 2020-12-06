@@ -125,8 +125,7 @@ private fun createStream(
     println("Session $sessionId opened")
 
     var packetNo = 0
-    while (packetNo < 1000) {
-        Thread.sleep(200L)
+    while (packetNo < 2000) {
         val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
         println("Send data query $packetNo")
         val sendFut = ask(
@@ -139,6 +138,8 @@ private fun createStream(
             println("result $destResult ${destResult.sessionId} ${destResult.success}")
             if (destResult.success) {
                 packetNo++
+            } else {
+                Thread.sleep(100L)
             }
         } catch (ex: TimeoutException) {
         }
