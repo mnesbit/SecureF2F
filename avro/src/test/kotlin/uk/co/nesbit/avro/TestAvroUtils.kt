@@ -466,4 +466,39 @@ class TestAvroUtils {
 
         })
     }
+
+    @Test
+    fun `Test Int Array helpers`() {
+        val schemaDef = """
+            {
+                "name" : "Test",
+                "type" : "record",
+                "fields" : [
+                    {
+                        "name" : "intArray",
+                        "type": {
+                            "name": "arrayType",
+                            "type": "array",
+                            "items": "int"
+                        }
+                    }
+                ]
+            }
+        """
+        val schema = Schema.Parser().parse(schemaDef)
+        val record = GenericData.Record(schema)
+        val testArray = listOf(1, 2, 3, 4)
+        record.putIntArray("intArray", testArray)
+        val serialized = record.serialize()
+        val deserialized = schema.deserialize(serialized)
+        val readback = deserialized.getIntArray("intArray")
+        assertEquals(testArray, readback)
+        val record2 = GenericData.Record(schema)
+        val testArray2 = emptyList<Int>()
+        record2.putIntArray("intArray", testArray2)
+        val serialized2 = record2.serialize()
+        val deserialized2 = schema.deserialize(serialized2)
+        val readback2 = deserialized2.getIntArray("intArray")
+        assertEquals(testArray2, readback2)
+    }
 }
