@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto.setsync",
+  "name": "InvertibleBloomEntry",
+  "type": "record",
+  "fields": [
+    {
+      "name": "key",
+      "type": "int"
+    },
+    {
+      "name": "hash",
+      "type": "int"
+    },
+    {
+      "name": "count",
+      "type": "int"
+    }
+  ]
+}
