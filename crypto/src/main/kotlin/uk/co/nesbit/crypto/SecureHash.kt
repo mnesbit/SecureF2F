@@ -19,7 +19,7 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val secureHashSchema: Schema = Schema.Parser()
-                .parse(javaClass.enclosingClass.getResourceAsStream("securehash.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("securehash.avsc"))
 
         fun secureHash(bytes: ByteArray, algorithm: String = "SHA-256"): SecureHash {
             return ProviderCache.withMessageDigestInstance(algorithm) {
@@ -27,8 +27,15 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
             }
         }
 
+        fun doubleHash(bytes: ByteArray, algorithm: String = "SHA-256"): SecureHash {
+            return ProviderCache.withMessageDigestInstance(algorithm) {
+                val firstHash = digest(bytes)
+                SecureHash(algorithm, digest(firstHash))
+            }
+        }
+
         fun secureHash(str: String, algorithm: String = "SHA-256") =
-                secureHash(str.toByteArray(Charsets.UTF_8), algorithm)
+            secureHash(str.toByteArray(Charsets.UTF_8), algorithm)
 
         fun deserialize(bytes: ByteArray): SecureHash {
             val hashRecord = secureHashSchema.deserialize(bytes)
