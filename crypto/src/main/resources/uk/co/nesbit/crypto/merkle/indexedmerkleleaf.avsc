@@ -1,0 +1,22 @@
+{
+  "namespace": "uk.co.nesbit.crypto.merkle",
+  "name": "IndexedMerkleLeaf",
+  "type": "record",
+  "fields": [
+    {
+      "name": "index",
+      "type": "int"
+    },
+    {
+      "name": "nonce",
+      "type": [
+        "null",
+        "bytes"
+      ]
+    },
+    {
+      "name": "leafData",
+      "type": "bytes"
+    }
+  ]
+}
