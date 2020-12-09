@@ -218,7 +218,7 @@ class MerkleTreeTest {
             for (oldSize in 1..newSize) {
                 val merkleTree1 = MerkleTree(leafData.subList(0, oldSize))
                 val merkleTree2 = MerkleTree(leafData.subList(0, newSize))
-                val proof = merkleTree2.consistencyProof(oldSize, newSize)
+                val proof = merkleTree2.consistencyProof(oldSize)
                 val result =
                     MerkleTree.verifyConsistencyProof(oldSize, merkleTree1.root, newSize, merkleTree2.root, proof)
                 assertEquals(true, result)

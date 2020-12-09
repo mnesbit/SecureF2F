@@ -23,7 +23,7 @@ class MerkleTree(
             return v + 1
         }
 
-        fun isPowerOf2(value: Int): Boolean {
+        private fun isPowerOf2(value: Int): Boolean {
             require(value > 0) { "isPowerOf2 requires positive value" }
             return (value and (value - 1) == 0)
         }
@@ -126,15 +126,12 @@ class MerkleTree(
             if (low == high) {
                 return if (startFromOldRoot) {
                     // this is the b == true case in RFC 6962
-                    println("[$low-$high] = oldRoot")
                     oldRoot
                 } else {
-                    println("[$low-$high] = ${consistencyProof.size - 1}")
                     consistencyProof.removeAt(consistencyProof.size - 1)
                 }
             }
             val k = nextHigherPower2(high) / 2
-            val itemIndex = consistencyProof.size - 1
             val nextHash = consistencyProof.removeAt(consistencyProof.size - 1)
             return if (low <= k) {
                 val leftChild = rootHashFromConsistencyProof(
@@ -148,10 +145,8 @@ class MerkleTree(
                     digestProvider
                 )
                 if (computeNewRoot) {
-                    println("[$low-$high] = [$low-$k] + ${itemIndex}")
                     digestProvider.nodeHash(depth, leftChild, nextHash)
                 } else {
-                    println("[$low-$high] = [$low-$k]")
                     leftChild
                 }
             } else {
@@ -165,7 +160,6 @@ class MerkleTree(
                     false,
                     digestProvider
                 )
-                println("[$low-$high] = ${itemIndex} + [${low - k}-${high - k}]")
                 digestProvider.nodeHash(depth, nextHash, rightChild)
             }
         }
@@ -241,34 +235,31 @@ class MerkleTree(
         )
     }
 
-    fun consistencyProof(treeSize1: Int, treeSize2: Int): List<SecureHash> {
-        require(treeSize1 > 0 && treeSize2 > 0) {
+    fun consistencyProof(treeSize1: Int): List<SecureHash> {
+        require(treeSize1 > 0) {
             "sizes must be positive"
         }
-        require(treeSize1 <= treeSize2) {
+        require(treeSize1 <= leaves.size) {
             "first parameter must be less than or equal to second"
         }
-        require(treeSize2 <= leaves.size) {
-            "can only give consistency proof for trees up to size ${leaves.size}"
-        }
-        return subtreeConsistencyProof(treeSize1, treeSize2, 0, true)
+        return subtreeConsistencyProof(treeSize1, leaves.size, 0, true)
     }
 
-    fun subtreeHash(start: Int, size: Int, depth: Int): SecureHash {
+    private fun subtreeHash(start: Int, size: Int, depth: Int): SecureHash {
         require(size >= 1) {
             "empty range not allowed"
         }
         require(start >= 0 && start < leaves.size) {
             "Invalid start index"
         }
-        if (size == 1) {
+        return if (size == 1) {
             val nonce = digestProvider.leafNonce(start)
-            return digestProvider.leafHash(start, nonce, leaves[start])
+            digestProvider.leafHash(start, nonce, leaves[start])
         } else {
             val balanced = nextHigherPower2(size) / 2
             val left = subtreeHash(start, balanced, depth + 1)
             val right = subtreeHash(start + balanced, size - balanced, depth + 1)
-            return digestProvider.nodeHash(depth, left, right)
+            digestProvider.nodeHash(depth, left, right)
         }
     }
 
@@ -284,16 +275,13 @@ class MerkleTree(
                 // this is the b == true case in RFC 6962
                 return emptyList()
             }
-            println("$start-$high")
             return listOf(subtreeHash(start, high, 0))
         }
         val k = nextHigherPower2(high) / 2
         return if (low <= k) {
-            println("${start + k}-${high - k}")
             val subtreeConsistencySet = subtreeConsistencyProof(low, k, start, startFromOldRoot)
             subtreeConsistencySet + subtreeHash(start + k, high - k, 0)
         } else {
-            println("${start}-${k}")
             val subtreeConsistencySet = subtreeConsistencyProof(low - k, high - k, start + k, false)
             subtreeConsistencySet + subtreeHash(start, k, 0)
         }

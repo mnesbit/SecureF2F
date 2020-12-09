@@ -81,13 +81,13 @@ data class MerkleProof(
                     if (hashIndex >= hashes.size) {
                         return false
                     }
-                    if (item.first and 1 == 0) {
-                        newItems += Pair(
+                    newItems += if (item.first and 1 == 0) {
+                        Pair(
                             item.first / 2,
                             digestProvider.nodeHash(treeDepth, item.second, hashes[hashIndex++])
                         )
                     } else {
-                        newItems += Pair(
+                        Pair(
                             item.first / 2,
                             digestProvider.nodeHash(treeDepth, hashes[hashIndex++], item.second)
                         )
