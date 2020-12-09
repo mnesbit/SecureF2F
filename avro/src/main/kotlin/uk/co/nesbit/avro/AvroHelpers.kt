@@ -262,8 +262,17 @@ fun GenericRecord.getGenericArray(fieldName: String, schema: Schema): List<Gener
 }
 
 @Suppress("UNCHECKED_CAST")
-inline fun <reified T : Any> GenericRecord.getObjectArray(fieldName: String, constructor: (GenericRecord) -> T): List<T> {
+inline fun <reified T : Any> GenericRecord.getObjectArray(
+    fieldName: String,
+    constructor: (GenericRecord) -> T
+): List<T> {
     return (get(fieldName) as GenericArray<GenericRecord>).map { constructor(it) }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.getIntArray(fieldName: String): List<Int> {
+    val arrayData = get(fieldName) as GenericData.Array<Int>
+    return arrayData.toList()
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -467,6 +476,11 @@ inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName:
     }
 }
 
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.putIntArray(fieldName: String, value: List<Int>) {
+    val arrayRecord = GenericData.Array<Int>(schema.getField(fieldName).schema(), value)
+    put(fieldName, arrayRecord)
+}
 
 enum class AvroExtendedType {
     RECORD,

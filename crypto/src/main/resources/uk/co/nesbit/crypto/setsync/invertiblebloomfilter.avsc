@@ -1,0 +1,18 @@
+{
+  "namespace": "uk.co.nesbit.crypto.setsync",
+  "name": "InvertibleBloomFilter",
+  "type": "record",
+  "fields": [
+    {
+      "name": "seed",
+      "type": "int"
+    },
+    {
+      "name": "entries",
+      "type": {
+        "type": "array",
+        "items": "InvertibleBloomEntry"
+      }
+    }
+  ]
+}

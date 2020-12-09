@@ -1,0 +1,25 @@
+{
+  "namespace": "uk.co.nesbit.crypto.merkle",
+  "name": "MerkleProof",
+  "type": "record",
+  "fields": [
+    {
+      "name": "treeSize",
+      "type": "int"
+    },
+    {
+      "name": "leaves",
+      "type": {
+        "type": "array",
+        "items": "IndexedMerkleLeaf"
+      }
+    },
+    {
+      "name": "hashes",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    }
+  ]
+}

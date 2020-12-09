@@ -1,0 +1,11 @@
+{
+  "namespace": "uk.co.nesbit.crypto.merkle",
+  "name": "NonceHashDigestProvider",
+  "type": "record",
+  "fields": [
+    {
+      "name": "entropy",
+      "type": "bytes"
+    }
+  ]
+}

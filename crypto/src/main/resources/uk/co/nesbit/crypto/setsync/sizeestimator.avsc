@@ -1,0 +1,29 @@
+{
+  "namespace": "uk.co.nesbit.crypto.setsync",
+  "name": "InvertibleBloomFilter",
+  "type": "record",
+  "fields": [
+    {
+      "name": "totalItems",
+      "type": "int"
+    },
+    {
+      "name": "baseSeed",
+      "type": "int"
+    },
+    {
+      "name": "strataEstimators",
+      "type": {
+        "type": "array",
+        "items": "InvertibleBloomFilter"
+      }
+    },
+    {
+      "name": "minHashEstimators",
+      "type": {
+        "type": "array",
+        "items": "int"
+      }
+    }
+  ]
+}
