@@ -42,7 +42,7 @@ data class MerkleProof(
         return proofRecord
     }
 
-    fun verify(root: SecureHash, digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider()): Boolean {
+    fun verify(root: SecureHash, digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider): Boolean {
         if (leaves.isEmpty()) {
             return false
         }

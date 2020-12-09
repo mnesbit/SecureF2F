@@ -1,5 +1,6 @@
 package uk.co.nesbit.crypto
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import uk.co.nesbit.avro.serialize
@@ -21,18 +22,6 @@ class MerkleTreeTest {
         assertFailsWith<IllegalArgumentException> { MerkleTree.nextHigherPower2(0) }
         assertFailsWith<IllegalArgumentException> { MerkleTree.nextHigherPower2(-5) }
         assertFailsWith<IllegalArgumentException> { MerkleTree.nextHigherPower2(0x7FFFFFFF) }
-    }
-
-    @Test
-    fun `next lower power tests`() {
-        assertEquals(1, MerkleTree.nextLowerPower2(1))
-        assertEquals(2, MerkleTree.nextLowerPower2(2))
-        assertEquals(2, MerkleTree.nextLowerPower2(3))
-        assertEquals(0x10000, MerkleTree.nextLowerPower2(0x12345))
-        assertEquals(0x20000000, MerkleTree.nextLowerPower2(0x30000000))
-        assertFailsWith<IllegalArgumentException> { MerkleTree.nextLowerPower2(0) }
-        assertFailsWith<IllegalArgumentException> { MerkleTree.nextLowerPower2(-5) }
-        assertFailsWith<IllegalArgumentException> { MerkleTree.nextLowerPower2(0x7FFFFFFF) }
     }
 
     private fun MerkleTree.calcLeafHash(index: Int): SecureHash {
@@ -183,38 +172,49 @@ class MerkleTreeTest {
                 val serialised = proof.serialize()
                 val deserialisedProof = MerkleProof.deserialize(serialised)
                 assertEquals(proof, deserialisedProof)
-                val result = deserialisedProof.verify(root, NonceHashDigestProvider.DECODER_INSTANCE)
+                val result = deserialisedProof.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE)
                 assertEquals(true, result, "failed $powerSet")
                 for (leaf in proof.leaves) {
                     val data = leaf.leafData
                     data[0] = data[0] xor 1
-                    assertEquals(false, proof.verify(root, NonceHashDigestProvider.DECODER_INSTANCE))
+                    assertEquals(false, proof.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE))
                     data[0] = data[0] xor 1
                 }
                 for (hash in proof.hashes) {
                     val data = hash.bytes
                     data[0] = data[0] xor 1
-                    assertEquals(false, proof.verify(root, NonceHashDigestProvider.DECODER_INSTANCE))
+                    assertEquals(false, proof.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE))
                     data[0] = data[0] xor 1
                 }
                 val badProof1 = MerkleProof(proof.treeSize, proof.leaves, proof.hashes + SecureHash.EMPTY_HASH)
-                assertEquals(false, badProof1.verify(root, NonceHashDigestProvider.DECODER_INSTANCE))
+                assertEquals(false, badProof1.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE))
                 if (proof.hashes.size > 1) {
                     val badProof2 = MerkleProof(proof.treeSize, proof.leaves, proof.hashes.take(proof.hashes.size - 1))
-                    assertEquals(false, badProof2.verify(root, NonceHashDigestProvider.DECODER_INSTANCE))
+                    assertEquals(false, badProof2.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE))
                 }
                 if (proof.leaves.size > 1) {
                     val badProof3 = MerkleProof(proof.treeSize, proof.leaves.take(proof.leaves.size - 1), proof.hashes)
-                    assertEquals(false, badProof3.verify(root, NonceHashDigestProvider.DECODER_INSTANCE))
+                    assertEquals(false, badProof3.verify(root, NonceHashDigestProvider.VERIFY_INSTANCE))
                 }
             }
         }
     }
 
     @Test
+    fun `nonce digest serialisation test`() {
+        val provider1 = NonceHashDigestProvider()
+        val serialised = provider1.serialize()
+        val deserialised = NonceHashDigestProvider.deserialize(serialised)
+        assertEquals(provider1, deserialised)
+        assertArrayEquals(provider1.leafNonce(1), deserialised.leafNonce(1))
+        assertEquals(false, provider1.leafNonce(0).contentEquals(provider1.leafNonce(1)))
+        assertEquals(false, provider1.leafNonce(0).contentEquals(provider1.leafNonce(1)))
+    }
+
+    @Test
     fun `merkle consistency test`() {
         val leafData = (0 until 32).map { it.toByteArray() }
-        for (newSize in 1 until 32) {
+        for (newSize in 1..32) {
             for (oldSize in 1..newSize) {
                 val merkleTree1 = MerkleTree(leafData.subList(0, oldSize))
                 val merkleTree2 = MerkleTree(leafData.subList(0, newSize))
@@ -223,6 +223,10 @@ class MerkleTreeTest {
                     MerkleTree.verifyConsistencyProof(oldSize, merkleTree1.root, newSize, merkleTree2.root, proof)
                 assertEquals(true, result)
             }
+        }
+        assertFailsWith<java.lang.IllegalArgumentException> {
+            val unsupportedTree = MerkleTree(leafData, NonceHashDigestProvider())
+            unsupportedTree.consistencyProof(3)
         }
     }
 }

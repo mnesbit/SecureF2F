@@ -4,7 +4,7 @@ import uk.co.nesbit.crypto.SecureHash
 
 class MerkleTree(
     val leaves: List<ByteArray>,
-    val digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider()
+    val digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider
 ) {
     init {
         require(leaves.isNotEmpty()) { "Merkle tree must have at least one item" }
@@ -23,18 +23,6 @@ class MerkleTree(
             return v + 1
         }
 
-        private fun isPowerOf2(value: Int): Boolean {
-            require(value > 0) { "isPowerOf2 requires positive value" }
-            return (value and (value - 1) == 0)
-        }
-
-        fun nextLowerPower2(value: Int): Int {
-            if (isPowerOf2(value)) {
-                return value
-            }
-            return nextHigherPower2(value) ushr 1
-        }
-
         fun treeDepth(size: Int): Int {
             val zeros = nextHigherPower2(size).countLeadingZeroBits()
             return 31 - zeros
@@ -42,32 +30,32 @@ class MerkleTree(
 
         //Based upon RFC6962 and https://github.com/openregister/verifiable-log
         fun verifyConsistencyProof(
-            treeSize1: Int,
+            oldTreeSize: Int,
             oldRoot: SecureHash,
-            treeSize2: Int,
+            newTreeSize: Int,
             newRoot: SecureHash,
             consistencyProof: List<SecureHash>,
-            digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider()
+            digestProvider: MerkleTreeHashDigestProvider = DefaultHashDigestProvider
         ): Boolean {
-            require(treeSize1 > 0 && treeSize2 > 0) {
+            require(oldTreeSize > 0 && newTreeSize > 0) {
                 "sizes must be positive"
             }
-            require(treeSize1 <= treeSize2) {
+            require(oldTreeSize <= newTreeSize) {
                 "first parameter must be less than or equal to second"
             }
-            if (treeSize1 == treeSize2) {
+            if (oldTreeSize == newTreeSize) {
                 return oldRoot == newRoot && consistencyProof.isEmpty()
             }
             val computedOldRoot = oldRootHashFromConsistencyProof(
-                treeSize1,
-                treeSize2,
+                oldTreeSize,
+                newTreeSize,
                 consistencyProof.toMutableList(),
                 oldRoot,
                 digestProvider
             )
             val computedNewRoot = newRootHashFromConsistencyProof(
-                treeSize1,
-                treeSize2,
+                oldTreeSize,
+                newTreeSize,
                 consistencyProof.toMutableList(),
                 oldRoot,
                 digestProvider
@@ -172,6 +160,12 @@ class MerkleTree(
         }
     }
 
+    private val supportsTreeAppend: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val hash1 = digestProvider.nodeHash(0, leafHashes.first(), leafHashes.first())
+        val hash2 = digestProvider.nodeHash(1, leafHashes.first(), leafHashes.first())
+        (hash1 == hash2) // log proofs require that node hash doesn't change with depth
+    }
+
     private val nodeHashes: List<List<SecureHash>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val hashSet = mutableListOf<List<SecureHash>>()
         var hashes = leafHashes
@@ -235,14 +229,17 @@ class MerkleTree(
         )
     }
 
-    fun consistencyProof(treeSize1: Int): List<SecureHash> {
-        require(treeSize1 > 0) {
+    fun consistencyProof(oldTreeSize: Int): List<SecureHash> {
+        require(supportsTreeAppend) {
+            "Hashing does not support merkle log append"
+        }
+        require(oldTreeSize > 0) {
             "sizes must be positive"
         }
-        require(treeSize1 <= leaves.size) {
+        require(oldTreeSize <= leaves.size) {
             "first parameter must be less than or equal to second"
         }
-        return subtreeConsistencyProof(treeSize1, leaves.size, 0, true)
+        return subtreeConsistencyProof(oldTreeSize, leaves.size, 0, true)
     }
 
     private fun subtreeHash(start: Int, size: Int, depth: Int): SecureHash {
@@ -253,8 +250,7 @@ class MerkleTree(
             "Invalid start index"
         }
         return if (size == 1) {
-            val nonce = digestProvider.leafNonce(start)
-            digestProvider.leafHash(start, nonce, leaves[start])
+            leafHashes[start]
         } else {
             val balanced = nextHigherPower2(size) / 2
             val left = subtreeHash(start, balanced, depth + 1)
