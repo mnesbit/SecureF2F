@@ -69,7 +69,7 @@ fun GenericRecord.visit(body: (obj: Any?, schema: Schema, path: List<PathCompone
             }
             Schema.Type.MAP -> {
                 val map = current.obj as Map<CharSequence, *>
-                val stringKeyedMap = map.mapKeys { it.toString() }
+                val stringKeyedMap = map.mapKeys { it.key.toString() }
                 callStack.push(Tracker(stringKeyedMap, current.schema, current.path))
                 val schema = current.schema.valueType
                 val type = schema.type
@@ -339,7 +339,7 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
         }
     }
     when {
-        schema.type == Schema.Type.MAP -> current = (current as Map<CharSequence, *>).mapKeys { it.toString() }
+        schema.type == Schema.Type.MAP -> current = (current as Map<CharSequence, *>).mapKeys { it.key.toString() }
         schema.type == Schema.Type.FIXED -> current = (current as GenericFixed).bytes()
         schema.type == Schema.Type.BYTES -> current = (current as ByteBuffer).array()
     }

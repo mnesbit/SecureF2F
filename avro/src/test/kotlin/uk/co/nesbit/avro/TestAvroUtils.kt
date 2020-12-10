@@ -188,7 +188,10 @@ class TestAvroUtils {
         val outDate = deser.getTyped<LocalDate>("date")
         assertEquals(date, LocalDateTime.ofInstant(outTime1, ZoneOffset.UTC).toLocalDate())
         assertEquals(date, LocalDateTime.ofInstant(outTime2, ZoneOffset.UTC).toLocalDate())
-        assertEquals(time.truncatedTo(ChronoUnit.MILLIS), LocalDateTime.ofInstant(outTime3, ZoneOffset.UTC).toLocalTime())
+        assertEquals(
+            time.truncatedTo(ChronoUnit.MILLIS),
+            LocalDateTime.ofInstant(outTime3, ZoneOffset.UTC).toLocalTime()
+        )
         assertEquals(date, LocalDateTime.ofInstant(outTime4, ZoneOffset.UTC).toLocalDate())
         assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS), outTime5)
         assertEquals(localDateTime.toLocalTime().truncatedTo(ChronoUnit.MICROS), outTime6)
@@ -204,7 +207,8 @@ class TestAvroUtils {
 
     @Test
     fun `Test avro visitor utility`() {
-        val sch = PathComponent::class.java.getResourceAsStream("/uk/co/nesbit/avro/complicatedSchema.avsc").readTextAndClose()
+        val sch = PathComponent::class.java.getResourceAsStream("/uk/co/nesbit/avro/complicatedSchema.avsc")
+            .readTextAndClose()
         val complicatedSchemaWithNesting = Schema.Parser().parse(sch)
         val record = GenericData.Record(complicatedSchemaWithNesting)
         record.putTyped("stringField", "string1")
@@ -230,7 +234,8 @@ class TestAvroUtils {
         record.putTyped("timeMicroField", nowDateTime.toLocalTime())
         record.putTyped("timestampMilliField", nowDateTime)
         record.putTyped("timestampMicroField", nowDateTime)
-        val simpleArrayRecord = GenericData.Array<Int>(complicatedSchemaWithNesting.getField("arrayField").schema(), listOf(1, 2, 3, 4))
+        val simpleArrayRecord =
+            GenericData.Array<Int>(complicatedSchemaWithNesting.getField("arrayField").schema(), listOf(1, 2, 3, 4))
         record.putTyped("arrayField", simpleArrayRecord)
         val simpleMap = mapOf("a" to 1, "b" to 2, "c" to 3)
         record.putTyped("mapField", simpleMap)
@@ -238,9 +243,11 @@ class TestAvroUtils {
         nestedRecord.putTyped("intSubField", 100)
         nestedRecord.putTyped("unionSubField", unionRecordTypeB)
         nestedRecord.putTyped("arraySubField", simpleArrayRecord)
-        nestedRecord.putTyped("mapSubField", simpleMap)
+        val simpleMap2 = mapOf("a" to "apple", "b" to "blaster", "c" to "cyberman")
+        nestedRecord.putTyped("mapSubField", simpleMap2)
         record.putTyped("nestedRecord", nestedRecord)
-        val nestedArray = GenericData.Array<GenericRecord>(2, complicatedSchemaWithNesting.getField("nestedArray").schema())
+        val nestedArray =
+            GenericData.Array<GenericRecord>(2, complicatedSchemaWithNesting.getField("nestedArray").schema())
         nestedArray.add(nestedRecord)
         nestedArray.add(nestedRecord)
         record.putTyped("nestedArray", nestedArray)
@@ -259,6 +266,8 @@ class TestAvroUtils {
             assertEquals(schema, refind.second)
         }
         val deserialized = complicatedSchemaWithNesting.deserialize(serialized)
+        val intMap = deserialized.getTyped<Map<String, Int>>("mapField")
+        assertEquals(simpleMap, intMap) // just a quick test of map logic
         var counter = 0
         deserialized.visit { obj, schema, path, root ->
             println("obj: $obj type: ${schema.type} path: ${path.toStringPath()}")
@@ -281,117 +290,181 @@ class TestAvroUtils {
         }
         assertEquals(expected.size, counter)
         deserialized.visit(object : AvroVisitor {
-            override fun recordVisitor(value: GenericRecord, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun recordVisitor(
+                value: GenericRecord,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
-                assert(pathStr in setOf(
+                assert(
+                    pathStr in setOf(
                         "",
                         "unionField",
                         "nestedRecord", "nestedRecord.unionSubField",
                         "nestedArray[0]", "nestedArray[0].unionSubField",
                         "nestedArray[1]", "nestedArray[1].unionSubField",
                         "nestedMap[\"first\"]", "nestedMap[\"first\"].unionSubField",
-                        "nestedMap[\"second\"]", "nestedMap[\"second\"].unionSubField"))
+                        "nestedMap[\"second\"]", "nestedMap[\"second\"].unionSubField"
+                    )
+                )
             }
 
             override fun enumVisitor(
-                    value: GenericEnumSymbol<*>,
-                    schema: Schema,
-                    path: List<PathComponent>,
-                    root: GenericRecord
+                value: GenericEnumSymbol<*>,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
             ) {
                 val pathStr = path.toStringPath()
-                assert(pathStr in setOf(
-                        "enumField"))
+                assert(
+                    pathStr in setOf(
+                        "enumField"
+                    )
+                )
                 assert(value.toString() in setOf("HEARTS"))
             }
 
-            override fun arrayVisitor(value: GenericArray<*>, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun arrayVisitor(
+                value: GenericArray<*>,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
-                assert(pathStr in setOf(
+                assert(
+                    pathStr in setOf(
                         "arrayField",
                         "nestedRecord.arraySubField",
                         "nestedArray", "nestedArray[0].arraySubField", "nestedArray[1].arraySubField",
-                        "nestedMap[\"first\"].arraySubField", "nestedMap[\"second\"].arraySubField"))
+                        "nestedMap[\"first\"].arraySubField", "nestedMap[\"second\"].arraySubField"
+                    )
+                )
             }
 
-            override fun mapVisitor(value: Map<String, Any?>, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun mapVisitor(
+                value: Map<String, Any?>,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
-                assert(pathStr in setOf(
+                assert(
+                    pathStr in setOf(
                         "mapField",
                         "nestedRecord.mapSubField",
                         "nestedArray[0].mapSubField", "nestedArray[1].mapSubField",
-                        "nestedMap", "nestedMap[\"first\"].mapSubField", "nestedMap[\"second\"].mapSubField"))
+                        "nestedMap", "nestedMap[\"first\"].mapSubField", "nestedMap[\"second\"].mapSubField"
+                    )
+                )
             }
 
             override fun stringVisitor(value: String, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
                 val pathStr = path.toStringPath()
-                assertEquals("stringField", pathStr)
-                assertEquals("string1", value)
+                if (pathStr == "stringField") {
+                    assertEquals("string1", value)
+                } else {
+                    assert(
+                        pathStr in setOf(
+                            "nestedMap[\"first\"].mapSubField[\"a\"]",
+                            "nestedMap[\"first\"].mapSubField[\"b\"]",
+                            "nestedMap[\"first\"].mapSubField[\"c\"]",
+                            "nestedMap[\"second\"].mapSubField[\"a\"]",
+                            "nestedMap[\"second\"].mapSubField[\"b\"]",
+                            "nestedMap[\"second\"].mapSubField[\"c\"]",
+                            "nestedArray[0].mapSubField[\"a\"]",
+                            "nestedArray[0].mapSubField[\"b\"]",
+                            "nestedArray[0].mapSubField[\"c\"]",
+                            "nestedArray[1].mapSubField[\"a\"]",
+                            "nestedArray[1].mapSubField[\"b\"]",
+                            "nestedArray[1].mapSubField[\"c\"]",
+                            "nestedRecord.mapSubField[\"a\"]",
+                            "nestedRecord.mapSubField[\"b\"]",
+                            "nestedRecord.mapSubField[\"c\"]",
+                        )
+                    )
+                    assert(
+                        value in setOf(
+                            "apple",
+                            "blaster",
+                            "cyberman"
+                        )
+                    )
+                }
             }
 
-            override fun bytesVisitor(value: ByteArray, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun bytesVisitor(
+                value: ByteArray,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
-                assert(pathStr in setOf(
+                assert(
+                    pathStr in setOf(
                         "fixedField",
-                        "binaryField"))
+                        "binaryField"
+                    )
+                )
             }
 
             override fun intVisitor(value: Int, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
                 val pathStr = path.toStringPath()
-                val values = mapOf("intField" to 1,
-                        "unionField.b" to 1,
-                        "arrayField[0]" to 1,
-                        "arrayField[1]" to 2,
-                        "arrayField[2]" to 3,
-                        "arrayField[3]" to 4,
-                        "mapField[\"a\"]" to 1,
-                        "mapField[\"b\"]" to 2,
-                        "mapField[\"c\"]" to 3,
-                        "nestedRecord.unionSubField.b" to 1,
-                        "nestedRecord.arraySubField[0]" to 1,
-                        "nestedRecord.arraySubField[1]" to 2,
-                        "nestedRecord.arraySubField[2]" to 3,
-                        "nestedRecord.arraySubField[3]" to 4,
-                        "nestedRecord.mapSubField[\"a\"]" to 1,
-                        "nestedRecord.mapSubField[\"b\"]" to 2,
-                        "nestedRecord.mapSubField[\"c\"]" to 3,
-                        "nestedRecord.intSubField" to 100,
-                        "nestedArray[0].unionSubField.b" to 1,
-                        "nestedArray[0].arraySubField[0]" to 1,
-                        "nestedArray[0].arraySubField[1]" to 2,
-                        "nestedArray[0].arraySubField[2]" to 3,
-                        "nestedArray[0].arraySubField[3]" to 4,
-                        "nestedArray[0].mapSubField[\"a\"]" to 1,
-                        "nestedArray[0].mapSubField[\"b\"]" to 2,
-                        "nestedArray[0].mapSubField[\"c\"]" to 3,
-                        "nestedArray[0].intSubField" to 100,
-                        "nestedArray[1].unionSubField.b" to 1,
-                        "nestedArray[1].arraySubField[0]" to 1,
-                        "nestedArray[1].arraySubField[1]" to 2,
-                        "nestedArray[1].arraySubField[2]" to 3,
-                        "nestedArray[1].arraySubField[3]" to 4,
-                        "nestedArray[1].mapSubField[\"a\"]" to 1,
-                        "nestedArray[1].mapSubField[\"b\"]" to 2,
-                        "nestedArray[1].mapSubField[\"c\"]" to 3,
-                        "nestedArray[1].intSubField" to 100,
-                        "nestedMap[\"first\"].unionSubField.b" to 1,
-                        "nestedMap[\"first\"].arraySubField[0]" to 1,
-                        "nestedMap[\"first\"].arraySubField[1]" to 2,
-                        "nestedMap[\"first\"].arraySubField[2]" to 3,
-                        "nestedMap[\"first\"].arraySubField[3]" to 4,
-                        "nestedMap[\"first\"].mapSubField[\"a\"]" to 1,
-                        "nestedMap[\"first\"].mapSubField[\"b\"]" to 2,
-                        "nestedMap[\"first\"].mapSubField[\"c\"]" to 3,
-                        "nestedMap[\"first\"].intSubField" to 100,
-                        "nestedMap[\"second\"].unionSubField.b" to 1,
-                        "nestedMap[\"second\"].arraySubField[0]" to 1,
-                        "nestedMap[\"second\"].arraySubField[1]" to 2,
-                        "nestedMap[\"second\"].arraySubField[2]" to 3,
-                        "nestedMap[\"second\"].arraySubField[3]" to 4,
-                        "nestedMap[\"second\"].mapSubField[\"a\"]" to 1,
-                        "nestedMap[\"second\"].mapSubField[\"b\"]" to 2,
-                        "nestedMap[\"second\"].mapSubField[\"c\"]" to 3,
-                        "nestedMap[\"second\"].intSubField" to 100
+                val values = mapOf(
+                    "intField" to 1,
+                    "unionField.b" to 1,
+                    "arrayField[0]" to 1,
+                    "arrayField[1]" to 2,
+                    "arrayField[2]" to 3,
+                    "arrayField[3]" to 4,
+                    "mapField[\"a\"]" to 1,
+                    "mapField[\"b\"]" to 2,
+                    "mapField[\"c\"]" to 3,
+                    "nestedRecord.unionSubField.b" to 1,
+                    "nestedRecord.arraySubField[0]" to 1,
+                    "nestedRecord.arraySubField[1]" to 2,
+                    "nestedRecord.arraySubField[2]" to 3,
+                    "nestedRecord.arraySubField[3]" to 4,
+                    "nestedRecord.mapSubField[\"a\"]" to 1,
+                    "nestedRecord.mapSubField[\"b\"]" to 2,
+                    "nestedRecord.mapSubField[\"c\"]" to 3,
+                    "nestedRecord.intSubField" to 100,
+                    "nestedArray[0].unionSubField.b" to 1,
+                    "nestedArray[0].arraySubField[0]" to 1,
+                    "nestedArray[0].arraySubField[1]" to 2,
+                    "nestedArray[0].arraySubField[2]" to 3,
+                    "nestedArray[0].arraySubField[3]" to 4,
+                    "nestedArray[0].mapSubField[\"a\"]" to 1,
+                    "nestedArray[0].mapSubField[\"b\"]" to 2,
+                    "nestedArray[0].mapSubField[\"c\"]" to 3,
+                    "nestedArray[0].intSubField" to 100,
+                    "nestedArray[1].unionSubField.b" to 1,
+                    "nestedArray[1].arraySubField[0]" to 1,
+                    "nestedArray[1].arraySubField[1]" to 2,
+                    "nestedArray[1].arraySubField[2]" to 3,
+                    "nestedArray[1].arraySubField[3]" to 4,
+                    "nestedArray[1].mapSubField[\"a\"]" to 1,
+                    "nestedArray[1].mapSubField[\"b\"]" to 2,
+                    "nestedArray[1].mapSubField[\"c\"]" to 3,
+                    "nestedArray[1].intSubField" to 100,
+                    "nestedMap[\"first\"].unionSubField.b" to 1,
+                    "nestedMap[\"first\"].arraySubField[0]" to 1,
+                    "nestedMap[\"first\"].arraySubField[1]" to 2,
+                    "nestedMap[\"first\"].arraySubField[2]" to 3,
+                    "nestedMap[\"first\"].arraySubField[3]" to 4,
+                    "nestedMap[\"first\"].mapSubField[\"a\"]" to 1,
+                    "nestedMap[\"first\"].mapSubField[\"b\"]" to 2,
+                    "nestedMap[\"first\"].mapSubField[\"c\"]" to 3,
+                    "nestedMap[\"first\"].intSubField" to 100,
+                    "nestedMap[\"second\"].unionSubField.b" to 1,
+                    "nestedMap[\"second\"].arraySubField[0]" to 1,
+                    "nestedMap[\"second\"].arraySubField[1]" to 2,
+                    "nestedMap[\"second\"].arraySubField[2]" to 3,
+                    "nestedMap[\"second\"].arraySubField[3]" to 4,
+                    "nestedMap[\"second\"].mapSubField[\"a\"]" to 1,
+                    "nestedMap[\"second\"].mapSubField[\"b\"]" to 2,
+                    "nestedMap[\"second\"].mapSubField[\"c\"]" to 3,
+                    "nestedMap[\"second\"].intSubField" to 100
                 )
 
                 assertTrue(values.containsKey(pathStr))
@@ -416,7 +489,12 @@ class TestAvroUtils {
                 assertEquals(5.6789.toRawBits(), value.toRawBits())
             }
 
-            override fun booleanVisitor(value: Boolean, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun booleanVisitor(
+                value: Boolean,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
                 assertEquals("booleanField", pathStr)
                 assertEquals(true, value)
@@ -427,7 +505,12 @@ class TestAvroUtils {
                 assertEquals("nulledUnionField", pathStr)
             }
 
-            override fun decimalVisitor(value: BigDecimal, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun decimalVisitor(
+                value: BigDecimal,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
                 assertEquals("decimalField", pathStr)
                 assertEquals(BigDecimal.valueOf(1234567809L, 2), value)
@@ -447,13 +530,21 @@ class TestAvroUtils {
 
             override fun timeVisitor(value: LocalTime, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
                 val pathStr = path.toStringPath()
-                assertEquals(nowDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS), value.truncatedTo(ChronoUnit.MILLIS))
+                assertEquals(
+                    nowDateTime.toLocalTime().truncatedTo(ChronoUnit.MILLIS),
+                    value.truncatedTo(ChronoUnit.MILLIS)
+                )
                 if (pathStr == "timestampMicroField") {
                     assertEquals(nowDateTime.toLocalTime().truncatedTo(ChronoUnit.MICROS), value)
                 }
             }
 
-            override fun timestampVisitor(value: Instant, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
+            override fun timestampVisitor(
+                value: Instant,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
                 val pathStr = path.toStringPath()
                 assertEquals(now.toEpochMilli(), value.toEpochMilli())
                 if (pathStr == "timestampMicroField") {

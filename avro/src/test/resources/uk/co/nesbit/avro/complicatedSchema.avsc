@@ -181,7 +181,7 @@
             "type": {
               "name": "mapType",
               "type": "map",
-              "values": "int"
+              "values": "string"
             }
           }
         ]
