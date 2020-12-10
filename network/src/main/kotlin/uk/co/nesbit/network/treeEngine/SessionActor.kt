@@ -68,7 +68,8 @@ class SessionActor(
 
         const val ACK_INTERVAL_MS = 5000L
         const val PASSIVE_OPEN_TIMEOUT = 15000L
-        const val MAX_RETRIES = 5
+        const val MAX_RETRIES = 7
+        const val MAX_QUERY_RETRIES = 2
     }
 
     private enum class SessionState {
@@ -92,6 +93,7 @@ class SessionActor(
         var sender: ActorRef?,
     ) {
         var routeFound: Boolean = false
+        var requeryCount: Int = 0
         var state: SessionState = SessionState.Created
         var status: LinkStatus? = null
         val windowProcessor = SlidingWindowHelper(sessionId)
@@ -248,6 +250,7 @@ class SessionActor(
             }
             SessionState.RouteFound -> {
                 session.routeFound = true
+                session.requeryCount = 0
                 if (session.windowProcessor.isEstablished()) {
                     log().info("session link ${session.sessionId} established")
                     session.state = SessionState.Established
@@ -263,11 +266,9 @@ class SessionActor(
                 session.routeFound = true
                 if (session.windowProcessor.isEstablished()) {
                     sendStatusUpdate(session, LinkStatus.LINK_UP_PASSIVE)
-                    sendSessionMessages(session, now)
-                } else {
-                    sendSessionMessages(session, now)
                 }
-                session.state = SessionState.PassiveOpen
+                sendSessionMessages(session, now)
+                session.state = SessionState.PassiveOpen // Progressed by client acceptance
             }
             SessionState.Established -> {
                 if (session.windowProcessor.getMaxRetransmits() >= MAX_RETRIES) {
@@ -293,6 +294,7 @@ class SessionActor(
                         session.windowProcessor.closeSession(now)
                         sendSessionMessages(session, now)
                     } else {
+                        sendSessionMessages(session, now)
                         session.state = SessionState.Closed
                     }
                 }
@@ -421,11 +423,15 @@ class SessionActor(
         val now = clock.instant()
         for (session in relevant) {
             if (response.success) {
+                session.requeryCount = 0
                 if (session.state == SessionState.Querying) {
                     session.state = SessionState.RouteFound
                 }
             } else {
-                session.state = SessionState.Closing
+                ++session.requeryCount
+                if (!session.routeFound || session.requeryCount > MAX_QUERY_RETRIES) {
+                    session.state = SessionState.Closing
+                }
             }
             if (!processSession(session, now)) {
                 sessions.remove(session.sessionId)
@@ -478,6 +484,29 @@ class SessionActor(
     private fun onSessionDataReceived(message: ClientReceivedMessage) {
         log().info("packet from ${message.source}")
         val now = clock.instant()
+        if (!sessions.containsKey(message.sessionMessage.sessionId)) {
+            when (message.sessionMessage.packetType) {
+                DataPacket.DataPacketType.NORMAL, DataPacket.DataPacketType.ACK -> {
+                    // Don't bother making a session just to send a reset
+                    val resetMessage = DataPacket(
+                        message.sessionMessage.sessionId,
+                        message.sessionMessage.ackSeqNo,
+                        message.sessionMessage.seqNo,
+                        DataPacket.RESET_MARKER,
+                        DataPacket.RESET_MARKER,
+                        DataPacket.AckBody
+                    )
+                    routingActor.tell(ClientSendMessage(message.source, resetMessage), self)
+                    return
+                }
+                DataPacket.DataPacketType.OPEN, DataPacket.DataPacketType.OPEN_ACK -> {
+                    // continue as normal for handshake
+                }
+                DataPacket.DataPacketType.CLOSE, DataPacket.DataPacketType.RESET -> {
+                    return // just ignore strays
+                }
+            }
+        }
         val session = sessions.getOrPut(message.sessionMessage.sessionId) {
             val incomingSession = SessionInfo(
                 message.sessionMessage.sessionId,
@@ -487,7 +516,9 @@ class SessionActor(
                 null,
                 null
             )
+            incomingSession.routeFound = true
             incomingSession.state = SessionState.PassiveOpen
+            incomingSession.status = LinkStatus.LINK_DOWN
             log().info("new incoming session created ${message.sessionMessage.sessionId}")
             incomingSession
         }

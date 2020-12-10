@@ -659,6 +659,17 @@ class HopRoutingActor(
                 sendDhtRequest(parent, probe, parent.request.key, parent.request.data, now)
             }
             return
+        } else {
+            val bucket = findBucket(parent.request.key)
+            val alternates = bucket.nodes.toMutableList()
+            alternates.removeIf {
+                it.identity.id in parent.probes
+            }
+            if (alternates.isNotEmpty()) {
+                val randProbe = alternates[localRand.nextInt(alternates.size)]
+                sendDhtRequest(parent, randProbe, parent.request.key, parent.request.data, now)
+                return
+            }
         }
         if (parent.responses >= parent.probes.size) {
             log().warning("Client request for ${parent.request.key} expired")
