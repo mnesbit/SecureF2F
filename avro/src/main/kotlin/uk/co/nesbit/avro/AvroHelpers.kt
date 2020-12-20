@@ -123,6 +123,7 @@ inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
         LocalDate::class.java -> getLocalDate(fieldName)
         LocalTime::class.java -> getLocalTime(fieldName)
         LocalDateTime::class.java -> getLocalDateTime(fieldName)
+        Map::class.java -> getMap(fieldName, value as Map<CharSequence, *>)
         else -> value
     } as T
 }
@@ -245,6 +246,21 @@ fun GenericRecord.getLocalDateTime(fieldName: String): LocalDateTime {
     } else {
         LocalDateTime.ofInstant(Instant.ofEpochMilli(get(fieldName) as Long), ZoneOffset.UTC)
     }
+}
+
+fun GenericRecord.getMap(fieldName: String, value: Map<CharSequence, *>): Map<String, Any?> {
+    val fieldSchema = schema.getField(fieldName).schema()
+    require(fieldSchema.type == Schema.Type.MAP) {
+        "Not a MAP type field"
+    }
+    if (fieldSchema.valueType.type == Schema.Type.STRING) {
+        val returnValue = mutableMapOf<String, String>()
+        for (kvp in value) {
+            returnValue[kvp.key.toString()] = kvp.value.toString()
+        }
+        return returnValue
+    }
+    return value.mapKeys { it.key.toString() }
 }
 
 @Suppress("UNCHECKED_CAST")
