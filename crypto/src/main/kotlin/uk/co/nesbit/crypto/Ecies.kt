@@ -6,9 +6,11 @@ import org.bouncycastle.crypto.params.HKDFParameters
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlin.experimental.xor
 
 object Ecies {
     private val MAGIC_CONST1 = "ECIES Magic Bits".toByteArray(Charsets.UTF_8)
@@ -18,83 +20,97 @@ object Ecies {
     private const val GCM_NONCE_LENGTH = 12 // in bytes
     private const val GCM_TAG_LENGTH = 16 // in bytes
 
+    @JvmStatic
+    private val counter = AtomicInteger(0)
+
     private fun generateKeys(
-            sharedSecret: ByteArray,
-            senderEphemeralPublicKey: PublicKey,
-            targetPublicKey: PublicKey
+        sharedSecret: ByteArray,
+        senderEphemeralPublicKey: PublicKey,
+        targetPublicKey: PublicKey,
+        countBytes: ByteArray
     ): Pair<SecretKeySpec, ByteArray> {
         val hkdf = HKDFBytesGenerator(SHA256Digest())
         hkdf.init(
-                HKDFParameters(
-                        sharedSecret,
-                        concatByteArrays(MAGIC_CONST1, senderEphemeralPublicKey.encoded, targetPublicKey.encoded),
-                        MAGIC_CONST2
-                )
+            HKDFParameters(
+                sharedSecret,
+                concatByteArrays(MAGIC_CONST1, senderEphemeralPublicKey.encoded, targetPublicKey.encoded),
+                MAGIC_CONST2
+            )
         )
         val hkdfKey = ByteArray(GCM_KEY_SIZE + GCM_NONCE_LENGTH)
         hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
         val splits = hkdfKey.splitByteArrays(
-                GCM_KEY_SIZE,
-                GCM_NONCE_LENGTH
+            GCM_KEY_SIZE,
+            GCM_NONCE_LENGTH
         )
         val aesKey = SecretKeySpec(splits[0], "AES")
         val aesNonce = splits[1]
+        aesNonce[0] = aesNonce[0] xor countBytes[0]
+        aesNonce[1] = aesNonce[1] xor countBytes[1]
+        aesNonce[2] = aesNonce[2] xor countBytes[2]
+        aesNonce[3] = aesNonce[3] xor countBytes[3]
         return Pair(aesKey, aesNonce)
     }
 
     fun encryptMessage(
-            message: ByteArray,
-            aad: ByteArray? = null,
-            targetPublicKey: PublicKey,
-            random: SecureRandom = newSecureRandom()
+        message: ByteArray,
+        aad: ByteArray? = null,
+        targetPublicKey: PublicKey,
+        random: SecureRandom = newSecureRandom()
     ): ByteArray {
         val ephemeralKeyPair = when (targetPublicKey.algorithm) {
             "Curve25519" -> generateCurve25519DHKeyPair(random)
             "NACLCurve25519" -> generateNACLDHKeyPair(random)
             else -> throw IllegalArgumentException("Unsupported Diffie-Hellman algorithm ${targetPublicKey.algorithm}")
         }
-        val aadToEncode = concatByteArrays(aad
-                ?: ByteArray(0), ephemeralKeyPair.public.encoded, targetPublicKey.encoded)
+        val aadToEncode = concatByteArrays(
+            aad
+                ?: ByteArray(0), ephemeralKeyPair.public.encoded, targetPublicKey.encoded
+        )
         val sharedSecret = getSharedDHSecret(ephemeralKeyPair, targetPublicKey)
-        val (aesKey, aesNonce) = generateKeys(sharedSecret, ephemeralKeyPair.public, targetPublicKey)
+        val count = counter.getAndIncrement().toByteArray()
+        val (aesKey, aesNonce) = generateKeys(sharedSecret, ephemeralKeyPair.public, targetPublicKey, count)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
             val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, aesNonce)
             init(Cipher.ENCRYPT_MODE, aesKey, spec)
             updateAAD(aadToEncode)
-            concatByteArrays(ephemeralKeyPair.public.encoded, doFinal(message))
+            concatByteArrays(ephemeralKeyPair.public.encoded, count, doFinal(message))
         }
     }
 
     fun decryptMessage(
-            encryptedMessage: ByteArray,
-            aad: ByteArray? = null,
-            nodeKeys: SphinxIdentityKeyPair
+        encryptedMessage: ByteArray,
+        aad: ByteArray? = null,
+        nodeKeys: SphinxIdentityKeyPair
     ): ByteArray {
         val dhFunction = { x: PublicKey -> getSharedDHSecret(nodeKeys.diffieHellmanKeys, x) }
         return decryptMessage(encryptedMessage, aad, nodeKeys.diffieHellmanKeys.public, dhFunction)
     }
 
     fun decryptMessage(
-            encryptedMessage: ByteArray,
-            aad: ByteArray? = null,
-            targetPublicKey: PublicKey,
-            dhFunction: (remotePublicKey: PublicKey) -> ByteArray
+        encryptedMessage: ByteArray,
+        aad: ByteArray? = null,
+        targetPublicKey: PublicKey,
+        dhFunction: (remotePublicKey: PublicKey) -> ByteArray
     ): ByteArray {
-        require(encryptedMessage.size >= PUBLIC_KEY_SIZE + GCM_TAG_LENGTH) {
+        require(encryptedMessage.size >= PUBLIC_KEY_SIZE + 4 + GCM_TAG_LENGTH) {
             "Illegal length message"
         }
-        val messageAndTagSize = encryptedMessage.size - PUBLIC_KEY_SIZE
-        val splits = encryptedMessage.splitByteArrays(PUBLIC_KEY_SIZE, messageAndTagSize)
+        val messageAndTagSize = encryptedMessage.size - PUBLIC_KEY_SIZE - 4
+        val splits = encryptedMessage.splitByteArrays(PUBLIC_KEY_SIZE, Int.SIZE_BYTES, messageAndTagSize)
         val dhEmphemeralPublicKey = when (targetPublicKey.algorithm) {
             "Curve25519" -> Curve25519PublicKey(splits[0])
             "NACLCurve25519" -> NACLCurve25519PublicKey(splits[0])
             else -> throw IllegalArgumentException("Unsupported Diffie-Hellman algorithm")
         }
-        val ciphertextAndTag = splits[1]
-        val aadToValidate = concatByteArrays(aad
-                ?: ByteArray(0), dhEmphemeralPublicKey.encoded, targetPublicKey.encoded)
+        val count = splits[1]
+        val ciphertextAndTag = splits[2]
+        val aadToValidate = concatByteArrays(
+            aad
+                ?: ByteArray(0), dhEmphemeralPublicKey.encoded, targetPublicKey.encoded
+        )
         val sharedSecret = dhFunction(dhEmphemeralPublicKey)
-        val (aesKey, aesNonce) = generateKeys(sharedSecret, dhEmphemeralPublicKey, targetPublicKey)
+        val (aesKey, aesNonce) = generateKeys(sharedSecret, dhEmphemeralPublicKey, targetPublicKey, count)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
             val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, aesNonce)
             init(Cipher.DECRYPT_MODE, aesKey, spec)
