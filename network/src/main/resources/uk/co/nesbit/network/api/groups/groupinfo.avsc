@@ -1,0 +1,39 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupInfo",
+  "type": "record",
+  "fields": [
+    {
+      "name": "groupId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "groupIdentifier",
+      "type": "string"
+    },
+    {
+      "name": "epoch",
+      "type": "int"
+    },
+    {
+      "name": "members",
+      "type": {
+        "name": "memberArrayType",
+        "type": "array",
+        "items": "GroupMemberInfo"
+      }
+    },
+    {
+      "name": "groupInfo",
+      "type": {
+        "name": "groupInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "prevGroupStateHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    }
+  ]
+}

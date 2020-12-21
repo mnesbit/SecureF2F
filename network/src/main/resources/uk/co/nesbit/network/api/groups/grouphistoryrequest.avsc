@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupHistoryRequest",
+  "type": "record",
+  "fields": [
+    {
+      "name": "senderId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "historicGroupHashes",
+      "type": {
+        "name": "changesArrayType",
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    }
+  ]
+}

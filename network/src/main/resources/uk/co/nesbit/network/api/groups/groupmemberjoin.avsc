@@ -1,0 +1,35 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupMemberJoin",
+  "type": "record",
+  "fields": [
+    {
+      "name": "invite",
+      "type": "GroupInviteToken"
+    },
+    {
+      "name": "memberName",
+      "type": "string"
+    },
+    {
+      "name": "memberKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "routingAddress",
+      "type": "uk.co.nesbit.crypto.sphinx.VersionedIdentity"
+    },
+    {
+      "name": "groupDhKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "signatures",
+      "type": {
+        "name": "signatureArrayType",
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.DigitalSignatureAndKey"
+      }
+    }
+  ]
+}

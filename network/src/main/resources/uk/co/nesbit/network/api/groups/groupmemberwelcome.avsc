@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupMemberWelcome",
+  "type": "record",
+  "fields": [
+    {
+      "name": "groupInfo",
+      "type": "GroupInfo"
+    },
+    {
+      "name": "groupSecret",
+      "type": "bytes"
+    }
+  ]
+}

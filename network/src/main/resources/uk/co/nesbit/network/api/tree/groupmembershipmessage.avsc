@@ -1,0 +1,15 @@
+{
+  "namespace": "uk.co.nesbit.network.api.tree",
+  "name": "GroupMembershipMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "groupId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    }
+  ]
+}

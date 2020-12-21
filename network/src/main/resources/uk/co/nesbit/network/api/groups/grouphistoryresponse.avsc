@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupHistoryResponse",
+  "type": "record",
+  "fields": [
+    {
+      "name": "senderId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "changes",
+      "type": {
+        "name": "changesArrayType",
+        "type": "array",
+        "items": "GroupHistoryEntry"
+      }
+    },
+    {
+      "name": "signature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

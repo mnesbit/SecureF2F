@@ -33,7 +33,8 @@ class OneHopMessage private constructor(
                 Pair(TreeState::class.java, TreeState.treeStateSchema),
                 Pair(GreedyRoutedMessage::class.java, GreedyRoutedMessage.greedyRoutedSchema),
                 Pair(SphinxRoutedMessage::class.java, SphinxRoutedMessage.sphinxRoutedMessageSchema),
-                Pair(ClientDataMessage::class.java, ClientDataMessage.clientDataMessageSchema)
+                Pair(ClientDataMessage::class.java, ClientDataMessage.clientDataMessageSchema),
+                Pair(GroupMembershipMessage::class.java, GroupMembershipMessage.groupMembershipMessageSchema)
             )
         )
 

@@ -1,0 +1,27 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupModify",
+  "type": "record",
+  "fields": [
+    {
+      "name": "newGroupInfo",
+      "type": {
+        "name": "groupInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "groupStateHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

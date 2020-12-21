@@ -1,0 +1,18 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupHistoryEntry",
+  "type": "record",
+  "fields": [
+    {
+      "name": "change",
+      "type": [
+        "null",
+        "GroupMemberAdd",
+        "GroupMemberModify",
+        "GroupMemberRemove",
+        "GroupModify",
+        "GroupHistoryMerge"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupHeartbeat",
+  "type": "record",
+  "fields": [
+    {
+      "name": "senderId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "groupStateHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "epoch",
+      "type": "int"
+    }
+  ]
+}

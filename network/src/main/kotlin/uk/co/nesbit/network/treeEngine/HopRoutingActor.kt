@@ -30,6 +30,7 @@ import kotlin.random.Random
 enum class MessageWatchTypes {
     ADDRESS_UPDATE,
     CLIENT_DATA_MESSAGES,
+    GROUP_MEMBERSHIP_MESSAGES
 }
 
 class MessageWatchRequest(val subscription: EnumSet<MessageWatchTypes>)
@@ -56,6 +57,14 @@ class ClientDhtResponse(
 class ClientSendMessage(val destination: SecureHash, val sessionMessage: DataPacket)
 class ClientSendResult(val destination: SecureHash, val sent: Boolean)
 class ClientReceivedMessage(val source: SecureHash, val sessionMessage: DataPacket)
+
+data class SendGroupManagementMessage(
+    val networkDestination: SecureHash,
+    val requestId: Int,
+    val groupMessage: GroupMembershipMessage
+)
+
+data class SendGroupManagementResult(val networkDestination: SecureHash, val requestId: Int, val sent: Boolean)
 
 class HopRoutingActor(
     private val keyService: KeyService,
@@ -192,6 +201,7 @@ class HopRoutingActor(
             is SphinxRoutedMessage -> onSphinxRoutedMessage(message)
             is ClientDhtRequest -> onClientRequest(message)
             is ClientSendMessage -> onClientSendMessage(message)
+            is SendGroupManagementMessage -> onSendGroupManagementMessage(message)
             else -> throw IllegalArgumentException("Unknown message type ${message.javaClass.name}")
         }
     }
@@ -588,6 +598,7 @@ class HopRoutingActor(
             DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
             DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
             ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
+            GroupMembershipMessage::class.java -> processGroupManagementMessage(payload as GroupMembershipMessage)
             else -> log().error("Unknown message type ${payload.javaClass.name}")
         }
     }
@@ -750,6 +761,7 @@ class HopRoutingActor(
                     DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
                     DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
                     ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
+                    GroupMembershipMessage::class.java -> processGroupManagementMessage(payload as GroupMembershipMessage)
                     else -> log().error("Unknown message type ${payload.javaClass.name}")
                 }
             } else {
@@ -831,6 +843,34 @@ class HopRoutingActor(
         sender.tell(ClientSendResult(message.destination, true), self)
     }
 
+    private fun onSendGroupManagementMessage(message: SendGroupManagementMessage) {
+        if (networkAddress == null) {
+            log().warning("Node not ready for group management")
+            sender.tell(SendGroupManagementResult(message.networkDestination, message.requestId, false), self)
+            return
+        }
+        val cachedAddress = clientCache.getIfPresent(message.networkDestination)
+        val knownPath = routeCache.getIfPresent(message.networkDestination)
+        if (knownPath == null) {
+            if (cachedAddress != null) {
+                sendGreedyMessage(cachedAddress, message.groupMessage)
+            } else {
+                val bucket = findBucket(message.networkDestination)
+                val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.networkDestination }
+                if (destinationAddress == null) {
+                    log().warning("Node not known ${message.networkDestination}")
+                    sender.tell(SendGroupManagementResult(message.networkDestination, message.requestId, false), self)
+                    return
+                }
+                clientCache.put(destinationAddress.identity.id, destinationAddress)
+                sendGreedyMessage(destinationAddress, message.groupMessage)
+            }
+        } else {
+            sendSphinxMessage(knownPath, message.groupMessage)
+        }
+        sender.tell(SendGroupManagementResult(message.networkDestination, message.requestId, true), self)
+    }
+
     private fun processClientDataMessage(clientDataMessage: ClientDataMessage) {
         clientCache.put(clientDataMessage.source.identity.id, clientDataMessage.source)
         routeCache.getIfPresent(clientDataMessage.source.identity.id)
@@ -844,6 +884,10 @@ class HopRoutingActor(
         )
         val receivedMessage = ClientReceivedMessage(clientDataMessage.source.identity.id, sessionMessage)
         sendToOwners(receivedMessage, MessageWatchTypes.CLIENT_DATA_MESSAGES)
+    }
+
+    private fun processGroupManagementMessage(groupMessage: GroupMembershipMessage) {
+        sendToOwners(groupMessage, MessageWatchTypes.GROUP_MEMBERSHIP_MESSAGES)
     }
 
 }

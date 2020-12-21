@@ -1,0 +1,42 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupInviteToken",
+  "type": "record",
+  "fields": [
+    {
+      "name": "groupIdentifier",
+      "type": "string"
+    },
+    {
+      "name": "groupId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "groupStateHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "inviteId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorAddress",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "oneTimeDhKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "expireTime",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    }
+  ]
+}

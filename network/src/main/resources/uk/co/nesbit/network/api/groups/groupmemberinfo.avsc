@@ -1,0 +1,67 @@
+{
+  "namespace": "uk.co.nesbit.network.api.groups",
+  "name": "GroupMemberInfo",
+  "type": "record",
+  "fields": [
+    {
+      "name": "memberName",
+      "type": "string"
+    },
+    {
+      "name": "memberKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "keyIssued",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "issueEpoch",
+      "type": "int"
+    },
+    {
+      "name": "sponsor",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "role",
+      "type": {
+        "name": "GroupMemberRole",
+        "type": "enum",
+        "symbols": [
+          "ADMIN",
+          "ORDINARY",
+          "OBSERVER",
+          "REVOKED"
+        ]
+      }
+    },
+    {
+      "name": "otherInfo",
+      "type": {
+        "name": "otherInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "historicKeys",
+      "type": {
+        "name": "arrayType",
+        "type": "array",
+        "items": "HistoricKeyInfo"
+      }
+    },
+    {
+      "name": "groupDhKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "routingAddress",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    }
+  ]
+}
