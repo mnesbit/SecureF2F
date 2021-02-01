@@ -5,11 +5,11 @@ import akka.actor.ActorSystem
 import akka.testkit.TestActorRef
 import akka.testkit.TestActors
 import akka.testkit.TestKit
-import org.junit.After
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import scala.jdk.javaapi.CollectionConverters
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.LinkReceivedMessage
@@ -21,12 +21,12 @@ import uk.co.nesbit.network.util.seconds
 class NetworkTest {
     private var actorSystem: ActorSystem? = null
 
-    @Before
+    @BeforeEach
     fun setup() {
         actorSystem = ActorSystem.create("Testing")
     }
 
-    @After
+    @AfterEach
     fun shutdown() {
         TestKit.shutdownActorSystem(actorSystem, 10.seconds(), true)
         actorSystem = null

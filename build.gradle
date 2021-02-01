@@ -1,32 +1,8 @@
-buildscript {
-    ext {
-        akkanet_version = '1.0.0-SNAPSHOT'
-        junit_version = '4.12'
-        junit5_version = '5.1.0'
-        bouncycastle_version = '1.67'
-        eddsa_version = '0.3.0'
-        tink_version = '1.5.0'
-        avro_version = '1.10.1'
-        akka_version = '2.6.10'
-        akka_http_version = '10.2.1'
-        caffeine_version = '2.8.6'
-        disruptor_version = '3.4.2'
-        moshi_version = '1.11.0'
-    }
-
-    repositories {
-        mavenCentral()
-    }
-    dependencies {
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
-
-import static org.gradle.api.JavaVersion.*
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+import static org.gradle.api.JavaVersion.VERSION_11
+
 plugins {
-    id 'java'
     id 'org.jetbrains.kotlin.jvm'
     id 'idea'
     id 'application'
@@ -48,8 +24,8 @@ allprojects {
     }
 
     tasks.withType(JavaCompile) {
-        sourceCompatibility = VERSION_1_8
-        targetCompatibility = VERSION_1_8
+        sourceCompatibility = VERSION_11
+        targetCompatibility = VERSION_11
         options.encoding = 'UTF-8'
         options.compilerArgs += '-XDenableSunApiLintControl'
     }
@@ -58,9 +34,9 @@ allprojects {
         kotlinOptions {
             languageVersion = '1.4'
             apiVersion = '1.4'
-            jvmTarget = VERSION_1_8
+            jvmTarget = VERSION_11
             javaParameters = true   // Useful for reflection.
-            freeCompilerArgs = ['-Xjvm-default=enable']
+            freeCompilerArgs = ['-Xjvm-default=all']
         }
     }
 
@@ -78,22 +54,17 @@ allprojects {
         implementation "org.slf4j:slf4j-api:$slf4j_version"
 
         // Test utilities
-        testImplementation "junit:junit:$junit_version"
-        testRuntime "org.junit.vintage:junit-vintage-engine:$junit5_version"
+        testImplementation "org.junit.jupiter:junit-jupiter-api:$junit5_version"
+        testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junit5_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
-        testRuntimeOnly "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
+        testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:$kotlin_version"
         testRuntimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:$log4j2_version"
     }
 }
 
 wrapper {
-    gradleVersion = "5.6.1"
+    gradleVersion = "6.8.1"
     distributionType = Wrapper.DistributionType.ALL
-}
-
-repositories {
-    mavenCentral()
-    jcenter()
 }
 
 dependencies {

@@ -2,18 +2,18 @@ description 'Crptographic helpers library'
 
 dependencies {
     // Bouncy castle
-    implementation "org.bouncycastle:bcprov-jdk15on:${bouncycastle_version}"
-    implementation "org.bouncycastle:bcpkix-jdk15on:${bouncycastle_version}"
+    implementation "org.bouncycastle:bcprov-jdk15on:$bouncycastle_version"
+    implementation "org.bouncycastle:bcpkix-jdk15on:$bouncycastle_version"
 
     // Java ed25519 implementation. See https://github.com/str4d/ed25519-java/
-    implementation "net.i2p.crypto:eddsa:${eddsa_version}"
-    implementation "com.google.crypto.tink:tink:${tink_version}"
+    implementation "net.i2p.crypto:eddsa:$eddsa_version"
+    implementation "com.google.crypto.tink:tink:$tink_version"
     implementation "com.goterl.lazycode:lazysodium-java:4.2.6"
     implementation "net.java.dev.jna:jna:5.5.0"
 
     implementation "org.zeromq:curve25519-java:0.1.0"
 
-    implementation "com.github.ben-manes.caffeine:caffeine:${caffeine_version}"
+    implementation "com.github.ben-manes.caffeine:caffeine:$caffeine_version"
 
     api project(':avro')
 }

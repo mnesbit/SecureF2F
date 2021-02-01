@@ -1,7 +1,8 @@
 package uk.co.nesbit.network
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.network.treeEngine.DataPacket
 import uk.co.nesbit.network.treeEngine.SlidingWindowHelper
 import uk.co.nesbit.network.treeEngine.SlidingWindowHelper.Companion.MAX_RECEIVE_BUFFER
@@ -10,7 +11,6 @@ import uk.co.nesbit.network.treeEngine.SlidingWindowHelper.Companion.START_WINDO
 import java.time.Clock
 import java.time.Instant
 import java.util.*
-import kotlin.test.assertEquals
 
 class SlidingWindowTest {
     private fun getPacket(i: Int): ByteArray {
