@@ -2,9 +2,9 @@ package uk.co.nesbit.avro
 
 import org.apache.avro.SchemaBuilder
 import org.apache.avro.generic.GenericData
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import java.io.IOException
 import java.util.*
 import kotlin.experimental.xor

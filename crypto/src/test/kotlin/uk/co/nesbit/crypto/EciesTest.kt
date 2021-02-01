@@ -1,8 +1,8 @@
 package uk.co.nesbit.crypto
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertFalse
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import javax.crypto.AEADBadTagException
 import kotlin.experimental.xor

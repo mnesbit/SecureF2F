@@ -1,9 +1,11 @@
 package uk.co.nesbit.network
 
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
+import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
@@ -13,7 +15,6 @@ import java.security.SignatureException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class TreeEngineTests {
@@ -347,7 +348,7 @@ class TreeEngineTests {
             keyService,
             Clock.systemUTC().instant()
         )
-        assertEquals(emptyList(), result1)
+        assertEquals(emptyList<VersionedIdentity>(), result1)
         val linkId23 = keyService.random.generateSeed(NONCE_SIZE)
         val greedyRoutedMessage2 = GreedyRoutedMessage.forwardGreedRoutedMessage(
             deserialized1,

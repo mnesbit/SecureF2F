@@ -1,10 +1,16 @@
 pluginManagement {
     plugins {
-        id 'org.jetbrains.kotlin.jvm' version "$kotlin_version"
+        id 'org.jetbrains.kotlin.jvm' version kotlin_version
     }
     repositories {
         gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
         mavenCentral()
+        jcenter()
     }
 }
 

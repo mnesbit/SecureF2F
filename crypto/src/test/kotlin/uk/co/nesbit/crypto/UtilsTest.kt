@@ -1,7 +1,7 @@
 package uk.co.nesbit.crypto
 
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 

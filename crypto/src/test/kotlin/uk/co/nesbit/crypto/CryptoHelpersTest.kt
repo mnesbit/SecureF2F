@@ -2,8 +2,8 @@ package uk.co.nesbit.crypto
 
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
 import java.security.KeyPair
 import java.security.SignatureException

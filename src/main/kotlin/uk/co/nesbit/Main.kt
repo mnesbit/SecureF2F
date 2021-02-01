@@ -25,7 +25,7 @@ import java.util.*
 import java.util.concurrent.TimeoutException
 
 
-fun main(args: Array<String>) {
+fun main() {
     println("Hello")
     //while(true) {
     val degree = 3

@@ -5,8 +5,8 @@ import org.apache.avro.generic.GenericArray
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericEnumSymbol
 import org.apache.avro.generic.GenericRecord
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.utils.readTextAndClose
 import java.math.BigDecimal
 import java.time.*

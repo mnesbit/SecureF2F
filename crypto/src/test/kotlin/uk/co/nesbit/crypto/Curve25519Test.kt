@@ -1,8 +1,8 @@
 package uk.co.nesbit.crypto
 
 import djb.Curve25519
-import org.junit.Assert.*
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
 
 class Curve25519Test {
     @Test

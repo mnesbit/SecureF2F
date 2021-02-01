@@ -1,8 +1,8 @@
 package uk.co.nesbit.crypto
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.ratchet.RatchetException
 import uk.co.nesbit.crypto.ratchet.RatchetHeader
