@@ -86,8 +86,8 @@ private fun createStream(
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
     val destSourcePair = Source.actorRef<Any>(
-        { elem -> Optional.empty() },
-        { elem -> Optional.empty() },
+        { _ -> Optional.empty() },
+        { _ -> Optional.empty() },
         10,
         OverflowStrategy.dropHead()
     ).preMaterialize(actorSystem)

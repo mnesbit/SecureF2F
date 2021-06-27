@@ -347,7 +347,7 @@ class HopRoutingActor(
             val time = ChronoUnit.MILLIS.between(gapStart, Clock.systemUTC().instant())
             val gapCount = gapZero.get()
             val rate = ((gapCount * 1000L) / time)
-            log().info("gap $gap $round ${(100 * gapCount) / gapNEstimate} $rate per/sec ${kbuckets.sumBy { it.nodes.size }} ${kbuckets.size}")
+            log().info("gap $gap $round ${(100 * gapCount) / gapNEstimate} $rate per/sec ${kbuckets.sumOf { it.nodes.size }} ${kbuckets.size}")
         }
     }
 

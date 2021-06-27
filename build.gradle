@@ -1,6 +1,4 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-import static org.gradle.api.JavaVersion.VERSION_11
+import static org.gradle.api.JavaVersion.VERSION_15
 
 plugins {
     id 'org.jetbrains.kotlin.jvm'
@@ -20,21 +18,20 @@ allprojects {
 
     repositories {
         mavenCentral()
-        jcenter()
     }
 
     tasks.withType(JavaCompile) {
-        sourceCompatibility = VERSION_11
-        targetCompatibility = VERSION_11
+        sourceCompatibility = VERSION_15
+        targetCompatibility = VERSION_15
         options.encoding = 'UTF-8'
         options.compilerArgs += '-XDenableSunApiLintControl'
     }
 
-    tasks.withType(KotlinCompile) {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
         kotlinOptions {
-            languageVersion = '1.4'
-            apiVersion = '1.4'
-            jvmTarget = VERSION_11
+            languageVersion = '1.5'
+            apiVersion = '1.5'
+            jvmTarget = VERSION_15
             javaParameters = true   // Useful for reflection.
             freeCompilerArgs = ['-Xjvm-default=all']
         }
@@ -63,7 +60,7 @@ allprojects {
 }
 
 wrapper {
-    gradleVersion = "6.8.1"
+    gradleVersion = "7.1"
     distributionType = Wrapper.DistributionType.ALL
 }
 
@@ -72,10 +69,10 @@ dependencies {
     implementation "com.typesafe.akka:akka-actor_2.13:$akka_version"
     implementation "com.typesafe.akka:akka-stream_2.13:$akka_version"
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
-    runtime "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
-    runtime "org.apache.logging.log4j:log4j-slf4j18-impl:$log4j2_version"
+    runtimeOnly "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
+    runtimeOnly "org.apache.logging.log4j:log4j-slf4j18-impl:$log4j2_version"
     // for lock-free logging
-    runtime "com.lmax:disruptor:$disruptor_version"
+    runtimeOnly "com.lmax:disruptor:$disruptor_version"
     implementation project(':avro')
     implementation project(':crypto')
     implementation project(':network')

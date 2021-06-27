@@ -1,8 +1,8 @@
 package uk.co.nesbit.crypto
 
-import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
-import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
-import com.goterl.lazycode.lazysodium.interfaces.Sign
+import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
+import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
+import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
