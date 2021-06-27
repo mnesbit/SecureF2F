@@ -3,6 +3,7 @@ package uk.co.nesbit.network.api
 import uk.co.nesbit.utils.printHexBinary
 import java.net.URL
 import java.security.PublicKey
+import java.util.*
 
 interface Address {
     val actorName: String
@@ -44,14 +45,14 @@ class PublicAddress(val host: String, val port: Int) : Address {
 
         other as PublicAddress
 
-        if (host.toUpperCase() != other.host.toUpperCase()) return false
+        if (host.uppercase(Locale.getDefault()) != other.host.uppercase(Locale.getDefault())) return false
         if (port != other.port) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = host.toUpperCase().hashCode()
+        var result = host.uppercase(Locale.getDefault()).hashCode()
         result = 31 * result + port
         return result
     }

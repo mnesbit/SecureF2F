@@ -1,12 +1,12 @@
 package uk.co.nesbit.crypto
 
 import com.google.crypto.tink.subtle.Ed25519Sign
-import com.goterl.lazycode.lazysodium.LazySodiumJava
-import com.goterl.lazycode.lazysodium.SodiumJava
-import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman
-import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
-import com.goterl.lazycode.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
-import com.goterl.lazycode.lazysodium.interfaces.Sign
+import com.goterl.lazysodium.LazySodiumJava
+import com.goterl.lazysodium.SodiumJava
+import com.goterl.lazysodium.interfaces.DiffieHellman
+import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
+import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
+import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
 import java.io.ByteArrayOutputStream
 import java.security.KeyPair

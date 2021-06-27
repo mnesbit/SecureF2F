@@ -204,7 +204,7 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         signature.verify(bytes)
 
-        bytes[0] = 'k'.toByte()
+        bytes[0] = 'k'.code.toByte()
 
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
@@ -218,7 +218,7 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         signature.verify(bytes)
 
-        bytes[0] = 'k'.toByte()
+        bytes[0] = 'k'.code.toByte()
 
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
@@ -232,7 +232,7 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         signature.verify(bytes)
 
-        bytes[0] = 'k'.toByte()
+        bytes[0] = 'k'.code.toByte()
 
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
@@ -377,7 +377,7 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         signature.verify(bytes)
 
-        bytes[0] = 'k'.toByte()
+        bytes[0] = 'k'.code.toByte()
 
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
@@ -485,7 +485,7 @@ class CryptoHelpersTest {
         val signature = keyPair.sign(bytes)
         signature.verify(bytes)
 
-        bytes[0] = 'k'.toByte()
+        bytes[0] = 'k'.code.toByte()
 
         assertFailsWith<SignatureException> {
             signature.verify(bytes)

@@ -9,7 +9,7 @@ fun concatByteArrays(vararg concat: ByteArray): ByteArray {
     if (concat.isEmpty()) {
         return ByteArray(0)
     }
-    val length = concat.sumBy { it.size }
+    val length = concat.sumOf { it.size }
     val output = ByteArray(length)
     var offset = 0
     for (segment in concat) {
