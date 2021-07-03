@@ -3,8 +3,6 @@ package uk.co.nesbit.crypto.ratchet
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
-import org.bouncycastle.crypto.params.KeyParameter
-import org.bouncycastle.crypto.params.ParametersWithIV
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
@@ -17,7 +15,6 @@ import java.io.IOException
 import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
-import java.util.*
 import javax.crypto.AEADBadTagException
 
 // Based upon header encrypted Axolotl Ratchet/Double ratchet protocol
@@ -47,14 +44,17 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         private val emptyIv = ByteArray(CHACHA_NONCE_SIZE_BYTES)
         private val INITIAL_SECRET_CONTEXT = "Starting Secrets".toByteArray(Charsets.UTF_8)
         private val ROOT_CHAIN_CONTEXT = "Root Key Chaining".toByteArray(Charsets.UTF_8)
-        private val CHAIN_KEY_CONST1 = ByteArray(1, { 0x42 })
-        private val CHAIN_KEY_CONST2 = ByteArray(1, { 0x69 })
+        private val CHAIN_KEY_CONST1 = ByteArray(1) { 0x42 }
+        private val CHAIN_KEY_CONST2 = ByteArray(1) { 0x69 }
         private val CHAIN_KEY_CONST3 = "Pootle".toByteArray(Charsets.UTF_8)
 
-        private fun sharedKeysFromStartingSecret(startingSessionSecret: ByteArray, bobDHKey: PublicKey): Triple<ByteArray, MessageKey, MessageKey> {
+        private fun sharedKeysFromStartingSecret(
+            startingSessionSecret: ByteArray,
+            bobDHKey: PublicKey
+        ): Triple<ByteArray, MessageKey, MessageKey> {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
 
-            hkdf.init(HKDFParameters(startingSessionSecret, INITIAL_SECRET_CONTEXT, bobDHKey.encoded))
+            hkdf.init(HKDFParameters(startingSessionSecret, bobDHKey.encoded, INITIAL_SECRET_CONTEXT))
             val hkdfKey = ByteArray(CHAIN_KEY_SIZE + 2 * MESSAGE_KEY_SIZE)
             hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
             val splits = hkdfKey.splitByteArrays(CHAIN_KEY_SIZE, MESSAGE_KEY_SIZE, MESSAGE_KEY_SIZE)
@@ -80,7 +80,7 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
 
         private fun kdfRootKeys(rootKey: ByteArray, sessionDHOutput: ByteArray): RootKeyUpdate {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
-            hkdf.init(HKDFParameters(rootKey, ROOT_CHAIN_CONTEXT, sessionDHOutput))
+            hkdf.init(HKDFParameters(sessionDHOutput, rootKey, ROOT_CHAIN_CONTEXT))
             val hkdfKey = ByteArray(2 * CHAIN_KEY_SIZE + MESSAGE_KEY_SIZE)
             hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
             val splits = hkdfKey.splitByteArrays(CHAIN_KEY_SIZE, CHAIN_KEY_SIZE, MESSAGE_KEY_SIZE)
@@ -104,25 +104,34 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
                              secureRandom: SecureRandom = newSecureRandom(),
                              maxSkip: Int = DEFAULT_MAX_SKIP,
                              maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
-            val aliceDHKeyPair = generateCurve25519DHKeyPair(secureRandom)
-            val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKey)
+            val aliceDHKeyPair = when (bobDHKey) {
+                is Curve25519PublicKey -> generateCurve25519DHKeyPair(secureRandom)
+                is NACLCurve25519PublicKey -> generateNACLDHKeyPair(secureRandom)
+                else -> throw IllegalArgumentException("Unknown key type")
+            }
+            val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(
+                startingSessionSecret,
+                bobDHKey
+            )
             val sessionSharedDHSecret = getSharedDHSecret(aliceDHKeyPair, bobDHKey)
             val (rootKey, chainKey, senderNextHeaderKey) = kdfRootKeys(startingKey, sessionSharedDHSecret)
-            return RatchetState(senderDHKeyPair = aliceDHKeyPair,
-                    receiverDHKey = bobDHKey,
-                    rootKey = rootKey,
-                    senderChainKey = chainKey,
-                    senderHeaderKey = sharedHeaderKeyA,
-                    senderNextHeaderKey = senderNextHeaderKey,
-                    senderSequenceNumber = 0,
-                    receiverChainKey = emptyKey,
-                    receiverHeaderKey = MessageKey(emptyKey, emptyIv),
-                    receiverNextHeaderKey = sharedNextHeaderKeyB,
-                    receiverSequenceNumber = 0,
-                    previousSenderChainNumber = 0,
-                    maxSkip = maxSkip,
-                    maxLost = maxLost,
-                    secureRandom = secureRandom)
+            return RatchetState(
+                senderDHKeyPair = aliceDHKeyPair,
+                receiverDHKey = bobDHKey,
+                rootKey = rootKey,
+                senderChainKey = chainKey,
+                senderHeaderKey = sharedHeaderKeyA,
+                senderNextHeaderKey = senderNextHeaderKey,
+                senderSequenceNumber = 0,
+                receiverChainKey = emptyKey,
+                receiverHeaderKey = MessageKey(emptyKey, emptyIv),
+                receiverNextHeaderKey = sharedNextHeaderKeyB,
+                receiverSequenceNumber = 0,
+                previousSenderChainNumber = 0,
+                maxSkip = maxSkip,
+                maxLost = maxLost,
+                secureRandom = secureRandom
+            )
         }
 
         fun ratchetInitBob(startingSessionSecret: ByteArray,
@@ -164,55 +173,46 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     }
 
     private class HeaderKey(val key: ByteArray, val iv: ByteArray, val sequenceNumber: Int) {
+        fun toMessageKey(): MessageKey {
+            return MessageKey(key, iv)
+        }
+
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
 
             other as HeaderKey
 
-            if (!Arrays.equals(key, other.key)) return false
-            if (!Arrays.equals(iv, other.iv)) return false
+            if (!key.contentEquals(other.key)) return false
+            if (!iv.contentEquals(other.iv)) return false
             if (sequenceNumber != other.sequenceNumber) return false
 
             return true
         }
 
         override fun hashCode(): Int {
-            var result = Arrays.hashCode(key)
-            result = 31 * result + Arrays.hashCode(iv)
+            var result = key.contentHashCode()
+            result = 31 * result + iv.contentHashCode()
             result = 31 * result + sequenceNumber
             return result
         }
     }
 
-    private fun headerEncrypt(key: ByteArray, iv: ByteArray, plaintext: ByteArray): ByteArray {
-        val encrypter = ChaCha20Poly1305.Encode(ParametersWithIV(KeyParameter(key), iv))
-        return encrypter.encodeCiphertext(plaintext, null)
-    }
-
-    private fun headerDecrypt(key: ByteArray, iv: ByteArray, ciphertext: ByteArray): ByteArray {
-        val encrypter = ChaCha20Poly1305.Decode(ParametersWithIV(KeyParameter(key), iv))
-        return encrypter.decodeCiphertext(ciphertext, null)
-    }
-
-    private fun meassageAadEncrypt(key: ByteArray, iv: ByteArray, plaintext: ByteArray, aad: ByteArray? = null): ByteArray {
-        val encrypter = ChaCha20Poly1305.Encode(ParametersWithIV(KeyParameter(key), iv))
-        return encrypter.encodeCiphertext(plaintext, aad)
-    }
-
-    private fun meassageAadDecrypt(key: ByteArray, iv: ByteArray, ciphertext: ByteArray, aad: ByteArray? = null): ByteArray {
-        val encrypter = ChaCha20Poly1305.Decode(ParametersWithIV(KeyParameter(key), iv))
-        return encrypter.decodeCiphertext(ciphertext, aad)
+    private fun encryptHeader(header: RatchetHeader, headerKey: MessageKey): ByteArray {
+        val nonce = ByteArray(CHACHA_NONCE_SIZE_BYTES)
+        secureRandom.nextBytes(nonce)
+        val headerNonce = xorByteArrays(headerKey.iv, nonce)
+        return concatByteArrays(nonce, chaChaEncrypt(headerKey.key, headerNonce, header.serialize()))
     }
 
     fun encryptMessage(plaintext: ByteArray, aad: ByteArray? = null): ByteArray {
         val chainUpdate = kdfChainKey(senderChainKey)
         senderChainKey = chainUpdate.newChainKey
         val header = RatchetHeader(senderDHKeyPair.public, previousSenderChainNumber, senderSequenceNumber)
-        val encryptedHeader = headerEncrypt(senderHeaderKey.key, senderHeaderKey.iv, header.serialize())
+        val encryptedHeader = encryptHeader(header, senderHeaderKey)
         ++senderSequenceNumber
         val mergedAad = if (aad == null) encryptedHeader else concatByteArrays(encryptedHeader, aad)
-        val encryptedPayload = meassageAadEncrypt(chainUpdate.messageKey, chainUpdate.iv, plaintext, mergedAad)
+        val encryptedPayload = chaChaEncrypt(chainUpdate.messageKey, chainUpdate.iv, plaintext, mergedAad)
         val ratchetMessage = RatchetMessage(encryptedHeader, encryptedPayload)
         return ratchetMessage.serialize()
     }
@@ -220,20 +220,11 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
     private fun tryDecryptWithSkippedKeys(ratchetMessage: RatchetMessage, aad: ByteArray?): ByteArray? {
         for ((headerKey, messageKey) in skippedMessageKeys) {
             try {
-                val decryptedHeaderBytes = headerDecrypt(headerKey.key, headerKey.iv, ratchetMessage.encryptedHeader)
-                val decryptedHeader = try {
-                    RatchetHeader.deserialize(decryptedHeaderBytes)
-                } catch (ex: IOException) {
-                    continue
-                }
-                val reserialized = decryptedHeader.serialize()
-                if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
-                    throw AEADBadTagException()
-                }
+                val decryptedHeader = decryptHeader(ratchetMessage.encryptedHeader, headerKey.toMessageKey())
                 if (decryptedHeader.sequenceNumber == headerKey.sequenceNumber) {
                     skippedMessageKeys.remove(headerKey)
                     val mergedAad = if (aad == null) ratchetMessage.encryptedHeader else concatByteArrays(ratchetMessage.encryptedHeader, aad)
-                    return meassageAadDecrypt(messageKey.key, messageKey.iv, ratchetMessage.encryptedPayload, mergedAad)
+                    return chaChaDecrypt(messageKey.key, messageKey.iv, ratchetMessage.encryptedPayload, mergedAad)
                 }
             } catch (ex: AEADBadTagException) {
                 // Ignore
@@ -249,7 +240,7 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         if ((skippedMessageKeys.size + (until - receiverSequenceNumber)) > maxLost) {
             throw RatchetException()
         }
-        if (!Arrays.equals(receiverChainKey, emptyKey)) {
+        if (!receiverChainKey.contentEquals(emptyKey)) {
             while (receiverSequenceNumber < until) {
                 val chainUpdate = kdfChainKey(receiverChainKey)
                 receiverChainKey = chainUpdate.newChainKey
@@ -272,7 +263,11 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         rootKey = receiverUpdate.newRootKey
         receiverChainKey = receiverUpdate.chainKeyInput
         receiverNextHeaderKey = receiverUpdate.nextHeaderKey
-        senderDHKeyPair = generateCurve25519DHKeyPair(secureRandom)
+        senderDHKeyPair = when (receiverDHKey) {
+            is Curve25519PublicKey -> generateCurve25519DHKeyPair(secureRandom)
+            is NACLCurve25519PublicKey -> generateNACLDHKeyPair(secureRandom)
+            else -> throw IllegalArgumentException("Unknown key type")
+        }
         val senderUpdate = kdfRootKeys(rootKey, getSharedDHSecret(senderDHKeyPair, receiverDHKey))
         rootKey = senderUpdate.newRootKey
         senderChainKey = senderUpdate.chainKeyInput
@@ -281,33 +276,34 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
 
     data class HeaderDecryptResult(val decryptedHeader: RatchetHeader, val doRatchetStep: Boolean)
 
+    private fun decryptHeader(encryptedHeader: ByteArray, headerKey: MessageKey): RatchetHeader {
+        val splits =
+            encryptedHeader.splitByteArrays(CHACHA_NONCE_SIZE_BYTES, encryptedHeader.size - CHACHA_NONCE_SIZE_BYTES)
+        val nonce = splits[0]
+        val headerCiphertext = splits[1]
+        val nextHeaderNonce = xorByteArrays(headerKey.iv, nonce)
+        val decryptedHeaderBytes = chaChaDecrypt(headerKey.key, nextHeaderNonce, headerCiphertext)
+        val decryptedHeader = try {
+            RatchetHeader.deserialize(decryptedHeaderBytes)
+        } catch (ex: IOException) {
+            throw AEADBadTagException()
+        }
+        val reserialized = decryptedHeader.serialize()
+        if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
+            throw AEADBadTagException()
+        }
+        return decryptedHeader
+    }
+
     private fun decryptHeader(encryptedHeader: ByteArray): HeaderDecryptResult {
         try {
-            val decryptedHeaderBytes = headerDecrypt(receiverNextHeaderKey.key, receiverNextHeaderKey.iv, encryptedHeader)
-            val decryptedHeader = try {
-                RatchetHeader.deserialize(decryptedHeaderBytes)
-            } catch (ex: IOException) {
-                throw AEADBadTagException()
-            }
-            val reserialized = decryptedHeader.serialize()
-            if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
-                throw AEADBadTagException()
-            }
+            val decryptedHeader = decryptHeader(encryptedHeader, receiverNextHeaderKey)
             return HeaderDecryptResult(decryptedHeader, true)
         } catch (ex: AEADBadTagException) {
             // Ignore
         }
         try {
-            val decryptedHeaderBytes = headerDecrypt(receiverHeaderKey.key, receiverHeaderKey.iv, encryptedHeader)
-            val decryptedHeader = try {
-                RatchetHeader.deserialize(decryptedHeaderBytes)
-            } catch (ex: IOException) {
-                throw AEADBadTagException()
-            }
-            val reserialized = decryptedHeader.serialize()
-            if (!org.bouncycastle.util.Arrays.constantTimeAreEqual(decryptedHeaderBytes, reserialized)) {
-                throw AEADBadTagException()
-            }
+            val decryptedHeader = decryptHeader(encryptedHeader, receiverHeaderKey)
             return HeaderDecryptResult(decryptedHeader, false)
         } catch (ex: AEADBadTagException) {
             // Ignore
@@ -338,7 +334,7 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         val chainUpdate = kdfChainKey(receiverChainKey)
         val mergedAad = if (aad == null) ratchetMessage.encryptedHeader else concatByteArrays(ratchetMessage.encryptedHeader, aad)
         val decrypted = try {
-            meassageAadDecrypt(chainUpdate.messageKey, chainUpdate.iv, ratchetMessage.encryptedPayload, mergedAad)
+            chaChaDecrypt(chainUpdate.messageKey, chainUpdate.iv, ratchetMessage.encryptedPayload, mergedAad)
         } catch (ex: AEADBadTagException) {
             throw RatchetException()
         }

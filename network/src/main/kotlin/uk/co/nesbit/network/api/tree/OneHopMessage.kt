@@ -8,13 +8,13 @@ import uk.co.nesbit.network.api.Message
 
 
 class OneHopMessage private constructor(
-        private val schemaType: ByteArray,
-        private val payload: ByteArray
+    private val schemaType: ByteArray,
+    private val payload: ByteArray
 ) : Message {
     constructor(oneHopMessageRecord: GenericRecord) :
             this(
-                    oneHopMessageRecord.getTyped("schemaFingerprint"),
-                    oneHopMessageRecord.getTyped("payload")
+                oneHopMessageRecord.getTyped("schemaFingerprint"),
+                oneHopMessageRecord.getTyped("payload")
             )
 
     init {
@@ -24,7 +24,7 @@ class OneHopMessage private constructor(
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val oneHopMessageSchema: Schema = Schema.Parser()
-                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/onehopmessage.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/network/api/tree/onehopmessage.avsc"))
 
         private val schemas = SchemaRegistry(
             listOf(

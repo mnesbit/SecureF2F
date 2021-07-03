@@ -116,4 +116,29 @@ class UtilsTest {
         assertEquals(data2, data2Deserialized)
         data2Deserialized.verify(keys.signingKeys.public)
     }
+
+    @Test
+    fun `conversion test`() {
+        for (i in -1000..1000) {
+            val bytes = i.toByteArray()
+            val backToInt = bytes.toInt()
+            assertEquals(i, backToInt)
+            val longValue = i.toLong()
+            val longBytes = longValue.toByteArray()
+            val backToLong = longBytes.toLong()
+            assertEquals(longValue, backToLong)
+        }
+        val minIntBytes = Int.MIN_VALUE.toByteArray()
+        val minInt = minIntBytes.toInt()
+        assertEquals(Int.MIN_VALUE, minInt)
+        val maxIntBytes = Int.MAX_VALUE.toByteArray()
+        val maxInt = maxIntBytes.toInt()
+        assertEquals(Int.MAX_VALUE, maxInt)
+        val minLongBytes = Long.MIN_VALUE.toByteArray()
+        val minLong = minLongBytes.toLong()
+        assertEquals(Long.MIN_VALUE, minLong)
+        val maxLongBytes = Long.MAX_VALUE.toByteArray()
+        val maxLong = maxLongBytes.toLong()
+        assertEquals(Long.MAX_VALUE, maxLong)
+    }
 }

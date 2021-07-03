@@ -21,14 +21,22 @@ import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.experimental.xor
 import kotlin.random.Random
 
+enum class MessageWatchTypes {
+    ADDRESS_UPDATE,
+    CLIENT_DATA_MESSAGES,
+}
+
+class MessageWatchRequest(val subscription: EnumSet<MessageWatchTypes>)
+
 class ClientDhtRequest(
-        val key: SecureHash,
-        val data: ByteArray?
+    val key: SecureHash,
+    val data: ByteArray?
 ) {
     override fun toString(): String {
         return "ClientDhtRequest($key, ${data?.printHexBinary()})"
@@ -46,7 +54,7 @@ class ClientDhtResponse(
 }
 
 class ClientSendMessage(val destination: SecureHash, val sessionMessage: DataPacket)
-class ClientSendResult(val destination: SecureHash, val sessionMessage: DataPacket, val sent: Boolean)
+class ClientSendResult(val destination: SecureHash, val sent: Boolean)
 class ClientReceivedMessage(val source: SecureHash, val sessionMessage: DataPacket)
 
 class HopRoutingActor(
@@ -104,7 +112,8 @@ class HopRoutingActor(
 
     }
 
-    private class CheckRoutes()
+    private class CheckRoutes
+
     private class KBucket(
         val xorDistanceMin: Int, // inclusive
         val xorDistanceMax: Int // exclusive
@@ -113,11 +122,11 @@ class HopRoutingActor(
     }
 
     private class RequestTracker(
-            val request: DhtRequest,
-            val sent: Instant,
-            val expire: Instant,
-            val target: NetworkAddressInfo,
-            val parent: ClientRequestState?
+        val request: DhtRequest,
+        val sent: Instant,
+        val expire: Instant,
+        val target: NetworkAddressInfo,
+        val parent: ClientRequestState?
     )
 
     private class ClientRequestState(
@@ -129,7 +138,7 @@ class HopRoutingActor(
         var responses: Int = 0
     )
 
-    private val owners = mutableSetOf<ActorRef>()
+    private val owners = mutableListOf<Pair<MessageWatchRequest, ActorRef>>()
     private var networkAddress: NetworkAddressInfo? = null
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
@@ -176,7 +185,7 @@ class HopRoutingActor(
     override fun onReceive(message: Any) {
         when (message) {
             is CheckRoutes -> onCheckRoutes()
-            is WatchRequest -> onWatchRequest()
+            is MessageWatchRequest -> onWatchRequest(message)
             is Terminated -> onDeath(message)
             is NeighbourUpdate -> onNeighbourUpdate(message)
             is NeighbourReceivedGreedyMessage -> onNeighbourReceivedGreedyMessage(message)
@@ -187,16 +196,29 @@ class HopRoutingActor(
         }
     }
 
-    private fun onWatchRequest() {
+    private fun sendToOwners(message: Any, type: MessageWatchTypes) {
+        for (owner in owners) {
+            if (owner.first.subscription.contains(type)) {
+                owner.second.tell(message, self)
+            }
+        }
+    }
+
+    private fun onWatchRequest(message: MessageWatchRequest) {
         //log().info("WatchRequest from $sender")
-        if (sender !in owners) {
-            owners += sender
+        if (owners.none { it.second == sender }) {
+            owners += Pair(message, sender)
             context.watch(sender)
+            if (message.subscription.contains(MessageWatchTypes.ADDRESS_UPDATE)
+                && networkAddress != null
+            ) {
+                sender.tell(networkAddress, self)
+            }
         }
     }
 
     private fun onDeath(message: Terminated) {
-        owners -= message.actor
+        owners.removeIf { it.second == message.actor }
     }
 
     private fun onCheckRoutes() {
@@ -272,7 +294,13 @@ class HopRoutingActor(
             if (ChronoUnit.MILLIS.between(clientRequest.sendTime, now) > CLIENT_REQUEST_TIMEOUT_MS) {
                 clientRequestItr.remove()
                 log().info("Timeout expired client request to ${clientRequest.request.key}")
-                clientRequest.sender.tell(ClientDhtResponse(clientRequest.request.key, false, clientRequest.request.data), self)
+                clientRequest.sender.tell(
+                    ClientDhtResponse(
+                        clientRequest.request.key,
+                        false,
+                        clientRequest.request.data
+                    ), self
+                )
             }
         }
     }
@@ -280,7 +308,8 @@ class HopRoutingActor(
     private fun expireClientRequest(request: RequestTracker, now: Instant) {
         val parent = request.parent
         if (parent == null
-                || !outstandingClientRequests.contains(parent)) {
+            || !outstandingClientRequests.contains(parent)
+        ) {
             return
         }
         parent.failed += 1
@@ -302,22 +331,24 @@ class HopRoutingActor(
         sendDhtRequest(null, near, networkAddress!!.identity.id, null, now)
     }
 
-    private fun sendDhtRequest(parent: ClientRequestState?,
-                               destination: NetworkAddressInfo,
-                               key: SecureHash,
-                               data: ByteArray?,
-                               now: Instant) {
+    private fun sendDhtRequest(
+        parent: ClientRequestState?,
+        destination: NetworkAddressInfo,
+        key: SecureHash,
+        data: ByteArray?,
+        now: Instant
+    ) {
         val nearestTo = findNearest(destination.identity.id, K)
         var requestId = keyService.random.nextLong()
         if (requestId < 0L) {
             requestId = -requestId
         }
         val request = DhtRequest(
-                requestId,
-                key,
-                networkAddress!!,
-                nearestTo,
-                data
+            requestId,
+            key,
+            networkAddress!!,
+            nearestTo,
+            data
         )
         val hops = estimateMessageHops(destination)
         tokens -= 2.0 * hops
@@ -332,8 +363,8 @@ class HopRoutingActor(
     }
 
     private fun logNearestNodeGap(
-            nearest: List<NetworkAddressInfo>,
-            distMin: Int
+        nearest: List<NetworkAddressInfo>,
+        distMin: Int
     ) {
         if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
             val gap = nearest.map { xorDistance(it.identity.id, networkAddress!!.identity.id) }.minOrNull()!! - distMin
@@ -362,8 +393,8 @@ class HopRoutingActor(
                 }
             }
             if (!bestDist.containsKey(networkAddress!!.identity.id)
-                    || gapNEstimate != bestDist.size
-                    || bestDist[networkAddress!!.identity.id] != distMin
+                || gapNEstimate != bestDist.size
+                || bestDist[networkAddress!!.identity.id] != distMin
             ) {
                 bestDist[networkAddress!!.identity.id] = distMin
                 gapCalcStable = 0
@@ -376,8 +407,8 @@ class HopRoutingActor(
     }
 
     private fun sendGreedyMessage(
-            destination: NetworkAddressInfo,
-            message: Message
+        destination: NetworkAddressInfo,
+        message: Message
     ) {
         val cachedPrivateRoute = routeCache.getIfPresent(destination.identity.id)
         if (cachedPrivateRoute != null) {
@@ -386,24 +417,24 @@ class HopRoutingActor(
         }
         val wrapper = OneHopMessage.createOneHopMessage(message)
         val encrypted = Ecies.encryptMessage(
-                wrapper.serialize(),
-                null,
-                destination.identity.identity.diffieHellmanPublicKey,
-                keyService.random
+            wrapper.serialize(),
+            null,
+            destination.identity.identity.diffieHellmanPublicKey,
+            keyService.random
         )
         val sendRequest = NeighbourSendGreedyMessage(destination, encrypted)
         neighbourLinkActor.tell(sendRequest, self)
     }
 
     private fun sendSphinxMessage(
-            replyRoute: List<VersionedIdentity>,
-            message: Message
+        replyRoute: List<VersionedIdentity>,
+        message: Message
     ) {
         val wrapper = OneHopMessage.createOneHopMessage(message)
         val sphinxMessage = sphinxEncoder.makeMessage(
-                replyRoute.map { it.identity },
-                wrapper.serialize(),
-                keyService.random
+            replyRoute.map { it.identity },
+            wrapper.serialize(),
+            keyService.random
         )
         val sphinxRoutedMessage = SphinxRoutedMessage(sphinxMessage.messageBytes)
         val neighbourSend = NeighbourSendSphinxMessage(replyRoute.first().id, sphinxRoutedMessage)
@@ -442,7 +473,7 @@ class HopRoutingActor(
         bucket.nodes.removeIf { it.identity.id == node.identity.id }
         val prefix = xorPrefix(node.identity.id, networkAddress!!.identity.id)
         val subBucket = bucket.nodes
-                .filter { xorPrefix(it.identity.id, networkAddress!!.identity.id) == prefix }
+            .filter { xorPrefix(it.identity.id, networkAddress!!.identity.id) == prefix }
         if (subBucket.size >= K) { // we store 'sub-buckets' like KAD to enhance hop gain per query
             bucket.nodes.add(0, node)
             if (bucket.xorDistanceMax - bucket.xorDistanceMin > 1) {
@@ -453,8 +484,8 @@ class HopRoutingActor(
                 val midDist = xorDistance(networkAddress!!.identity.id, mid.identity.id)
                 val (left, right) = bucket.nodes.partition {
                     xorDistance(
-                            networkAddress!!.identity.id,
-                            it.identity.id
+                        networkAddress!!.identity.id,
+                        it.identity.id
                     ) < midDist
                 }
                 if (left.isNotEmpty() && right.isNotEmpty()) {
@@ -523,9 +554,7 @@ class HopRoutingActor(
                 ++index
             }
         }
-        for (owner in owners) {
-            owner.tell(neighbourUpdate.localId, self)
-        }
+        sendToOwners(neighbourUpdate.localId, MessageWatchTypes.ADDRESS_UPDATE)
     }
 
     private fun onNeighbourReceivedGreedyMessage(payloadMessage: NeighbourReceivedGreedyMessage) {
@@ -535,9 +564,9 @@ class HopRoutingActor(
         }
         val decrypted = try {
             Ecies.decryptMessage(
-                    payloadMessage.payload,
-                    null,
-                    networkAddress!!.identity.identity.diffieHellmanPublicKey
+                payloadMessage.payload,
+                null,
+                networkAddress!!.identity.identity.diffieHellmanPublicKey
             ) { x ->
                 keyService.getSharedDHSecret(networkAddress!!.identity.id, x)
             }
@@ -621,7 +650,8 @@ class HopRoutingActor(
     private fun processResponseForClient(originalRequest: RequestTracker, response: DhtResponse) {
         val parent = originalRequest.parent
         if (parent == null
-                || !outstandingClientRequests.contains(parent)) {
+            || !outstandingClientRequests.contains(parent)
+        ) {
             return
         }
         val now = Clock.systemUTC().instant()
@@ -704,8 +734,8 @@ class HopRoutingActor(
         }
         //log().info("received sphinx routed message")
         val messageResult = sphinxEncoder.processMessage(
-                payloadMessage.messageBytes,
-                networkAddress!!.identity.id
+            payloadMessage.messageBytes,
+            networkAddress!!.identity.id
         ) { remotePubKey -> keyService.getSharedDHSecret(networkAddress!!.identity.id, remotePubKey) }
         if (messageResult.valid) {
             if (messageResult.finalPayload != null) {
@@ -767,7 +797,7 @@ class HopRoutingActor(
     private fun onClientSendMessage(message: ClientSendMessage) {
         if (networkAddress == null) {
             log().warning("Node not ready for client data")
-            sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+            sender.tell(ClientSendResult(message.destination, false), self)
             return
         }
         val clientDataMessage = ClientDataMessage(
@@ -789,7 +819,7 @@ class HopRoutingActor(
                 val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
                 if (destinationAddress == null) {
                     log().warning("Node not known ${message.destination}")
-                    sender.tell(ClientSendResult(message.destination, message.sessionMessage, false), self)
+                    sender.tell(ClientSendResult(message.destination, false), self)
                     return
                 }
                 clientCache.put(destinationAddress.identity.id, destinationAddress)
@@ -798,7 +828,7 @@ class HopRoutingActor(
         } else {
             sendSphinxMessage(knownPath, clientDataMessage)
         }
-        sender.tell(ClientSendResult(message.destination, message.sessionMessage, true), self)
+        sender.tell(ClientSendResult(message.destination, true), self)
     }
 
     private fun processClientDataMessage(clientDataMessage: ClientDataMessage) {
@@ -813,9 +843,7 @@ class HopRoutingActor(
             clientDataMessage.payload
         )
         val receivedMessage = ClientReceivedMessage(clientDataMessage.source.identity.id, sessionMessage)
-        for (owner in owners) {
-            owner.tell(receivedMessage, self)
-        }
+        sendToOwners(receivedMessage, MessageWatchTypes.CLIENT_DATA_MESSAGES)
     }
 
 }

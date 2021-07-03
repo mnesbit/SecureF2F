@@ -4,6 +4,7 @@ import org.apache.avro.Conversions
 import org.apache.avro.Schema
 import org.apache.avro.SchemaNormalization
 import org.apache.avro.generic.*
+import org.apache.avro.io.DecoderFactory
 import org.apache.avro.io.EncoderFactory
 import org.apache.avro.util.Utf8
 import uk.co.nesbit.utils.printHexBinary
@@ -62,6 +63,18 @@ fun GenericRecord.serialize(): ByteArray {
     }
 }
 
+fun GenericRecord.serializeJSON(): String {
+    val datumWriter = GenericDatumWriter<GenericRecord>(schema)
+    val byteStream = ByteArrayOutputStream()
+    byteStream.use {
+        val jsonEncoder = EncoderFactory().jsonEncoder(schema, it, false)
+        datumWriter.write(this, jsonEncoder)
+        jsonEncoder.flush()
+        byteStream.flush()
+        return String(byteStream.toByteArray(), Charsets.UTF_8)
+    }
+}
+
 fun GenericArray<GenericRecord>.serialize(): ByteArray {
     val datumWriter = GenericDatumWriter<GenericArray<GenericRecord>>(this.schema)
     val byteStream = ByteArrayOutputStream()
@@ -97,11 +110,25 @@ fun Schema.deserialize(bytes: ByteArray): GenericRecord {
     return record
 }
 
+fun Schema.deserializeJSON(json: String): GenericRecord {
+    val datumReader = GenericDatumReader<GenericRecord>(this)
+    val jsonDecoder = DecoderFactory().jsonDecoder(this, json)
+    return datumReader.read(null, jsonDecoder)
+}
+
 @Suppress("UNCHECKED_CAST")
 inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     val value = this.get(fieldName) ?: return null as T
     val clazz = T::class.java
     if (AvroConvertible::class.java.isAssignableFrom(clazz)) {
+        if (this.schema.getField(fieldName)
+                .schema().isUnion
+        ) { // assume union base is AvroConvertible to avoid simple nullable unions
+            val unionSchema = (value as GenericRecord).schema
+            val unionClazz = clazz.classLoader.loadClass(unionSchema.fullName) // require named matches class name
+            val unionConstructor = unionClazz.getConstructor(GenericRecord::class.java)
+            return getTyped(fieldName) { record -> unionConstructor.newInstance(record) as T }
+        }
         val constructor = clazz.getConstructor(GenericRecord::class.java)
         return constructor.newInstance(value)
     }
@@ -297,11 +324,11 @@ inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
         put(fieldName, null)
         return
     }
+    val clazz = T::class.java
     if (value is AvroConvertible) {
         put(fieldName, value.toGenericRecord())
         return
     }
-    val clazz = T::class.java
     val pluginHandlers = AvroTypeHelpers.helpers[clazz]
     if (pluginHandlers != null) {
         val encoder = pluginHandlers.enc as AvroEncoder<T>

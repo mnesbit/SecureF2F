@@ -8,23 +8,29 @@ import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTE
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
 import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
+import org.bouncycastle.crypto.params.KeyParameter
+import org.bouncycastle.crypto.params.ParametersWithIV
 import java.io.ByteArrayOutputStream
-import java.security.KeyPair
-import java.security.PrivateKey
-import java.security.PublicKey
-import java.security.SecureRandom
+import java.security.*
 import java.security.spec.ECGenParameterSpec
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 val nacl: Sign.Native = LazySodiumJava(SodiumJava())
 val naclDH: DiffieHellman.Native = LazySodiumJava(SodiumJava())
 
+object GCMConstants {
+    const val GCM_KEY_SIZE = 32 // in bytes
+    const val GCM_NONCE_LENGTH = 12 // in bytes
+    const val GCM_TAG_LENGTH = 16 // in bytes
+}
+
 fun newSecureRandom(): SecureRandom {
-    return if (System.getProperty("os.name") == "Linux") {
-        SecureRandom.getInstance("NativePRNGNonBlocking")
-    } else {
-        SecureRandom.getInstanceStrong()
-    }
+    return SecureRandom.getInstance(
+        "DRBG",
+        DrbgParameters.instantiation(256, DrbgParameters.Capability.PR_AND_RESEED, "random enough?".toByteArray())
+    )
 }
 
 fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -210,3 +216,145 @@ fun getHMAC(privateKey: ByteArray, data: ByteArray): SecureHash {
         SecureHash("HmacSHA256", doFinal())
     }
 }
+
+fun aesGCMEncryptMessage(
+    key: ByteArray,
+    secureRandom: SecureRandom = newSecureRandom(),
+    plainText: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == GCMConstants.GCM_KEY_SIZE) {
+        "GCM key must be 32 bytes"
+    }
+    val aesNonce = ByteArray(GCMConstants.GCM_NONCE_LENGTH)
+    secureRandom.nextBytes(aesNonce)
+    return concatByteArrays(aesNonce, aesGCMEncrypt(key, aesNonce, plainText, aad))
+}
+
+fun aesGCMEncrypt(
+    key: ByteArray,
+    aesNonce: ByteArray,
+    plainText: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == GCMConstants.GCM_KEY_SIZE) {
+        "GCM key must be 32 bytes"
+    }
+    require(aesNonce.size == GCMConstants.GCM_NONCE_LENGTH) {
+        "GCM nonce must be 12 bytes"
+    }
+    val aesKey = SecretKeySpec(key, "AES")
+    return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
+        val spec = GCMParameterSpec(GCMConstants.GCM_TAG_LENGTH * 8, aesNonce)
+        init(Cipher.ENCRYPT_MODE, aesKey, spec)
+        if (aad != null) {
+            updateAAD(aad)
+        }
+        doFinal(plainText)
+    }
+}
+
+fun aesGCMDecryptMessage(
+    key: ByteArray,
+    cipherTextNonceAndTag: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == GCMConstants.GCM_KEY_SIZE) {
+        "GCM key must be 32 bytes"
+    }
+    val splits =
+        cipherTextNonceAndTag.splitByteArrays(
+            GCMConstants.GCM_NONCE_LENGTH,
+            cipherTextNonceAndTag.size - GCMConstants.GCM_NONCE_LENGTH
+        )
+    val aesNonce = splits[0]
+    val cipherTextAndTag = splits[1]
+    return aesGCMDecrypt(key, aesNonce, cipherTextAndTag, aad)
+}
+
+fun aesGCMDecrypt(
+    key: ByteArray,
+    aesNonce: ByteArray,
+    cipherTextAndTag: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == GCMConstants.GCM_KEY_SIZE) {
+        "GCM key must be 32 bytes"
+    }
+    require(aesNonce.size == GCMConstants.GCM_NONCE_LENGTH) {
+        "GCM nonce must be 12 bytes"
+    }
+    val aesKey = SecretKeySpec(key, "AES")
+    return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
+        val spec = GCMParameterSpec(GCMConstants.GCM_TAG_LENGTH * 8, aesNonce)
+        init(Cipher.DECRYPT_MODE, aesKey, spec)
+        if (aad != null) {
+            updateAAD(aad)
+        }
+        doFinal(cipherTextAndTag)
+    }
+}
+
+fun chaChaEncryptMessage(
+    key: ByteArray,
+    secureRandom: SecureRandom = newSecureRandom(),
+    plainText: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES) {
+        "ChaCha20-Poly1305 key must be 32 bytes"
+    }
+    val chaChaNonce = ByteArray(ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES)
+    secureRandom.nextBytes(chaChaNonce)
+    return concatByteArrays(chaChaNonce, chaChaEncrypt(key, chaChaNonce, plainText, aad))
+}
+
+fun chaChaEncrypt(
+    key: ByteArray,
+    chaChaNonce: ByteArray,
+    plainText: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES) {
+        "ChaCha20-Poly1305 key must be 32 bytes"
+    }
+    require(chaChaNonce.size == ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES) {
+        "ChaCha20-Poly1305 nonce must be 12 bytes"
+    }
+    val encrypter = ChaCha20Poly1305.Encode(ParametersWithIV(KeyParameter(key), chaChaNonce))
+    return encrypter.encodeCiphertext(plainText, aad)
+}
+
+fun chaChaDecryptMessage(
+    key: ByteArray,
+    cipherTextNonceAndTag: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES) {
+        "ChaCha20-Poly1305 key must be 32 bytes"
+    }
+    val splits = cipherTextNonceAndTag.splitByteArrays(
+        ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES,
+        cipherTextNonceAndTag.size - ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
+    )
+    val chaChaNonce = splits[0]
+    val cipherTextAndTag = splits[1]
+    return chaChaDecrypt(key, chaChaNonce, cipherTextAndTag, aad)
+}
+
+fun chaChaDecrypt(
+    key: ByteArray,
+    chaChaNonce: ByteArray,
+    cipherTextAndTag: ByteArray,
+    aad: ByteArray? = null
+): ByteArray {
+    require(key.size == ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES) {
+        "ChaCha20-Poly1305 key must be 32 bytes"
+    }
+    require(chaChaNonce.size == ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES) {
+        "ChaCha20-Poly1305 nonce must be 12 bytes"
+    }
+    val decrypter = ChaCha20Poly1305.Decode(ParametersWithIV(KeyParameter(key), chaChaNonce))
+    return decrypter.decodeCiphertext(cipherTextAndTag, aad)
+}
+

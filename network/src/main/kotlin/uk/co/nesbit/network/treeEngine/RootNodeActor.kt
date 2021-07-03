@@ -21,8 +21,8 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
         }
 
         private val supervisorStrategy: SupervisorStrategy = OneForOneStrategy(
-                -1,
-                Duration.Inf()
+            -1,
+            Duration.Inf()
         ) { _ ->
             @Suppress("USELESS_CAST")
             SupervisorStrategy.restart() as SupervisorStrategy.Directive?
@@ -36,8 +36,8 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     private val physicalNetworkActor: ActorRef = when (networkConfig.networkId) {
         is PublicAddress -> {
             context.actorOf(
-                    TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-                    "net"
+                TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
+                "net"
             )
         }
         is URLAddress -> {
@@ -95,9 +95,9 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     }
 
     override fun createReceive(): Receive =
-            ReceiveBuilder()
-                    .match(String::class.java, ::onMessage)
-                    .build()
+        ReceiveBuilder()
+            .match(String::class.java, ::onMessage)
+            .build()
 
     private fun onMessage(message: String) {
         log().info(message)

@@ -52,6 +52,20 @@ fun Long.toByteArray(): ByteArray {
     return buffer.array()
 }
 
+fun ByteArray.toInt(): Int {
+    require(this.size == 4) {
+        "Invalid buffer size"
+    }
+    return ByteBuffer.wrap(this).getInt()
+}
+
+fun ByteArray.toLong(): Long {
+    require(this.size == 8) {
+        "Invalid buffer size"
+    }
+    return ByteBuffer.wrap(this).getLong()
+}
+
 fun getGCStats(): Long {
     var totalGarbageCollections: Long = 0
     for (gc in ManagementFactory.getGarbageCollectorMXBeans()) {
