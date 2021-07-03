@@ -175,4 +175,41 @@ class RatchetTest {
         }
     }
 
+    @Test
+    fun `different message patterns`() {
+        val secureRandom = newSecureRandom()
+        val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
+        val totalMessages = 10
+        for (messagePattern in 0 until (1 shl totalMessages)) {
+            val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+            val ratchetAlice = RatchetState.ratchetInitAlice(
+                sessionStartingSecret,
+                bobInitialIdentity.public,
+                secureRandom
+            )
+            val ratchetBob = RatchetState.ratchetInitBob(
+                sessionStartingSecret,
+                bobInitialIdentity,
+                secureRandom
+            )
+            val initialAlicePlaintext = "Initial From Alice".toByteArray(Charsets.UTF_8)
+            val initialAliceMessage = ratchetAlice.encryptMessage(initialAlicePlaintext, null)
+            val decryptedMessage1 = ratchetBob.decryptMessage(initialAliceMessage, null)
+            assertArrayEquals(initialAlicePlaintext, decryptedMessage1)
+            for (messageNo in 0 until totalMessages) {
+                if ((1 shl messageNo) and messagePattern != 0) {
+                    val alicePlaintext = "From Alice $messageNo".toByteArray(Charsets.UTF_8)
+                    val aliceMessage = ratchetAlice.encryptMessage(alicePlaintext, null)
+                    val decryptedMessage2 = ratchetBob.decryptMessage(aliceMessage, null)
+                    assertArrayEquals(alicePlaintext, decryptedMessage2)
+                } else {
+                    val bobPlaintext = "From Bob $messageNo".toByteArray(Charsets.UTF_8)
+                    val bobMessage = ratchetBob.encryptMessage(bobPlaintext, null)
+                    val decryptedMessage2 = ratchetAlice.decryptMessage(bobMessage, null)
+                    assertArrayEquals(bobPlaintext, decryptedMessage2)
+                }
+            }
+        }
+    }
+
 }

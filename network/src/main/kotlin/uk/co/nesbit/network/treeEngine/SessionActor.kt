@@ -16,6 +16,7 @@ import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.*
 import kotlin.math.abs
 
 class SelfAddressRequest
@@ -108,7 +109,14 @@ class SessionActor(
     override fun preStart() {
         super.preStart()
         //log().info("Starting SessionActor")
-        routingActor.tell(WatchRequest(), self)
+        routingActor.tell(
+            MessageWatchRequest(
+                EnumSet.of(
+                    MessageWatchTypes.ADDRESS_UPDATE,
+                    MessageWatchTypes.CLIENT_DATA_MESSAGES
+                )
+            ), self
+        )
         timers.startSingleTimer(
             "CheckSessions",
             CheckSessions(),

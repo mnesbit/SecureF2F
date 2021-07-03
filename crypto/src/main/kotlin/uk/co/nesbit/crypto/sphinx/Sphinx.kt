@@ -22,7 +22,7 @@ class Sphinx(
         val payloadRoundingSize: Int = 1024) {
     companion object {
         private val ZERO_16 = ByteArray(16)
-        private val HKDF_SALT = "SphinxHashes".toByteArray(Charsets.UTF_8)
+        private val HKDF_CONTEXT = "SphinxHashes".toByteArray(Charsets.UTF_8)
 
         private const val SECURITY_PARAMETER = 16 // To work with Curve25519 key (32 bytes each) and 16 bytes AES keys
         private const val ID_HASH_SIZE = 2 * SECURITY_PARAMETER // Use SHA-256 of signing key and Curve25519 key
@@ -114,9 +114,10 @@ class Sphinx(
         return if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PublicKey(rawBytes) else Curve25519PublicKey(rawBytes)
     }
 
-    internal class DerivedHashes(context: SecureHash, sharedSecret: PublicKey) {
+    internal class DerivedHashes(salt: SecureHash, sharedSecret: PublicKey) {
         companion object {
-            private const val TOTAL_KEY_BYTES = (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
+            private const val TOTAL_KEY_BYTES =
+                (RHO_KEY_SIZE / 8) + GCM_NONCE_LENGTH + (GCM_KEY_SIZE / 8) + BLIND_LENGTH
         }
 
         val rhoKey: SecretKeySpec
@@ -126,7 +127,7 @@ class Sphinx(
 
         init {
             val hkdf = HKDFBytesGenerator(SHA256Digest())
-            hkdf.init(HKDFParameters(sharedSecret.encoded, HKDF_SALT, context.bytes))
+            hkdf.init(HKDFParameters(sharedSecret.encoded, salt.bytes, HKDF_CONTEXT))
             val hkdfKey = ByteArray(TOTAL_KEY_BYTES)
             hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
             val splits = hkdfKey.splitByteArrays((RHO_KEY_SIZE / 8), GCM_NONCE_LENGTH, (GCM_KEY_SIZE / 8), BLIND_LENGTH)
@@ -192,7 +193,7 @@ class Sphinx(
         val headerInfo = createRoute(route, random)
         val rhoList = headerInfo.map { rho(it.hashes.rhoKey) }
         var filler = ByteArray(0)
-        for (i in 0 until route.size) {
+        for (i in route.indices) {
             val rhoTail = rhoList[i].copyOfRange(rhoLength - (i + 1) * ENTRY_SIZE, rhoLength)
             filler = xorByteArrays(concatByteArrays(filler, ZERO_PAD), rhoTail)
         }

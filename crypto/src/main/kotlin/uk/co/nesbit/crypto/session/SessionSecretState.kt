@@ -18,7 +18,7 @@ class SessionSecretState(initiatorInit: InitiatorSessionParams,
     companion object {
         const val PROTO_VERSION = 1
         const val NONCE_SIZE = 16
-        val HKDF_SALT = "LinkProto_$PROTO_VERSION".toByteArray(Charsets.UTF_8)
+        val HKDF_CONTEXT = "LinkProto_$PROTO_VERSION".toByteArray(Charsets.UTF_8)
         const val REQUEST_KEY_BYTES = ChaCha20Poly1305.CHACHA_KEY_SIZE_BYTES
         const val REQUEST_IV_BYTES = ChaCha20Poly1305.CHACHA_NONCE_SIZE_BYTES
         const val REQUEST_MAC_KEY_BYTES = 32
@@ -65,8 +65,8 @@ class SessionSecretState(initiatorInit: InitiatorSessionParams,
 
     private fun calculateHKDFBytes(initiatorInit: InitiatorSessionParams, responderInit: ResponderSessionParams): ByteArray {
         val hkdf = HKDFBytesGenerator(SHA256Digest())
-        val context = concatByteArrays(initiatorInit.serialize(), responderInit.serialize())
-        hkdf.init(HKDFParameters(dhSharedValue, HKDF_SALT, context))
+        val salt = concatByteArrays(initiatorInit.serialize(), responderInit.serialize())
+        hkdf.init(HKDFParameters(dhSharedValue, salt, HKDF_CONTEXT))
         val hkdfKey = ByteArray(TOTAL_KEY_BYTES)
         hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
         return hkdfKey
