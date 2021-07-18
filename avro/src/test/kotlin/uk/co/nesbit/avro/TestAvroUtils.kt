@@ -592,4 +592,64 @@ class TestAvroUtils {
         val readback2 = deserialized2.getIntArray("intArray")
         assertEquals(testArray2, readback2)
     }
+
+    @Test
+    fun `Test ByteArray Array helpers`() {
+        val schemaDef = """
+            {
+                "name" : "Test",
+                "type" : "record",
+                "fields" : [
+                    {
+                        "name" : "byteArray",
+                        "type": {
+                            "name": "arrayType",
+                            "type": "array",
+                            "items": "bytes"
+                        }
+                    },
+                    {
+                        "name" : "fixedByteArray",
+                        "type": {
+                            "name": "fixedArrayType",
+                            "type": "array",
+                            "items": {
+                                "name": "fixedElementType",
+                                "type": "fixed",
+                                "size": 5
+                            }
+                        }
+                    }
+                ]
+            }
+        """
+        val schema = Schema.Parser().parse(schemaDef)
+        val record = GenericData.Record(schema)
+        val testArray = (1..4).map { x -> ByteArray(4) { x.toByte() } }
+        record.putByteArrayArray("byteArray", testArray)
+        val fixedTestArray = (1..3).map { x -> ByteArray(5) { x.toByte() } }
+        record.putByteArrayArray("fixedByteArray", fixedTestArray)
+        val serialized = record.serialize()
+        val deserialized = schema.deserialize(serialized)
+        val readback = deserialized.getByteArrayArray("byteArray")
+        assertEquals(testArray.size, readback.size)
+        for (i in testArray.indices) {
+            assertArrayEquals(testArray[i], readback[i])
+        }
+        val readbackFixed = deserialized.getByteArrayArray("fixedByteArray")
+        assertEquals(fixedTestArray.size, readbackFixed.size)
+        for (i in fixedTestArray.indices) {
+            assertArrayEquals(fixedTestArray[i], readbackFixed[i])
+        }
+        val record2 = GenericData.Record(schema)
+        val testArray2 = emptyList<ByteArray>()
+        record2.putByteArrayArray("byteArray", testArray2)
+        record2.putByteArrayArray("fixedByteArray", testArray2)
+        val serialized2 = record2.serialize()
+        val deserialized2 = schema.deserialize(serialized2)
+        val readback2 = deserialized2.getByteArrayArray("byteArray")
+        val readbackFixed2 = deserialized2.getByteArrayArray("byteArray")
+        assertEquals(testArray2, readback2)
+        assertEquals(testArray2, readbackFixed2)
+    }
 }
