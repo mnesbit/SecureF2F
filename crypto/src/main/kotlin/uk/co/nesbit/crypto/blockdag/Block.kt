@@ -48,9 +48,9 @@ class Block private constructor(
                 origin,
                 predecessors.sorted(),
                 payload,
-                DigitalSignature("BLOCK", ByteArray(0))
+                DigitalSignature("DUMMY", ByteArray(0))
             )
-            val signatureBytes = templateObject.serialize()
+            val signatureBytes = templateObject.id.serialize()
             val signature = signingService(origin, signatureBytes)
             return templateObject.changeSignature(signature)
         }
@@ -94,13 +94,7 @@ class Block private constructor(
 
     fun verify(memberService: MemberService) {
         val originKey = memberService.getMemberKey(origin) ?: throw SignatureException("Unknown origin $origin")
-        val verifyObject = Block(
-            origin,
-            predecessors.sorted(),
-            payload,
-            DigitalSignature("BLOCK", ByteArray(0))
-        )
-        val signatureBytes = verifyObject.serialize()
+        val signatureBytes = id.serialize()
         signature.verify(originKey, signatureBytes)
         if (predecessors.size == 1 && predecessors.first() == origin) {
             if (payload.isNotEmpty()) {
