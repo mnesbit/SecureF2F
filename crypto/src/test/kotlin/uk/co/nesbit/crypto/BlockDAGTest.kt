@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.blockdag.Block
+import uk.co.nesbit.crypto.blockdag.BlockSyncMessage
 import uk.co.nesbit.crypto.blockdag.InMemoryBlockStore
 import uk.co.nesbit.crypto.blockdag.MemberService
 import java.lang.Integer.min
@@ -18,6 +19,10 @@ class BlockDAGTest {
         val keyPair = generateEdDSAKeyPair()
         val keyId = SecureHash.secureHash(keyPair.public.encoded)
         val memberService = object : MemberService {
+            override fun getMembers(): List<SecureHash> {
+                throw NotImplementedError("Not implemented")
+            }
+
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
                 return keyPair.public
@@ -52,6 +57,10 @@ class BlockDAGTest {
         val keyPair = generateEdDSAKeyPair()
         val keyId = SecureHash.secureHash(keyPair.public.encoded)
         val memberService = object : MemberService {
+            override fun getMembers(): List<SecureHash> {
+                throw NotImplementedError("Not implemented")
+            }
+
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
                 return keyPair.public
@@ -147,4 +156,67 @@ class BlockDAGTest {
         assertEquals(blockIds.toSet().minus(rootBlock.id), blockStore.followSet(setOf(rootBlock.id)))
     }
 
+    @Test
+    fun `BlockSyncMessage serialization test`() {
+        val keyPair = generateEdDSAKeyPair()
+        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val signingService = { id: SecureHash, x: ByteArray ->
+            assertEquals(keyId, id)
+            keyPair.sign(x).toDigitalSignature()
+        }
+        val memberService = object : MemberService {
+            override fun getMembers(): List<SecureHash> {
+                throw NotImplementedError("Not implemented")
+            }
+
+            override fun getMemberKey(id: SecureHash): PublicKey? {
+                assertEquals(keyId, id)
+                return keyPair.public
+            }
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val random = Random.Default
+        val blockIds = mutableListOf<SecureHash>()
+        val blocks = mutableListOf<Block>()
+        val rootBlock = Block.createRootBlock(keyId, signingService)
+        blockIds += rootBlock.id
+        blocks += rootBlock
+        val heads = mutableSetOf<SecureHash>()
+        for (i in 0 until 50) {
+            val inputs = 1 + min(random.nextInt(5), blocks.size - 1)
+            val inputIds = mutableSetOf<SecureHash>()
+            for (j in 0 until inputs) {
+                val pred = blockIds[random.nextInt(blockIds.size)]
+                inputIds += pred
+                heads -= pred
+            }
+            val newBlock = Block.createBlock(keyId, inputIds.toList(), i.toByteArray(), signingService)
+            blockIds += newBlock.id
+            blocks += newBlock
+            heads += newBlock.id
+        }
+        val blockStore = InMemoryBlockStore()
+        for (block in blocks) {
+            blockStore.storeBlock(block)
+        }
+        val followSet = blockStore.followSet(blockStore.roots) + rootBlock.id
+        val filterSet = BloomFilter.createBloomFilter(followSet.size, 0.01, 123456)
+        followSet.forEach { filterSet.add(it.serialize()) }
+        val syncMessage = BlockSyncMessage.createBlockSyncMessage(
+            keyId,
+            blockStore.roots,
+            blockStore.heads,
+            filterSet,
+            blocks.takeLast(10),
+            signingService
+        )
+        syncMessage.verify(memberService)
+        val serialized = syncMessage.serialize()
+        val deserialized = BlockSyncMessage.deserialize(serialized)
+        assertEquals(syncMessage, deserialized)
+        deserialized.verify(memberService)
+    }
 }

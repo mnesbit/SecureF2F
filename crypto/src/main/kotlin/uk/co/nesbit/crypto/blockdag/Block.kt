@@ -8,16 +8,17 @@ import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.merkle.MerkleTree
 import java.security.SignatureException
+import java.util.*
 
 class Block private constructor(
     val origin: SecureHash,
-    val predecessors: List<SecureHash>,
+    val predecessors: SortedSet<SecureHash>,
     val payload: ByteArray,
     val signature: DigitalSignature
-) : AvroConvertible {
+) : AvroConvertible, Comparable<Block> {
     constructor(blockRecord: GenericRecord) : this(
         blockRecord.getTyped("origin"),
-        blockRecord.getObjectArray("predecessors", ::SecureHash),
+        blockRecord.getObjectArray("predecessors", ::SecureHash).toSortedSet(),
         blockRecord.getTyped("payload"),
         blockRecord.getTyped("signature"),
     )
@@ -46,7 +47,7 @@ class Block private constructor(
             require(predecessors.isNotEmpty()) { "predecessors list must not be empty" }
             val templateObject = Block(
                 origin,
-                predecessors.sorted(),
+                predecessors.toSortedSet(),
                 payload,
                 DigitalSignature("DUMMY", ByteArray(0))
             )
@@ -69,7 +70,7 @@ class Block private constructor(
     override fun toGenericRecord(): GenericRecord {
         val blockRecord = GenericData.Record(blockSchema)
         blockRecord.putTyped("origin", origin)
-        blockRecord.putObjectArray("predecessors", predecessors)
+        blockRecord.putObjectArray("predecessors", predecessors.toList())
         blockRecord.putTyped("payload", payload)
         blockRecord.putTyped("signature", signature)
         return blockRecord
@@ -101,6 +102,10 @@ class Block private constructor(
                 throw SignatureException("root blocks must have empty payload")
             }
         }
+    }
+
+    override fun compareTo(other: Block): Int {
+        return id.compareTo(other.id)
     }
 
     override fun equals(other: Any?): Boolean {
