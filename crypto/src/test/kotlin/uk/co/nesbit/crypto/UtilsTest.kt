@@ -72,7 +72,7 @@ class UtilsTest {
 
     @Test
     fun `BloomFilter test`() {
-        val filter = BloomFilter(100, 0.02, 99)
+        val filter = BloomFilter.createBloomFilter(100, 0.02, 99)
         for (i in 0 until 100) {
             filter.add(i.toByteArray())
         }
@@ -85,7 +85,6 @@ class UtilsTest {
                 ++count
             }
         }
-        assertTrue(count.toDouble() < 2.0 * filter.expectedItemCount * filter.falsePositiveRate)
         assertEquals(false, filter.possiblyContains(200.toByteArray()))
         assertEquals(false, filter.possiblyContains(500.toByteArray()))
         assertEquals(false, filter.possiblyContains(1000.toByteArray()))
