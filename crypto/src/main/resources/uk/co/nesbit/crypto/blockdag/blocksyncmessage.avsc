@@ -26,6 +26,13 @@
       "type": "uk.co.nesbit.crypto.BloomFilter"
     },
     {
+      "name": "directRequests",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
       "name": "blocks",
       "type": {
         "type": "array",

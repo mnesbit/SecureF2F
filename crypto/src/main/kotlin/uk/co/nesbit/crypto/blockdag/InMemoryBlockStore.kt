@@ -4,7 +4,7 @@ import uk.co.nesbit.crypto.SecureHash
 import java.security.SignatureException
 
 class InMemoryBlockStore : BlockStore {
-    private val blocks = mutableMapOf<SecureHash, Block>()
+    private val _blocks = mutableMapOf<SecureHash, Block>()
     private val missing = mutableSetOf<SecureHash>()
     private val verified = mutableMapOf<SecureHash, Boolean>()
     private val follows = mutableMapOf<SecureHash, MutableSet<SecureHash>>()
@@ -15,9 +15,12 @@ class InMemoryBlockStore : BlockStore {
     private val _heads = mutableSetOf<SecureHash>()
     override val heads: Set<SecureHash> = _heads
 
+    override val blocks: Set<SecureHash>
+        get() = _blocks.keys
+
     override fun storeBlock(block: Block) {
         val blockId = block.id
-        if (blocks.put(blockId, block) == null) {
+        if (_blocks.put(blockId, block) == null) {
             verified[blockId] = false
             val next = follows.getOrPut(blockId) { mutableSetOf() }
             if (next.isEmpty()) {
@@ -26,7 +29,7 @@ class InMemoryBlockStore : BlockStore {
             missing -= blockId
             if (!block.isRoot) {
                 for (predecessor in block.predecessors) {
-                    if (predecessor !in blocks) {
+                    if (predecessor !in _blocks) {
                         missing += predecessor
                     }
                     val followSet = follows.getOrPut(predecessor) { mutableSetOf() }
@@ -39,7 +42,7 @@ class InMemoryBlockStore : BlockStore {
         }
     }
 
-    override fun getBlock(id: SecureHash): Block? = blocks[id]
+    override fun getBlock(id: SecureHash): Block? = _blocks[id]
 
     override fun getMissing(): Set<SecureHash> = missing
 
@@ -55,6 +58,24 @@ class InMemoryBlockStore : BlockStore {
             for (next in followers) {
                 if (resultSet.add(next)) {
                     queue.addLast(next)
+                }
+            }
+        }
+        return resultSet
+    }
+
+    override fun predecessorSet(ids: Set<SecureHash>): Set<SecureHash> {
+        val resultSet = mutableSetOf<SecureHash>()
+        val queue = ArrayDeque<SecureHash>()
+        queue.addAll(ids)
+        while (queue.isNotEmpty()) {
+            val expandItem = queue.removeFirst()
+            val expandBlock = _blocks[expandItem]
+            if (expandBlock == null || expandBlock.isRoot) continue
+            val predecessors = expandBlock.predecessors
+            for (prev in predecessors) {
+                if (resultSet.add(prev)) {
+                    queue.addLast(prev)
                 }
             }
         }
@@ -88,7 +109,7 @@ class InMemoryBlockStore : BlockStore {
         var index = 0
         while (index < unverifiedList.size) {
             val blockId = unverifiedList[index]
-            val currentBlock = blocks[blockId] ?: throw IllegalStateException("Corrupted block state $blockId")
+            val currentBlock = _blocks[blockId] ?: throw IllegalStateException("Corrupted block state $blockId")
             expandUnverifiedPredecessors(currentBlock, unverifiedList, verifySet)
             ++index
         }
@@ -99,7 +120,7 @@ class InMemoryBlockStore : BlockStore {
             val itr = reversed.iterator()
             while (itr.hasNext()) {
                 val verifyId = itr.next()
-                val currentBlock = blocks[verifyId] ?: throw IllegalStateException("Corrupted block state $verifyId")
+                val currentBlock = _blocks[verifyId] ?: throw IllegalStateException("Corrupted block state $verifyId")
                 val predecessorsDone = currentBlock.isRoot || currentBlock.predecessors.all { verified[it] == true }
                 if (predecessorsDone) {
                     currentBlock.verify(memberService)

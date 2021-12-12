@@ -3,11 +3,9 @@ package uk.co.nesbit.crypto
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.blockdag.Block
-import uk.co.nesbit.crypto.blockdag.BlockSyncMessage
-import uk.co.nesbit.crypto.blockdag.InMemoryBlockStore
-import uk.co.nesbit.crypto.blockdag.MemberService
+import uk.co.nesbit.crypto.blockdag.*
 import java.lang.Integer.min
+import java.security.KeyPair
 import java.security.PublicKey
 import java.security.SignatureException
 import kotlin.random.Random
@@ -19,9 +17,8 @@ class BlockDAGTest {
         val keyPair = generateEdDSAKeyPair()
         val keyId = SecureHash.secureHash(keyPair.public.encoded)
         val memberService = object : MemberService {
-            override fun getMembers(): List<SecureHash> {
-                throw NotImplementedError("Not implemented")
-            }
+            override val members: Set<SecureHash>
+                get() = setOf(keyId)
 
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
@@ -57,9 +54,8 @@ class BlockDAGTest {
         val keyPair = generateEdDSAKeyPair()
         val keyId = SecureHash.secureHash(keyPair.public.encoded)
         val memberService = object : MemberService {
-            override fun getMembers(): List<SecureHash> {
-                throw NotImplementedError("Not implemented")
-            }
+            override val members: Set<SecureHash>
+                get() = setOf(keyId)
 
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
@@ -94,7 +90,7 @@ class BlockDAGTest {
         val skip = skipFollower.predecessors.last()
         val skipBlock = blocks.single { it.id == skip }
         val shuffled = blocks.shuffled()
-        val blockStore = InMemoryBlockStore()
+        val blockStore: BlockStore = InMemoryBlockStore()
         blockStore.transitiveVerify(rootBlock, memberService)
         for (block in shuffled) {
             assertEquals(null, blockStore.getBlock(block.id))
@@ -147,13 +143,60 @@ class BlockDAGTest {
             heads += newBlock.id
         }
         val shuffled = blocks.shuffled()
-        val blockStore = InMemoryBlockStore()
+        val blockStore: BlockStore = InMemoryBlockStore()
         for (block in shuffled) {
             blockStore.storeBlock(block)
         }
         assertEquals(heads, blockStore.heads)
         assertEquals(emptySet(), blockStore.followSet(heads))
         assertEquals(blockIds.toSet().minus(rootBlock.id), blockStore.followSet(setOf(rootBlock.id)))
+    }
+
+    @Test
+    fun `BlockStore predecessor test`() {
+        val keyPair = generateEdDSAKeyPair()
+        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val signingService = { id: SecureHash, x: ByteArray ->
+            assertEquals(keyId, id)
+            keyPair.sign(x).toDigitalSignature()
+        }
+        val blocks = mutableMapOf<Int, Block>()
+        val blockStore: BlockStore = InMemoryBlockStore()
+        val rootBlock = Block.createRootBlock(keyId, signingService)
+        blocks[-1] = rootBlock
+        blockStore.storeBlock(rootBlock)
+        var prevBlock = rootBlock
+        for (i in 0 until 10) {
+            val newBlock = Block.createBlock(keyId, listOf(prevBlock.id), i.toString().toByteArray(), signingService)
+            blockStore.storeBlock(newBlock)
+            blocks[i] = newBlock
+            prevBlock = newBlock
+        }
+        val midBlock = prevBlock
+        for (i in 10 until 20) {
+            val newBlock = Block.createBlock(keyId, listOf(prevBlock.id), i.toString().toByteArray(), signingService)
+            blockStore.storeBlock(newBlock)
+            blocks[i] = newBlock
+            prevBlock = newBlock
+        }
+        prevBlock = midBlock
+        for (i in 20 until 30) {
+            val newBlock = Block.createBlock(keyId, listOf(prevBlock.id), i.toString().toByteArray(), signingService)
+            blockStore.storeBlock(newBlock)
+            blocks[i] = newBlock
+            prevBlock = newBlock
+        }
+        for (i in 0 until 30) {
+            val pred = blockStore.predecessorSet(setOf(blocks[i]!!.id))
+            if (i < 20) {
+                val expected = (-1 until i).map { blocks[it]!!.id }.toSet()
+                assertEquals(expected, pred)
+            } else {
+                val expectedStart = (-1 until 10).map { blocks[it]!!.id }.toSet()
+                val expected = (20 until i).map { blocks[it]!!.id }.toSet()
+                assertEquals(expectedStart + expected, pred)
+            }
+        }
     }
 
     @Test
@@ -165,9 +208,8 @@ class BlockDAGTest {
             keyPair.sign(x).toDigitalSignature()
         }
         val memberService = object : MemberService {
-            override fun getMembers(): List<SecureHash> {
-                throw NotImplementedError("Not implemented")
-            }
+            override val members: Set<SecureHash>
+                get() = setOf(keyId)
 
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
@@ -198,7 +240,7 @@ class BlockDAGTest {
             blocks += newBlock
             heads += newBlock.id
         }
-        val blockStore = InMemoryBlockStore()
+        val blockStore: BlockStore = InMemoryBlockStore()
         for (block in blocks) {
             blockStore.storeBlock(block)
         }
@@ -210,6 +252,7 @@ class BlockDAGTest {
             blockStore.roots,
             blockStore.heads,
             filterSet,
+            listOf(SecureHash.secureHash("1"), SecureHash.secureHash("2")),
             blocks.takeLast(10),
             signingService
         )
@@ -218,5 +261,74 @@ class BlockDAGTest {
         val deserialized = BlockSyncMessage.deserialize(serialized)
         assertEquals(syncMessage, deserialized)
         deserialized.verify(memberService)
+    }
+
+    @Test
+    fun `BlockSyncManager test`() {
+        val random = newSecureRandom()
+        val keys = (0..9).map { generateEdDSAKeyPair(random) }
+        val memberService = object : MemberService {
+            private val memberMap: Map<SecureHash, PublicKey> =
+                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+            override val members: Set<SecureHash> = memberMap.keys
+
+            override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val signingService = { id: SecureHash, bytes: ByteArray ->
+            keyMap[id]!!.sign(bytes).toDigitalSignature()
+        }
+
+        val network = memberService.members.map {
+            InMemoryBlockSyncManager(
+                it,
+                memberService,
+                InMemoryBlockStore()
+            )
+        }
+
+        for (member in network) {
+            val rootBlock = Block.createRootBlock(
+                member.self,
+                signingService
+            )
+            member.blockStore.storeBlock(rootBlock)
+        }
+
+        for (i in 0 until 1000) {
+            val member = network[i.rem(network.size)]
+            val newBlock = Block.createBlock(
+                member.self,
+                member.blockStore.heads.toList(),
+                i.toString().toByteArray(Charsets.UTF_8),
+                signingService
+            )
+            member.blockStore.storeBlock(newBlock)
+            val peer = network[random.nextInt(network.size)]
+            val syncMessage = member.getSyncMessage(peer.self, signingService)
+            peer.processSyncMessage(syncMessage)
+        }
+        for (member1 in network) {
+            for (member2 in network) {
+                if (member1.self != member2.self) {
+                    val sync1 = member1.getSyncMessage(member2.self, signingService)
+                    member2.processSyncMessage(sync1)
+                    val sync2 = member2.getSyncMessage(member1.self, signingService)
+                    member1.processSyncMessage(sync2)
+                }
+            }
+        }
+        for (member in network) {
+            assertEquals(network.size, member.blockStore.roots.size)
+            assertEquals(true, member.blockStore.getMissing().isEmpty())
+            assertEquals(
+                network[0].blockStore.followSet(member.blockStore.roots),
+                member.blockStore.followSet(member.blockStore.roots)
+            )
+        }
     }
 }

@@ -15,6 +15,7 @@ class BlockSyncMessage private constructor(
     val prevHeads: SortedSet<SecureHash>,
     val heads: SortedSet<SecureHash>,
     val expectedBlocksFilter: BloomFilter,
+    val directRequests: SortedSet<SecureHash>,
     val blocks: SortedSet<Block>,
     val signature: DigitalSignature
 ) : AvroConvertible {
@@ -24,6 +25,7 @@ class BlockSyncMessage private constructor(
         syncMessageRecord.getObjectArray("prevHeads", ::SecureHash).toSortedSet(),
         syncMessageRecord.getObjectArray("heads", ::SecureHash).toSortedSet(),
         syncMessageRecord.getTyped("expectedBlocksFilter", ::BloomFilter),
+        syncMessageRecord.getObjectArray("directRequests", ::SecureHash).toSortedSet(),
         syncMessageRecord.getObjectArray("blocks", ::Block).toSortedSet(),
         syncMessageRecord.getTyped("signature", ::DigitalSignature)
     )
@@ -51,6 +53,7 @@ class BlockSyncMessage private constructor(
             prevHeads: Iterable<SecureHash>,
             heads: Iterable<SecureHash>,
             expectedBlocksFilter: BloomFilter,
+            directRequests: Iterable<SecureHash>,
             blocks: Iterable<Block>,
             signingService: (SecureHash, ByteArray) -> DigitalSignature
         ): BlockSyncMessage {
@@ -59,6 +62,7 @@ class BlockSyncMessage private constructor(
                 prevHeads.toSortedSet(),
                 heads.toSortedSet(),
                 expectedBlocksFilter,
+                directRequests.toSortedSet(),
                 blocks.toSortedSet(),
                 DigitalSignature("SYNCMESSAGE", ByteArray(0))
             )
@@ -74,6 +78,7 @@ class BlockSyncMessage private constructor(
         syncMessageRecord.putObjectArray("prevHeads", prevHeads.toList())
         syncMessageRecord.putObjectArray("heads", heads.toList())
         syncMessageRecord.putTyped("expectedBlocksFilter", expectedBlocksFilter)
+        syncMessageRecord.putObjectArray("directRequests", directRequests.toList())
         syncMessageRecord.putObjectArray("blocks", blocks.toList())
         syncMessageRecord.putTyped("signature", signature)
         return syncMessageRecord
@@ -84,6 +89,7 @@ class BlockSyncMessage private constructor(
         prevHeads,
         heads,
         expectedBlocksFilter,
+        directRequests,
         blocks,
         newSignature
     )
@@ -108,6 +114,7 @@ class BlockSyncMessage private constructor(
         if (prevHeads != other.prevHeads) return false
         if (heads != other.heads) return false
         if (expectedBlocksFilter != other.expectedBlocksFilter) return false
+        if (directRequests != other.directRequests) return false
         if (blocks != other.blocks) return false
         if (signature != other.signature) return false
 
@@ -119,6 +126,7 @@ class BlockSyncMessage private constructor(
         result = 31 * result + prevHeads.hashCode()
         result = 31 * result + heads.hashCode()
         result = 31 * result + expectedBlocksFilter.hashCode()
+        result = 31 * result + directRequests.hashCode()
         result = 31 * result + blocks.hashCode()
         result = 31 * result + signature.hashCode()
         return result
