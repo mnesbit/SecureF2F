@@ -77,6 +77,7 @@ class BloomFilter private constructor(
     }
 
     fun possiblyContains(bytes: ByteArray): Boolean {
+        if (bitCount == 0 || hashRounds == 0) return false
         val hash1 = Integer.toUnsignedLong(MurmurHash3.hash32(bytes, 0, bytes.size, hashSeed))
         val hash2 = Integer.toUnsignedLong(MurmurHash3.hash32(bytes, 0, bytes.size, hash1.toInt()))
         for (i in 0 until hashRounds) {
