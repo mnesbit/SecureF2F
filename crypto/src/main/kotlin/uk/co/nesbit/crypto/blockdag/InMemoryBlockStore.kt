@@ -50,9 +50,7 @@ class InMemoryBlockStore : BlockStore {
                         }
                     }
                     for (follow in follows[block.id] ?: emptySet()) {
-                        if (rounds[follow] == null) {
-                            followSet += follow
-                        }
+                        followSet += follow
                     }
                 }
             }

@@ -402,7 +402,7 @@ class BlockDAGTest {
                 signingService
             )
             member.blockStore.storeBlock(newBlock)
-            val peer = network[halfSize + i.rem(network.size - halfSize)]
+            val peer = network[halfSize + random.nextInt(network.size - halfSize)]
             if (peer != member) {
                 val syncMessage = member.getSyncMessage(peer.self, signingService)
                 peer.processSyncMessage(syncMessage)

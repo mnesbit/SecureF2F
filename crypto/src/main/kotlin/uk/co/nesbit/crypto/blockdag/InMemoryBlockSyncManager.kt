@@ -22,7 +22,8 @@ class InMemoryBlockSyncManager(
         val lastMessage = lastMessage[peer]
         val heads = blockStore.heads
         val prevHeads: Set<SecureHash> = lastMessage?.heads ?: emptySet()
-        val followSet = blockStore.followSet(prevHeads) + prevHeads
+        val prevSet = blockStore.predecessorSet(prevHeads) + prevHeads
+        val followSet = blockStore.blocks - prevSet
         val filterSet = BloomFilter.createBloomFilter(followSet.size, 0.01, random.nextInt())
         for (item in followSet) {
             filterSet.add(item.serialize())
@@ -31,14 +32,14 @@ class InMemoryBlockSyncManager(
         for (head in heads) {
             replyBlocks += head
         }
-        for (request in lastMessage?.directRequests ?: emptySet()) {
-            replyBlocks += request
-        }
-        val prevSet = blockStore.predecessorSet(prevHeads) + prevHeads
-        val expectedBlocksFilter = lastMessage?.expectedBlocksFilter ?: BloomFilter.createBloomFilter(0, 0.1, 0)
-        for (blockId in blockStore.blocks) {
-            if (!(blockId in prevSet || expectedBlocksFilter.possiblyContains(blockId.serialize()))) {
-                replyBlocks += blockId
+        if (lastMessage != null) {
+            for (request in lastMessage.directRequests) {
+                replyBlocks += request
+            }
+            for (blockId in followSet) {
+                if (!(blockId in prevSet || lastMessage.expectedBlocksFilter.possiblyContains(blockId.serialize()))) {
+                    replyBlocks += blockId
+                }
             }
         }
         return BlockSyncMessage.createBlockSyncMessage(
