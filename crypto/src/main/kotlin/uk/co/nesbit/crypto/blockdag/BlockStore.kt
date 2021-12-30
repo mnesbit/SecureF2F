@@ -5,6 +5,7 @@ import uk.co.nesbit.crypto.SecureHash
 interface BlockStore {
     fun storeBlock(block: Block)
     fun getBlock(id: SecureHash): Block?
+    fun getRound(id: SecureHash): Int?
     fun transitiveVerify(block: Block, memberService: MemberService)
     fun getMissing(): Set<SecureHash>
     fun getNext(id: SecureHash): Set<SecureHash>

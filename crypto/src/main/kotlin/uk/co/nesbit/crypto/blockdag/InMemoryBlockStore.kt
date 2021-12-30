@@ -1,31 +1,74 @@
 package uk.co.nesbit.crypto.blockdag
 
 import uk.co.nesbit.crypto.SecureHash
+import java.lang.Integer.max
 import java.security.SignatureException
 
 class InMemoryBlockStore : BlockStore {
     private val _blocks = mutableMapOf<SecureHash, Block>()
     private val missing = mutableSetOf<SecureHash>()
     private val verified = mutableMapOf<SecureHash, Boolean>()
+    private val rounds = mutableMapOf<SecureHash, Int>()
     private val follows = mutableMapOf<SecureHash, MutableSet<SecureHash>>()
 
     private val _roots = mutableSetOf<SecureHash>()
     override val roots: Set<SecureHash> = _roots
 
     private val _heads = mutableSetOf<SecureHash>()
-    override val heads: Set<SecureHash> = _heads
+    override val heads: Set<SecureHash> get() = _heads
 
     override val blocks: Set<SecureHash>
         get() = _blocks.keys
+
+    private fun updateRoundForBlock(block: Block): Boolean {
+        if (block.isRoot) {
+            rounds[block.id] = 0
+        } else {
+            var maxRound = 0
+            for (pred in block.predecessors) {
+                val predRound = rounds[pred] ?: return false
+                maxRound = max(predRound, maxRound)
+            }
+            rounds[block.id] = maxRound + 1
+        }
+        return true
+    }
+
+    private fun updateRounds(startBlock: Block) {
+        if (rounds[startBlock.id] != null) return
+        val queue = ArrayDeque<Block>()
+        queue.addLast(startBlock)
+        while (queue.isNotEmpty()) {
+            val followSet = mutableSetOf<SecureHash>()
+            while (queue.isNotEmpty()) {
+                val block = queue.removeFirst()
+                if (updateRoundForBlock(block)) {
+                    _heads += block.id
+                    if (!block.isRoot) {
+                        for (pred in block.predecessors) {
+                            _heads -= pred
+                        }
+                    }
+                    for (follow in follows[block.id] ?: emptySet()) {
+                        if (rounds[follow] == null) {
+                            followSet += follow
+                        }
+                    }
+                }
+            }
+            for (follow in followSet) {
+                val block = _blocks[follow]
+                if (block != null) {
+                    queue.addLast(block)
+                }
+            }
+        }
+    }
 
     override fun storeBlock(block: Block) {
         val blockId = block.id
         if (_blocks.put(blockId, block) == null) {
             verified[blockId] = false
-            val next = follows.getOrPut(blockId) { mutableSetOf() }
-            if (next.isEmpty()) {
-                _heads += blockId
-            }
             missing -= blockId
             if (!block.isRoot) {
                 for (predecessor in block.predecessors) {
@@ -34,15 +77,17 @@ class InMemoryBlockStore : BlockStore {
                     }
                     val followSet = follows.getOrPut(predecessor) { mutableSetOf() }
                     followSet += blockId
-                    _heads -= predecessor
                 }
             } else {
                 _roots += blockId
             }
+            updateRounds(block)
         }
     }
 
     override fun getBlock(id: SecureHash): Block? = _blocks[id]
+
+    override fun getRound(id: SecureHash): Int? = rounds[id]
 
     override fun getMissing(): Set<SecureHash> = missing
 

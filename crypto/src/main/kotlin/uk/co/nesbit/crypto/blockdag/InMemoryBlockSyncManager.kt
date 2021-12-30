@@ -13,32 +13,32 @@ class InMemoryBlockSyncManager(
     override val blockStore: BlockStore
 ) : BlockSyncManager {
     private val random = newSecureRandom()
-    private val oldHeads = mutableMapOf<SecureHash, Set<SecureHash>>()
-    private val pendingReplies = mutableMapOf<SecureHash, Set<SecureHash>>()
+    private val lastMessage = mutableMapOf<SecureHash, BlockSyncMessage>()
 
     override fun getSyncMessage(
         peer: SecureHash,
         signingService: (SecureHash, ByteArray) -> DigitalSignature
     ): BlockSyncMessage {
+        val lastMessage = lastMessage[peer]
         val heads = blockStore.heads
-        val prevHeads = oldHeads[peer] ?: heads
+        val prevHeads: Set<SecureHash> = lastMessage?.heads ?: emptySet()
         val followSet = blockStore.followSet(prevHeads) + prevHeads
         val filterSet = BloomFilter.createBloomFilter(followSet.size, 0.01, random.nextInt())
         for (item in followSet) {
             filterSet.add(item.serialize())
         }
-        val replyBlocks = mutableSetOf<Block>()
+        val replyBlocks = mutableSetOf<SecureHash>()
         for (head in heads) {
-            val block = blockStore.getBlock(head)
-            if (block != null) {
-                replyBlocks += block
-            }
+            replyBlocks += head
         }
-        val pendingBlocks = pendingReplies.getOrPut(peer) { emptySet() }
-        for (pending in pendingBlocks) {
-            val block = blockStore.getBlock(pending)
-            if (block != null) {
-                replyBlocks += block
+        for (request in lastMessage?.directRequests ?: emptySet()) {
+            replyBlocks += request
+        }
+        val prevSet = blockStore.predecessorSet(prevHeads) + prevHeads
+        val expectedBlocksFilter = lastMessage?.expectedBlocksFilter ?: BloomFilter.createBloomFilter(0, 0.1, 0)
+        for (blockId in blockStore.blocks) {
+            if (!(blockId in prevSet || expectedBlocksFilter.possiblyContains(blockId.serialize()))) {
+                replyBlocks += blockId
             }
         }
         return BlockSyncMessage.createBlockSyncMessage(
@@ -47,7 +47,7 @@ class InMemoryBlockSyncManager(
             heads,
             filterSet,
             blockStore.getMissing(),
-            replyBlocks,
+            replyBlocks.mapNotNull { blockStore.getBlock(it) },
             signingService
         )
     }
@@ -58,21 +58,7 @@ class InMemoryBlockSyncManager(
             for (block in message.blocks) {
                 blockStore.storeBlock(block)
             }
-            val newPending = mutableSetOf<SecureHash>()
-            newPending.addAll(message.directRequests)
-            for (pending in pendingReplies.getOrDefault(message.sender, emptySet())) {
-                if (!message.expectedBlocksFilter.possiblyContains(pending.serialize())) {
-                    newPending += pending
-                }
-            }
-            val followSet = blockStore.followSet(message.prevHeads)
-            for (follow in followSet) {
-                if (!message.expectedBlocksFilter.possiblyContains(follow.serialize())) {
-                    newPending += follow
-                }
-            }
-            oldHeads[message.sender] = message.heads
-            pendingReplies[message.sender] = newPending
+            lastMessage[message.sender] = message
         } catch (ex: SignatureException) {
             // do nothing
         }

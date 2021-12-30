@@ -150,6 +150,7 @@ class BlockDAGTest {
         assertEquals(heads, blockStore.heads)
         assertEquals(emptySet(), blockStore.followSet(heads))
         assertEquals(blockIds.toSet().minus(rootBlock.id), blockStore.followSet(setOf(rootBlock.id)))
+        assertEquals(emptySet(), blockStore.followSet(emptySet()))
     }
 
     @Test
@@ -197,6 +198,7 @@ class BlockDAGTest {
                 assertEquals(expectedStart + expected, pred)
             }
         }
+        assertEquals(emptySet(), blockStore.predecessorSet(emptySet()))
     }
 
     @Test
@@ -309,8 +311,11 @@ class BlockDAGTest {
             )
             member.blockStore.storeBlock(newBlock)
             val peer = network[random.nextInt(network.size)]
-            val syncMessage = member.getSyncMessage(peer.self, signingService)
-            peer.processSyncMessage(syncMessage)
+            if (peer != member) {
+                val syncMessage = member.getSyncMessage(peer.self, signingService)
+                println("blocks sent ${syncMessage.blocks.size} ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
+                peer.processSyncMessage(syncMessage)
+            }
         }
         for (member1 in network) {
             for (member2 in network) {
@@ -319,6 +324,10 @@ class BlockDAGTest {
                     member2.processSyncMessage(sync1)
                     val sync2 = member2.getSyncMessage(member1.self, signingService)
                     member1.processSyncMessage(sync2)
+                    val sync3 = member1.getSyncMessage(member2.self, signingService)
+                    member2.processSyncMessage(sync3)
+                    val sync4 = member2.getSyncMessage(member1.self, signingService)
+                    member1.processSyncMessage(sync4)
                 }
             }
         }
@@ -326,8 +335,103 @@ class BlockDAGTest {
             assertEquals(network.size, member.blockStore.roots.size)
             assertEquals(true, member.blockStore.getMissing().isEmpty())
             assertEquals(
-                network[0].blockStore.followSet(member.blockStore.roots),
-                member.blockStore.followSet(member.blockStore.roots)
+                network[0].blockStore.blocks,
+                member.blockStore.blocks
+            )
+        }
+    }
+
+    @Test
+    fun `BlockSyncManager test merging partitioned chains`() {
+        val random = newSecureRandom()
+        val keys = (0..9).map { generateEdDSAKeyPair(random) }
+        val memberService = object : MemberService {
+            private val memberMap: Map<SecureHash, PublicKey> =
+                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+            override val members: Set<SecureHash> = memberMap.keys
+
+            override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val signingService = { id: SecureHash, bytes: ByteArray ->
+            keyMap[id]!!.sign(bytes).toDigitalSignature()
+        }
+
+        val network = memberService.members.map {
+            InMemoryBlockSyncManager(
+                it,
+                memberService,
+                InMemoryBlockStore()
+            )
+        }
+
+        for (member in network) {
+            val rootBlock = Block.createRootBlock(
+                member.self,
+                signingService
+            )
+            member.blockStore.storeBlock(rootBlock)
+        }
+
+        val halfSize = network.size / 2
+        for (i in 0 until 500) {
+            val member = network[i.rem(halfSize)]
+            val newBlock = Block.createBlock(
+                member.self,
+                member.blockStore.heads.toList(),
+                i.toString().toByteArray(Charsets.UTF_8),
+                signingService
+            )
+            member.blockStore.storeBlock(newBlock)
+            val peer = network[random.nextInt(halfSize)]
+            if (peer != member) {
+                val syncMessage = member.getSyncMessage(peer.self, signingService)
+                peer.processSyncMessage(syncMessage)
+            }
+        }
+        for (i in 0 until 500) {
+            val member = network[halfSize + i.rem(network.size - halfSize)]
+            val newBlock = Block.createBlock(
+                member.self,
+                member.blockStore.heads.toList(),
+                i.toString().toByteArray(Charsets.UTF_8),
+                signingService
+            )
+            member.blockStore.storeBlock(newBlock)
+            val peer = network[halfSize + i.rem(network.size - halfSize)]
+            if (peer != member) {
+                val syncMessage = member.getSyncMessage(peer.self, signingService)
+                peer.processSyncMessage(syncMessage)
+            }
+        }
+        for (member1 in network) {
+            for (member2 in network) {
+                if (member1.self != member2.self) {
+                    val sync1 = member1.getSyncMessage(member2.self, signingService)
+                    println("blocks sent ${sync1.blocks.size} ${member1.blockStore.blocks.size} ${member2.blockStore.blocks.size} diff ${(member1.blockStore.blocks - member2.blockStore.blocks).size} ${(member2.blockStore.blocks - member1.blockStore.blocks).size}")
+                    member2.processSyncMessage(sync1)
+                    val sync2 = member2.getSyncMessage(member1.self, signingService)
+                    println("blocks sent ${sync2.blocks.size} ${member2.blockStore.blocks.size} ${member1.blockStore.blocks.size} diff ${(member2.blockStore.blocks - member1.blockStore.blocks).size} ${(member1.blockStore.blocks - member2.blockStore.blocks).size}")
+                    member1.processSyncMessage(sync2)
+                    val sync3 = member1.getSyncMessage(member2.self, signingService)
+                    println("blocks sent ${sync3.blocks.size} ${member1.blockStore.blocks.size} ${member2.blockStore.blocks.size} diff ${(member1.blockStore.blocks - member2.blockStore.blocks).size} ${(member2.blockStore.blocks - member1.blockStore.blocks).size}")
+                    member2.processSyncMessage(sync3)
+                    val sync4 = member2.getSyncMessage(member1.self, signingService)
+                    println("blocks sent ${sync4.blocks.size} ${member2.blockStore.blocks.size} ${member1.blockStore.blocks.size} diff ${(member2.blockStore.blocks - member1.blockStore.blocks).size} ${(member1.blockStore.blocks - member2.blockStore.blocks).size}")
+                    member1.processSyncMessage(sync4)
+                }
+            }
+        }
+        for (member in network) {
+            assertEquals(network.size, member.blockStore.roots.size)
+            assertEquals(true, member.blockStore.getMissing().isEmpty())
+            assertEquals(
+                network[0].blockStore.blocks,
+                member.blockStore.blocks
             )
         }
     }
