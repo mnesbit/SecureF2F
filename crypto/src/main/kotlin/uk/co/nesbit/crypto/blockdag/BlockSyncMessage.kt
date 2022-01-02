@@ -12,7 +12,6 @@ import java.util.*
 
 class BlockSyncMessage private constructor(
     val sender: SecureHash,
-    val prevHeads: SortedSet<SecureHash>,
     val heads: SortedSet<SecureHash>,
     val expectedBlocksFilter: BloomFilter,
     val directRequests: SortedSet<SecureHash>,
@@ -22,7 +21,6 @@ class BlockSyncMessage private constructor(
 
     constructor(syncMessageRecord: GenericRecord) : this(
         syncMessageRecord.getTyped("sender"),
-        syncMessageRecord.getObjectArray("prevHeads", ::SecureHash).toSortedSet(),
         syncMessageRecord.getObjectArray("heads", ::SecureHash).toSortedSet(),
         syncMessageRecord.getTyped("expectedBlocksFilter", ::BloomFilter),
         syncMessageRecord.getObjectArray("directRequests", ::SecureHash).toSortedSet(),
@@ -50,7 +48,6 @@ class BlockSyncMessage private constructor(
 
         fun createBlockSyncMessage(
             sender: SecureHash,
-            prevHeads: Iterable<SecureHash>,
             heads: Iterable<SecureHash>,
             expectedBlocksFilter: BloomFilter,
             directRequests: Iterable<SecureHash>,
@@ -59,7 +56,6 @@ class BlockSyncMessage private constructor(
         ): BlockSyncMessage {
             val templateObject = BlockSyncMessage(
                 sender,
-                prevHeads.toSortedSet(),
                 heads.toSortedSet(),
                 expectedBlocksFilter,
                 directRequests.toSortedSet(),
@@ -75,7 +71,6 @@ class BlockSyncMessage private constructor(
     override fun toGenericRecord(): GenericRecord {
         val syncMessageRecord = GenericData.Record(syncMessageSchema)
         syncMessageRecord.putTyped("sender", sender)
-        syncMessageRecord.putObjectArray("prevHeads", prevHeads.toList())
         syncMessageRecord.putObjectArray("heads", heads.toList())
         syncMessageRecord.putTyped("expectedBlocksFilter", expectedBlocksFilter)
         syncMessageRecord.putObjectArray("directRequests", directRequests.toList())
@@ -86,7 +81,6 @@ class BlockSyncMessage private constructor(
 
     private fun changeSignature(newSignature: DigitalSignature): BlockSyncMessage = BlockSyncMessage(
         sender,
-        prevHeads,
         heads,
         expectedBlocksFilter,
         directRequests,
@@ -111,7 +105,6 @@ class BlockSyncMessage private constructor(
         other as BlockSyncMessage
 
         if (sender != other.sender) return false
-        if (prevHeads != other.prevHeads) return false
         if (heads != other.heads) return false
         if (expectedBlocksFilter != other.expectedBlocksFilter) return false
         if (directRequests != other.directRequests) return false
@@ -123,7 +116,6 @@ class BlockSyncMessage private constructor(
 
     override fun hashCode(): Int {
         var result = sender.hashCode()
-        result = 31 * result + prevHeads.hashCode()
         result = 31 * result + heads.hashCode()
         result = 31 * result + expectedBlocksFilter.hashCode()
         result = 31 * result + directRequests.hashCode()

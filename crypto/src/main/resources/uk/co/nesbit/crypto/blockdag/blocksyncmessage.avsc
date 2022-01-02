@@ -8,13 +8,6 @@
       "type": "uk.co.nesbit.crypto.SecureHash"
     },
     {
-      "name": "prevHeads",
-      "type": {
-        "type": "array",
-        "items": "uk.co.nesbit.crypto.SecureHash"
-      }
-    },
-    {
       "name": "heads",
       "type": {
         "type": "array",

@@ -6,7 +6,9 @@ import uk.co.nesbit.crypto.SecureHash
 interface BlockSyncManager {
     val memberService: MemberService
     val blockStore: BlockStore
+    val signingService: (SecureHash, ByteArray) -> DigitalSignature
 
-    fun getSyncMessage(peer: SecureHash, signingService: (SecureHash, ByteArray) -> DigitalSignature): BlockSyncMessage
+    fun createBlock(data: ByteArray): Block
+    fun getSyncMessage(peer: SecureHash): BlockSyncMessage
     fun processSyncMessage(message: BlockSyncMessage)
 }

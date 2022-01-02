@@ -10,14 +10,32 @@ import java.security.SignatureException
 class InMemoryBlockSyncManager(
     val self: SecureHash,
     override val memberService: MemberService,
-    override val blockStore: BlockStore
+    override val blockStore: BlockStore,
+    override val signingService: (SecureHash, ByteArray) -> DigitalSignature
 ) : BlockSyncManager {
     private val random = newSecureRandom()
     private val lastMessage = mutableMapOf<SecureHash, BlockSyncMessage>()
 
+    init {
+        val rootBlock = Block.createRootBlock(self, signingService)
+        blockStore.storeBlock(rootBlock)
+    }
+
+    override fun createBlock(
+        data: ByteArray
+    ): Block {
+        val newBlock = Block.createBlock(
+            self,
+            blockStore.heads.toList(),
+            data,
+            signingService
+        )
+        blockStore.storeBlock(newBlock)
+        return newBlock
+    }
+
     override fun getSyncMessage(
-        peer: SecureHash,
-        signingService: (SecureHash, ByteArray) -> DigitalSignature
+        peer: SecureHash
     ): BlockSyncMessage {
         val lastMessage = lastMessage[peer]
         val heads = blockStore.heads
@@ -44,7 +62,6 @@ class InMemoryBlockSyncManager(
         }
         return BlockSyncMessage.createBlockSyncMessage(
             self,
-            prevHeads,
             heads,
             filterSet,
             blockStore.getMissing(),
