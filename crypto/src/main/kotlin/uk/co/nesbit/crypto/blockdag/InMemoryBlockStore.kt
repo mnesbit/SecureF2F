@@ -20,6 +20,34 @@ class InMemoryBlockStore : BlockStore {
     override val blocks: Set<SecureHash>
         get() = _blocks.keys
 
+    private var _delivered: List<SecureHash>? = null
+    override val deliveredBlocks: List<SecureHash>
+        get() {
+            if (_delivered == null) {
+                val blocks = rounds.toList().toMutableList()
+                blocks.sortBy { it.second }
+                _delivered = blocks.map { it.first }
+            }
+            return _delivered!!
+        }
+
+    private class ListenerRecord(val store: InMemoryBlockStore, val callback: BlockDeliveryListener) : AutoCloseable {
+        override fun close() {
+            store.unregisterListener(this)
+        }
+    }
+
+    private val listeners = mutableListOf<ListenerRecord>()
+    override fun registerDeliveryListener(listener: BlockDeliveryListener): AutoCloseable {
+        val record = ListenerRecord(this, listener)
+        listeners += record
+        return record
+    }
+
+    private fun unregisterListener(record: ListenerRecord) {
+        listeners -= record
+    }
+
     private fun updateRoundForBlock(block: Block): Boolean {
         if (block.isRoot) {
             rounds[block.id] = 0
@@ -36,6 +64,7 @@ class InMemoryBlockStore : BlockStore {
 
     private fun updateRounds(startBlock: Block) {
         if (rounds[startBlock.id] != null) return
+        val delivered = mutableListOf<Block>()
         val queue = ArrayDeque<Block>()
         queue.addLast(startBlock)
         while (queue.isNotEmpty()) {
@@ -43,6 +72,7 @@ class InMemoryBlockStore : BlockStore {
             while (queue.isNotEmpty()) {
                 val block = queue.removeFirst()
                 if (updateRoundForBlock(block)) {
+                    delivered += block
                     _heads += block.id
                     if (!block.isRoot) {
                         for (pred in block.predecessors) {
@@ -61,11 +91,26 @@ class InMemoryBlockStore : BlockStore {
                 }
             }
         }
+        for (deliveredBlock in delivered) {
+            val round =
+                rounds[deliveredBlock.id] ?: throw java.lang.IllegalStateException("couldn't find delivered block")
+            val predecessors = if (!deliveredBlock.isRoot) {
+                deliveredBlock.predecessors.map {
+                    getBlock(it) ?: throw java.lang.IllegalStateException("couldn't find delivered block")
+                }.toSet()
+            } else {
+                emptySet()
+            }
+            for (listenerRecord in listeners) {
+                listenerRecord.callback.onDelivery(deliveredBlock, predecessors, round)
+            }
+        }
     }
 
     override fun storeBlock(block: Block) {
         val blockId = block.id
         if (_blocks.put(blockId, block) == null) {
+            _delivered = null
             verified[blockId] = false
             missing -= blockId
             if (!block.isRoot) {

@@ -30,6 +30,7 @@ class SizeEstimator private constructor(
 
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sizeEstimatorSchema: Schema = Schema.Parser()
+            .addTypes(mapOf(InvertibleBloomFilter.ibfSchema.fullName to InvertibleBloomFilter.ibfSchema))
             .parse(javaClass.enclosingClass.getResourceAsStream("sizeestimator.avsc"))
 
         fun deserialize(bytes: ByteArray): SizeEstimator {
@@ -62,7 +63,7 @@ class SizeEstimator private constructor(
                     strataEstimators[leadingZeros].add(item)
                 } else {
                     for (i in minHashEstimators.indices) {
-                        val value = (itemHash * perms[i]).rem(MERSENNE_PRIME)
+                        val value = (i + itemHash * perms[i]).rem(MERSENNE_PRIME)
                         if (value < minHashEstimators[i]) {
                             minHashEstimators[i] = value
                         }

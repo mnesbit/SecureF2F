@@ -1,6 +1,6 @@
 {
   "namespace": "uk.co.nesbit.crypto.setsync",
-  "name": "InvertibleBloomFilter",
+  "name": "SizeEstimator",
   "type": "record",
   "fields": [
     {

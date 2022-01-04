@@ -31,13 +31,8 @@ class SetSyncTest {
         for (value in values1) {
             filter1.add(value)
         }
-        val filter2 = InvertibleBloomFilter(100, 400)
         val values2 = (50 until 150).toSet()
-        for (value in values2) {
-            filter2.add(value)
-        }
-        val diff = filter1.diff(filter2)
-        val decoded = diff.decode()
+        val decoded = filter1.decode(values2)
         assertEquals(true, decoded.ok)
         assertEquals(values1.minus(values2), decoded.added)
         assertEquals(values2.minus(values1), decoded.deleted)
@@ -55,12 +50,7 @@ class SetSyncTest {
             for (value in values1) {
                 filter1.add(value)
             }
-            val filter2 = InvertibleBloomFilter(filter1.seed, size)
-            for (value in values2) {
-                filter2.add(value)
-            }
-            val diff = filter1.diff(filter2)
-            val decoded = diff.decode()
+            val decoded = filter1.decode(values2)
             if (decoded.ok) {
                 assertEquals(values1.minus(values2), decoded.added)
                 assertEquals(values2.minus(values1), decoded.deleted)
@@ -86,12 +76,7 @@ class SetSyncTest {
             for (value in values1) {
                 filter1.add(value)
             }
-            val filter2 = InvertibleBloomFilter(filter1.seed, 200)
-            for (value in values2) {
-                filter2.add(value)
-            }
-            val diff = filter1.diff(filter2)
-            val decoded = diff.decode()
+            val decoded = filter1.decode(values2)
             if (decoded.ok) {
                 assertEquals(values1.minus(values2), decoded.added)
                 assertEquals(values2.minus(values1), decoded.deleted)
@@ -118,12 +103,7 @@ class SetSyncTest {
             for (value in values1) {
                 filter1.add(value)
             }
-            val filter2 = InvertibleBloomFilter(filter1.seed, 400)
-            for (value in values2) {
-                filter2.add(value)
-            }
-            val diff = filter1.diff(filter2)
-            val decoded = diff.decode()
+            val decoded = filter1.decode(values2)
             if (decoded.ok) {
                 assertEquals(values1.minus(values2), decoded.added)
                 assertEquals(values2.minus(values1), decoded.deleted)
@@ -145,12 +125,11 @@ class SetSyncTest {
             val values2 = (i until (10000 + i)).toSet()
             val estimator = SizeEstimator.createSizeEstimatorRequest(values1)
             val response = estimator.calculateResponse(values2)
-            val local = InvertibleBloomFilter.createIBF(response.seed, response.entries.size, values1)
-            val decode = local.diff(response).decode()
+            val decode = response.decode(values1)
             if (decode.ok) {
                 ++decodeOK
-                assertEquals(values1.minus(values2), decode.added)
-                assertEquals(values2.minus(values1), decode.deleted)
+                assertEquals(values1.minus(values2), decode.deleted)
+                assertEquals(values2.minus(values1), decode.added)
             } else {
                 ++decodeBAD
             }

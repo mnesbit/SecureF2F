@@ -7,8 +7,7 @@ import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.MurmurHash3
 import uk.co.nesbit.crypto.setsync.InvertibleBloomEntry.Companion.ibfEntrySchema
 import java.lang.Math.abs
-import java.util.*
-import kotlin.collections.ArrayDeque
+import java.lang.Math.max
 
 // Based upon https://www.ics.uci.edu/~eppstein/pubs/EppGooUye-SIGCOMM-11.pdf
 class InvertibleBloomFilter private constructor(
@@ -22,7 +21,7 @@ class InvertibleBloomFilter private constructor(
 
     constructor(seed: Int, size: Int) : this(
         seed,
-        List(size) { _ -> InvertibleBloomEntry() }
+        List(max(size, 4)) { _ -> InvertibleBloomEntry() }
     )
 
     companion object {
@@ -76,6 +75,17 @@ class InvertibleBloomFilter private constructor(
         val deleted: Set<Int>, // missing locally, present in other
         val ok: Boolean
     )
+
+    fun decode(localItems: Set<Int>): DecodeResult {
+        val matchedIBF = createIBF(seed, entries.size, localItems)
+        val diff = matchedIBF.diff(this)
+        val decode = diff.decode()
+        return DecodeResult(
+            decode.deleted,
+            decode.added,
+            decode.ok
+        ) // swap perspective for consistency with manual diff then decode
+    }
 
     fun decode(): DecodeResult {
         val pureIndexQueue = ArrayDeque<Int>()

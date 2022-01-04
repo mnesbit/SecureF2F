@@ -8,15 +8,15 @@
       "type": "uk.co.nesbit.crypto.SecureHash"
     },
     {
+      "name": "invertibleBloomFilter",
+      "type": "uk.co.nesbit.crypto.setsync.InvertibleBloomFilter"
+    },
+    {
       "name": "heads",
       "type": {
         "type": "array",
-        "items": "uk.co.nesbit.crypto.SecureHash"
+        "items": "Block"
       }
-    },
-    {
-      "name": "expectedBlocksFilter",
-      "type": "uk.co.nesbit.crypto.BloomFilter"
     },
     {
       "name": "directRequests",

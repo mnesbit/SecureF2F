@@ -1,11 +1,12 @@
 package uk.co.nesbit.crypto.blockdag
 
-import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.BloomFilter
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.newSecureRandom
+import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
+import java.nio.ByteBuffer
 import java.security.SignatureException
+import kotlin.math.max
 
 class InMemoryBlockSyncManager(
     val self: SecureHash,
@@ -19,6 +20,10 @@ class InMemoryBlockSyncManager(
     init {
         val rootBlock = Block.createRootBlock(self, signingService)
         blockStore.storeBlock(rootBlock)
+    }
+
+    companion object {
+        val MIN_FILTER_SIZE = 25
     }
 
     override fun createBlock(
@@ -38,34 +43,40 @@ class InMemoryBlockSyncManager(
         peer: SecureHash
     ): BlockSyncMessage {
         val lastMessage = lastMessage[peer]
-        val heads = blockStore.heads
-        val prevHeads: Set<SecureHash> = lastMessage?.heads ?: emptySet()
-        val prevSet = blockStore.predecessorSet(prevHeads) + prevHeads
-        val followSet = blockStore.blocks - prevSet
-        val filterSet = BloomFilter.createBloomFilter(followSet.size, 0.01, random.nextInt())
-        for (item in followSet) {
-            filterSet.add(item.serialize())
-        }
-        val replyBlocks = mutableSetOf<SecureHash>()
-        for (head in heads) {
-            replyBlocks += head
-        }
-        if (lastMessage != null) {
-            for (request in lastMessage.directRequests) {
-                replyBlocks += request
+        val blockList = mutableSetOf<SecureHash>()
+        val keySet = blockStore.deliveredBlocks.map { ByteBuffer.wrap(it.bytes).int }.toSet()
+        val newSize = if (lastMessage != null) {
+            blockList.addAll(lastMessage.directRequests)
+            val blocksKeys = lastMessage.invertibleBloomFilter.decode(keySet)
+            if (blocksKeys.ok) {
+                val matchedBlocks = blockStore.blocks.filter { ByteBuffer.wrap(it.bytes).int in blocksKeys.deleted }
+                blockList.addAll(matchedBlocks)
+                max(4 * blocksKeys.added.size + (lastMessage.invertibleBloomFilter.entries.size / 2), MIN_FILTER_SIZE)
+            } else {
+                val fromPeer =
+                    blockStore.deliveredBlocks.mapNotNull { blockStore.getBlock(it) }.filter { it.origin == peer }
+                        .map { it.id }.toSet()
+                val prevSet = blockStore.predecessorSet(fromPeer) + fromPeer
+                val followSet = blockStore.deliveredBlocks - prevSet
+                blockList.addAll(followSet)
+                val expandedRequests = blockStore.predecessorSet(lastMessage.directRequests) - prevSet
+                blockList.addAll(expandedRequests)
+                max(2 * lastMessage.invertibleBloomFilter.entries.size, 4 * blockList.size)
             }
-            for (blockId in followSet) {
-                if (!(blockId in prevSet || lastMessage.expectedBlocksFilter.possiblyContains(blockId.serialize()))) {
-                    replyBlocks += blockId
-                }
-            }
+        } else {
+            MIN_FILTER_SIZE
         }
+        val ibf = InvertibleBloomFilter.createIBF(
+            random.nextInt(),
+            newSize,
+            keySet
+        )
         return BlockSyncMessage.createBlockSyncMessage(
             self,
-            heads,
-            filterSet,
+            ibf,
+            blockStore.heads.mapNotNull { blockStore.getBlock(it) },
             blockStore.getMissing(),
-            replyBlocks.mapNotNull { blockStore.getBlock(it) },
+            blockList.mapNotNull { blockStore.getBlock(it) },
             signingService
         )
     }
@@ -73,6 +84,9 @@ class InMemoryBlockSyncManager(
     override fun processSyncMessage(message: BlockSyncMessage) {
         try {
             message.verify(memberService)
+            for (head in message.heads) {
+                blockStore.storeBlock(head)
+            }
             for (block in message.blocks) {
                 blockStore.storeBlock(block)
             }

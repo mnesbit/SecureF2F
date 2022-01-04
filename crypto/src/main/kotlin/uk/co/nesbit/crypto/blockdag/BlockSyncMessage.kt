@@ -4,16 +4,16 @@ import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
-import uk.co.nesbit.crypto.BloomFilter
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.SecureHash
+import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
 import java.security.SignatureException
 import java.util.*
 
 class BlockSyncMessage private constructor(
     val sender: SecureHash,
-    val heads: SortedSet<SecureHash>,
-    val expectedBlocksFilter: BloomFilter,
+    val invertibleBloomFilter: InvertibleBloomFilter,
+    val heads: SortedSet<Block>,
     val directRequests: SortedSet<SecureHash>,
     val blocks: SortedSet<Block>,
     val signature: DigitalSignature
@@ -21,8 +21,8 @@ class BlockSyncMessage private constructor(
 
     constructor(syncMessageRecord: GenericRecord) : this(
         syncMessageRecord.getTyped("sender"),
-        syncMessageRecord.getObjectArray("heads", ::SecureHash).toSortedSet(),
-        syncMessageRecord.getTyped("expectedBlocksFilter", ::BloomFilter),
+        syncMessageRecord.getTyped("invertibleBloomFilter", ::InvertibleBloomFilter),
+        syncMessageRecord.getObjectArray("heads", ::Block).toSortedSet(),
         syncMessageRecord.getObjectArray("directRequests", ::SecureHash).toSortedSet(),
         syncMessageRecord.getObjectArray("blocks", ::Block).toSortedSet(),
         syncMessageRecord.getTyped("signature", ::DigitalSignature)
@@ -35,7 +35,7 @@ class BlockSyncMessage private constructor(
                 mapOf(
                     DigitalSignature.digitalSignatureSchema.fullName to DigitalSignature.digitalSignatureSchema,
                     SecureHash.secureHashSchema.fullName to SecureHash.secureHashSchema,
-                    BloomFilter.bloomFilterSchema.fullName to BloomFilter.bloomFilterSchema,
+                    InvertibleBloomFilter.ibfSchema.fullName to InvertibleBloomFilter.ibfSchema,
                     Block.blockSchema.fullName to Block.blockSchema,
                 )
             )
@@ -48,16 +48,16 @@ class BlockSyncMessage private constructor(
 
         fun createBlockSyncMessage(
             sender: SecureHash,
-            heads: Iterable<SecureHash>,
-            expectedBlocksFilter: BloomFilter,
+            invertibleBloomFilter: InvertibleBloomFilter,
+            heads: Iterable<Block>,
             directRequests: Iterable<SecureHash>,
             blocks: Iterable<Block>,
             signingService: (SecureHash, ByteArray) -> DigitalSignature
         ): BlockSyncMessage {
             val templateObject = BlockSyncMessage(
                 sender,
+                invertibleBloomFilter,
                 heads.toSortedSet(),
-                expectedBlocksFilter,
                 directRequests.toSortedSet(),
                 blocks.toSortedSet(),
                 DigitalSignature("SYNCMESSAGE", ByteArray(0))
@@ -71,8 +71,8 @@ class BlockSyncMessage private constructor(
     override fun toGenericRecord(): GenericRecord {
         val syncMessageRecord = GenericData.Record(syncMessageSchema)
         syncMessageRecord.putTyped("sender", sender)
+        syncMessageRecord.putTyped("invertibleBloomFilter", invertibleBloomFilter)
         syncMessageRecord.putObjectArray("heads", heads.toList())
-        syncMessageRecord.putTyped("expectedBlocksFilter", expectedBlocksFilter)
         syncMessageRecord.putObjectArray("directRequests", directRequests.toList())
         syncMessageRecord.putObjectArray("blocks", blocks.toList())
         syncMessageRecord.putTyped("signature", signature)
@@ -81,8 +81,8 @@ class BlockSyncMessage private constructor(
 
     private fun changeSignature(newSignature: DigitalSignature): BlockSyncMessage = BlockSyncMessage(
         sender,
+        invertibleBloomFilter,
         heads,
-        expectedBlocksFilter,
         directRequests,
         blocks,
         newSignature
@@ -105,8 +105,8 @@ class BlockSyncMessage private constructor(
         other as BlockSyncMessage
 
         if (sender != other.sender) return false
+        if (invertibleBloomFilter != other.invertibleBloomFilter) return false
         if (heads != other.heads) return false
-        if (expectedBlocksFilter != other.expectedBlocksFilter) return false
         if (directRequests != other.directRequests) return false
         if (blocks != other.blocks) return false
         if (signature != other.signature) return false
@@ -116,12 +116,13 @@ class BlockSyncMessage private constructor(
 
     override fun hashCode(): Int {
         var result = sender.hashCode()
+        result = 31 * result + invertibleBloomFilter.hashCode()
         result = 31 * result + heads.hashCode()
-        result = 31 * result + expectedBlocksFilter.hashCode()
         result = 31 * result + directRequests.hashCode()
         result = 31 * result + blocks.hashCode()
         result = 31 * result + signature.hashCode()
         return result
     }
+
 
 }
