@@ -102,12 +102,18 @@ object AvroTypeHelpers {
 
 fun Schema.deserialize(bytes: ByteArray): GenericRecord {
     val datumReader = GenericDatumReader<GenericRecord>(this)
-    val decoder = SafeDecoder(bytes)
-    val record = datumReader.read(null, decoder)
-    if (!decoder.fullyConsumed) {
-        throw IOException()
+    try {
+        val decoder = DecoderFactory.get().binaryDecoder(bytes, null)
+        val data = datumReader.read(null, decoder)
+        if (!decoder.isEnd) {
+            throw IOException()
+        }
+        return data
+    } catch (io: IOException) {
+        throw io
+    } catch (ex: Exception) {
+        throw IOException("Invalid length", ex)
     }
-    return record
 }
 
 fun Schema.deserializeJSON(json: String): GenericRecord {
