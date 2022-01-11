@@ -15,13 +15,17 @@ class SetSyncTest {
         for (value in values) {
             filter.add(value)
         }
-        val serialised = filter.serialize()
-        val deserialized = InvertibleBloomFilter.deserialize(serialised)
+        val serialized = filter.serialize()
+        val deserialized = InvertibleBloomFilter.deserialize(serialized)
         assertEquals(filter, deserialized)
         val decode = filter.decode()
         assertEquals(true, decode.ok)
         assertEquals(true, decode.deleted.isEmpty())
         assertEquals(values, decode.added)
+        val estimator = SizeEstimator.createSizeEstimatorRequest(values)
+        val serializedEstimator = estimator.serialize()
+        val deserializedEstimator = SizeEstimator.deserialize(serializedEstimator)
+        assertEquals(estimator, deserializedEstimator)
     }
 
     @Test
@@ -59,82 +63,75 @@ class SetSyncTest {
                 ++decodedBAD
             }
         }
-        assertEquals(true, decodedBAD > 0)
-        assertEquals(true, decodedBAD < 300)
-        assertEquals(true, decodedOK > 50)
+        assertEquals(true, decodedBAD > 0, "decode fail rate shouldn't be 0")
+        assertEquals(true, decodedBAD < 170, "decode fail rate too high $decodedBAD")
+        assertEquals(true, decodedOK > 240, "decode rate below target $decodedOK")
     }
 
     @Test
     fun `threshold test2`() {
-        var decodedOK = 0
-        var decodedBAD = 0
         val random = Random()
-        for (size in 0 until 500) {
+        for (size in listOf(0, 10, 20, 50, 60)) { // beginning of the drop-off zone
+            var decodedOK = 0
             val values1 = (0 until 8000).toSet()
             val values2 = (size until (8000 + size)).toSet()
-            val filter1 = InvertibleBloomFilter(random.nextInt(), 200)
-            for (value in values1) {
-                filter1.add(value)
+            for (rep in 0 until 100) {
+                val filter1 = InvertibleBloomFilter(random.nextInt(), 200)
+                for (value in values1) {
+                    filter1.add(value)
+                }
+                val decoded = filter1.decode(values2)
+                if (decoded.ok) {
+                    assertEquals(values1.minus(values2), decoded.added)
+                    assertEquals(values2.minus(values1), decoded.deleted)
+                    ++decodedOK
+                }
             }
-            val decoded = filter1.decode(values2)
-            if (decoded.ok) {
-                assertEquals(values1.minus(values2), decoded.added)
-                assertEquals(values2.minus(values1), decoded.deleted)
-                ++decodedOK
-            } else {
-                ++decodedBAD
-            }
+            assertEquals(true, decodedOK > 85, "decode rate below target $decodedOK")
         }
-        assertEquals(true, decodedBAD > 0)
-        assertEquals(true, decodedBAD < 450)
-        assertEquals(true, decodedOK > 15)
     }
 
     @Test
     fun `test size independence`() {
-        var decodedOK = 0
-        var decodedBAD = 0
         val random = Random()
         for (scale in 1..10) {
+            var decodedOK = 0
             val size = 1000 shl scale
             val values1 = (0 until size).toSet()
             val values2 = (50 until (50 + size)).toSet()
-            val filter1 = InvertibleBloomFilter(random.nextInt(), 400)
-            for (value in values1) {
-                filter1.add(value)
+            for (rep in 0 until 20) {
+                val filter1 = InvertibleBloomFilter(random.nextInt(), 400)
+                for (value in values1) {
+                    filter1.add(value)
+                }
+                val decoded = filter1.decode(values2)
+                if (decoded.ok) {
+                    assertEquals(values1.minus(values2), decoded.added)
+                    assertEquals(values2.minus(values1), decoded.deleted)
+                    ++decodedOK
+                }
             }
-            val decoded = filter1.decode(values2)
-            if (decoded.ok) {
-                assertEquals(values1.minus(values2), decoded.added)
-                assertEquals(values2.minus(values1), decoded.deleted)
-                ++decodedOK
-            } else {
-                ++decodedBAD
-            }
+            assertEquals(true, decodedOK > 17, "decode rate below target $decodedOK")
         }
-        assertEquals(0, decodedBAD)
-        assertEquals(10, decodedOK)
     }
 
     @Test
     fun `estimator test`() {
-        var decodeOK = 0
-        var decodeBAD = 0
-        for (i in 1 until 1000) {
+        for (i in listOf(0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000)) {
+            var decodedOK = 0
             val values1 = (0 until 10000).toSet()
             val values2 = (i until (10000 + i)).toSet()
-            val estimator = SizeEstimator.createSizeEstimatorRequest(values1)
-            val response = estimator.calculateResponse(values2)
-            val decode = response.decode(values1)
-            if (decode.ok) {
-                ++decodeOK
-                assertEquals(values1.minus(values2), decode.deleted)
-                assertEquals(values2.minus(values1), decode.added)
-            } else {
-                ++decodeBAD
+            for (rep in 0 until 100) {
+                val estimator = SizeEstimator.createSizeEstimatorRequest(values1)
+                val response = estimator.calculateResponse(values2)
+                val decode = response.decode(values1)
+                if (decode.ok) {
+                    ++decodedOK
+                    assertEquals(values1.minus(values2), decode.deleted)
+                    assertEquals(values2.minus(values1), decode.added)
+                }
             }
+            assertEquals(true, decodedOK > 75, "decode rate below target $decodedOK")
         }
-        assertEquals(true, decodeOK > 970)
-        assertEquals(true, decodeBAD < 30)
     }
 }

@@ -1,7 +1,8 @@
 package uk.co.nesbit.crypto
 
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.blockdag.*
 import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
@@ -9,7 +10,6 @@ import java.lang.Integer.min
 import java.nio.ByteBuffer
 import java.security.KeyPair
 import java.security.PublicKey
-import java.security.SignatureException
 import kotlin.math.max
 import kotlin.random.Random
 import kotlin.test.assertEquals
@@ -50,71 +50,6 @@ class BlockDAGTest {
         assertEquals(block, deserialized)
         deserialized.verify(memberService)
         assertEquals(block.id, deserialized.id)
-    }
-
-    @Test
-    fun `test block store verify`() {
-        val keyPair = generateEdDSAKeyPair()
-        val keyId = SecureHash.secureHash(keyPair.public.encoded)
-        val memberService = object : MemberService {
-            override val members: Set<SecureHash>
-                get() = setOf(keyId)
-
-            override fun getMemberKey(id: SecureHash): PublicKey? {
-                assertEquals(keyId, id)
-                return keyPair.public
-            }
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
-        }
-        val signingService = { id: SecureHash, x: ByteArray ->
-            assertEquals(keyId, id)
-            keyPair.sign(x).toDigitalSignature()
-        }
-        val random = Random.Default
-        val blockIds = mutableListOf<SecureHash>()
-        val blocks = mutableListOf<Block>()
-        val rootBlock = Block.createRootBlock(keyId, signingService)
-        blockIds += rootBlock.id
-        blocks += rootBlock
-        for (i in 0 until 500) {
-            val inputs = 1 + min(random.nextInt(10), blocks.size - 1)
-            val inputIds = mutableSetOf<SecureHash>()
-            for (j in 0 until inputs) {
-                inputIds += blockIds[random.nextInt(blockIds.size)]
-            }
-            val newBlock = Block.createBlock(keyId, inputIds.toList(), i.toByteArray(), signingService)
-            blockIds += newBlock.id
-            blocks += newBlock
-        }
-        val skipFollower = blocks[blocks.size / 2]
-        val skip = skipFollower.predecessors.last()
-        val skipBlock = blocks.single { it.id == skip }
-        val shuffled = blocks.shuffled()
-        val blockStore: BlockStore = InMemoryBlockStore()
-        blockStore.transitiveVerify(rootBlock, memberService)
-        for (block in shuffled) {
-            assertEquals(null, blockStore.getBlock(block.id))
-            if (block.id == skip) continue
-            blockStore.storeBlock(block)
-            assertEquals(block, blockStore.getBlock(block.id))
-        }
-        assertEquals(1, blockStore.getMissing().size)
-        assertEquals(skip, blockStore.getMissing().single())
-        blockStore.transitiveVerify(skipBlock, memberService)
-        val follows = blockStore.getNext(skip)
-        assertEquals(true, skipFollower.id in follows)
-        for (next in follows) {
-            assertThrows<SignatureException> {
-                blockStore.transitiveVerify(blockStore.getBlock(next)!!, memberService)
-            }
-        }
-        blockStore.storeBlock(skipBlock)
-        assertEquals(0, blockStore.getMissing().size)
-        blockStore.transitiveVerify(blocks.last(), memberService)
-        assertEquals(rootBlock.id, blockStore.roots.single())
     }
 
     @Test
@@ -269,10 +204,11 @@ class BlockDAGTest {
         deserialized.verify(memberService)
     }
 
-    @Test
-    fun `BlockSyncManager test`() {
+    @ParameterizedTest
+    @CsvSource("10,1000", "100,200")
+    fun `BlockSyncManager test`(members: Int, runLength: Int) {
         val random = newSecureRandom()
-        val keys = (0..9).map { generateEdDSAKeyPair(random) }
+        val keys = (0 until members).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
                 keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
@@ -300,7 +236,7 @@ class BlockDAGTest {
 
         var sentSize = 0
         var msgSent = 0
-        for (i in 0 until 1000) {
+        for (i in 0 until runLength) {
             val member = network[i.rem(network.size)]
             member.createBlock(i.toString().toByteArray(Charsets.UTF_8))
             val peer = network[random.nextInt(network.size)]
@@ -338,7 +274,7 @@ class BlockDAGTest {
                     val excess =
                         (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
                     excessBlockCount += excess
-                    println("sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
                     memberb.processSyncMessage(sync1)
                     round++
                     worstRound = max(round, worstRound)

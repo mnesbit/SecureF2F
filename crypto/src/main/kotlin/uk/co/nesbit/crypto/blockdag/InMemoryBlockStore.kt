@@ -2,12 +2,10 @@ package uk.co.nesbit.crypto.blockdag
 
 import uk.co.nesbit.crypto.SecureHash
 import java.lang.Integer.max
-import java.security.SignatureException
 
 class InMemoryBlockStore : BlockStore {
     private val _blocks = mutableMapOf<SecureHash, Block>()
     private val missing = mutableSetOf<SecureHash>()
-    private val verified = mutableMapOf<SecureHash, Boolean>()
     private val rounds = mutableMapOf<SecureHash, Int>()
     private val follows = mutableMapOf<SecureHash, MutableSet<SecureHash>>()
 
@@ -59,6 +57,7 @@ class InMemoryBlockStore : BlockStore {
             }
             rounds[block.id] = maxRound + 1
         }
+        _delivered = null
         return true
     }
 
@@ -110,8 +109,6 @@ class InMemoryBlockStore : BlockStore {
     override fun storeBlock(block: Block) {
         val blockId = block.id
         if (_blocks.put(blockId, block) == null) {
-            _delivered = null
-            verified[blockId] = false
             missing -= blockId
             if (!block.isRoot) {
                 for (predecessor in block.predecessors) {
@@ -169,56 +166,4 @@ class InMemoryBlockStore : BlockStore {
         }
         return resultSet
     }
-
-    private fun expandUnverifiedPredecessors(
-        block: Block,
-        verifyList: MutableList<SecureHash>,
-        verifySet: MutableSet<SecureHash>
-    ) {
-        if (block.isRoot) return
-        for (predecessor in block.predecessors) {
-            if (predecessor !in verifySet) {
-                verifySet += predecessor
-                val verifyState = verified[predecessor]
-                if (verifyState == null) {
-                    throw SignatureException("Missing transitive dependency $predecessor")
-                } else if (verifyState == false) {
-                    verifyList += predecessor
-                }
-            }
-        }
-    }
-
-    override fun transitiveVerify(block: Block, memberService: MemberService) {
-        block.verify(memberService)
-        val verifySet = mutableSetOf<SecureHash>()
-        val unverifiedList = mutableListOf<SecureHash>()
-        expandUnverifiedPredecessors(block, unverifiedList, verifySet)
-        var index = 0
-        while (index < unverifiedList.size) {
-            val blockId = unverifiedList[index]
-            val currentBlock = _blocks[blockId] ?: throw IllegalStateException("Corrupted block state $blockId")
-            expandUnverifiedPredecessors(currentBlock, unverifiedList, verifySet)
-            ++index
-        }
-        val reversed = unverifiedList.asReversed()
-        var progress = true
-        while (progress) {
-            progress = false
-            val itr = reversed.iterator()
-            while (itr.hasNext()) {
-                val verifyId = itr.next()
-                val currentBlock = _blocks[verifyId] ?: throw IllegalStateException("Corrupted block state $verifyId")
-                val predecessorsDone = currentBlock.isRoot || currentBlock.predecessors.all { verified[it] == true }
-                if (predecessorsDone) {
-                    currentBlock.verify(memberService)
-                    verified[verifyId] = true
-                    progress = true
-                    itr.remove()
-                }
-            }
-        }
-        if (reversed.isNotEmpty()) throw SignatureException("Unable to verify all transitive blocks")
-    }
-
 }

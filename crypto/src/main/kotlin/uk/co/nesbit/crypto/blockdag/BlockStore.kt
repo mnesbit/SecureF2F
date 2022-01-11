@@ -10,7 +10,6 @@ interface BlockStore {
     fun storeBlock(block: Block)
     fun getBlock(id: SecureHash): Block?
     fun getRound(id: SecureHash): Int?
-    fun transitiveVerify(block: Block, memberService: MemberService)
     fun getMissing(): Set<SecureHash>
     fun getNext(id: SecureHash): Set<SecureHash>
     fun followSet(ids: Set<SecureHash>): Set<SecureHash>

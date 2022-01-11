@@ -55,8 +55,9 @@ class InvertibleBloomFilter private constructor(
 
     fun add(newKey: Int) {
         val hashes = selectBins(newKey)
+        val entryHash = InvertibleBloomEntry.calcHash(newKey)
         for (index in hashes) {
-            entries[index].add(newKey)
+            entries[index].add(newKey, entryHash)
         }
     }
 
@@ -110,11 +111,12 @@ class InvertibleBloomFilter private constructor(
                 deleted += decodedKey
             }
             val hashes = selectBins(decodedKey)
+            val entryHash = InvertibleBloomEntry.calcHash(decodedKey)
             for (index in hashes) {
                 if (decodedCount > 0) {
-                    entries[index].sub(decodedKey)
+                    entries[index].sub(decodedKey, entryHash)
                 } else {
-                    entries[index].add(decodedKey)
+                    entries[index].add(decodedKey, entryHash)
                 }
                 if (entries[index].isPure) {
                     pureIndexQueue.addFirst(index)
