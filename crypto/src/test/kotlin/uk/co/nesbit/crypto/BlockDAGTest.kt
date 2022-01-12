@@ -290,7 +290,7 @@ class BlockDAGTest {
                 member.blockStore.blocks
             )
         }
-        assertEquals(true, worstRound <= 3)
+        assertEquals(true, worstRound <= 4, "sync too slow took $worstRound rounds")
 
     }
 
@@ -382,8 +382,190 @@ class BlockDAGTest {
                 member.blockStore.blocks
             )
         }
-        assertEquals(true, worstRound <= 3)
+        assertEquals(true, worstRound <= 4, "sync too slow took $worstRound rounds")
 
     }
 
+    @Test
+    fun `BlockSyncManager sync with lost packets`() {
+        val random = newSecureRandom()
+        val keys = (0 until 10).map { generateEdDSAKeyPair(random) }
+        val memberService = object : MemberService {
+            private val memberMap: Map<SecureHash, PublicKey> =
+                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+            override val members: Set<SecureHash> = memberMap.keys
+
+            override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val signingService = { id: SecureHash, bytes: ByteArray ->
+            keyMap[id]!!.sign(bytes).toDigitalSignature()
+        }
+        val network = memberService.members.map {
+            InMemoryBlockSyncManager(
+                it,
+                memberService,
+                InMemoryBlockStore(),
+                signingService
+            )
+        }
+
+        var sentSize = 0
+        var msgSent = 0
+        for (i in 0 until 2000) {
+            val member = network[i.rem(network.size)]
+            member.createBlock(i.toString().toByteArray(Charsets.UTF_8))
+            if (random.nextDouble() < 0.9) continue
+            val peer = network[random.nextInt(network.size)]
+            if (peer != member) {
+                val syncMessage = member.getSyncMessage(peer.self)
+                val msgSize = syncMessage.serialize().size
+                sentSize += msgSize
+                ++msgSent
+                println("blocks sent ${syncMessage.blocks.size} ${msgSize} ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
+                peer.processSyncMessage(syncMessage)
+            }
+        }
+        println("average msg size = ${sentSize / msgSent}")
+        var syncSize = 0
+        var syncCount = 0
+        var worstRound = 0
+        var totalBlocks = 0
+        var excessBlockCount = 0
+        for (memberIndex1 in 0 until network.size - 1) {
+            val member1 = network[memberIndex1]
+            for (memberIndex2 in memberIndex1 until network.size) {
+                val member2 = network[memberIndex2]
+                var round = 0
+                while (member1.blockStore.deliveredBlocks.toSet() != member2.blockStore.deliveredBlocks.toSet()) {
+                    if (random.nextDouble() < 0.5) {
+                        continue
+                    }
+                    val (membera, memberb) = if (round and 1 == 0) {
+                        Pair(member1, member2)
+                    } else {
+                        Pair(member2, member1)
+                    }
+                    val sync1 = membera.getSyncMessage(memberb.self)
+                    val sync1Size = sync1.serialize().size
+                    syncSize += sync1Size
+                    ++syncCount
+                    totalBlocks += sync1.blocks.size
+                    val excess =
+                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    excessBlockCount += excess
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    memberb.processSyncMessage(sync1)
+                    round++
+                    worstRound = max(round, worstRound)
+                }
+            }
+        }
+        println("bytes to sync = $syncSize average ${syncSize / syncCount} worst round $worstRound excess block $excessBlockCount of $totalBlocks")
+        for (member in network) {
+            assertEquals(network.size, member.blockStore.roots.size)
+            assertEquals(true, member.blockStore.getMissing().isEmpty())
+            assertEquals(
+                network[0].blockStore.blocks,
+                member.blockStore.blocks
+            )
+        }
+        assertEquals(true, worstRound <= 4, "sync too slow took $worstRound rounds")
+    }
+
+    @Test
+    fun `BlockSyncManager sync with long local chains`() {
+        val random = newSecureRandom()
+        val keys = (0 until 10).map { generateEdDSAKeyPair(random) }
+        val memberService = object : MemberService {
+            private val memberMap: Map<SecureHash, PublicKey> =
+                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+            override val members: Set<SecureHash> = memberMap.keys
+
+            override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val signingService = { id: SecureHash, bytes: ByteArray ->
+            keyMap[id]!!.sign(bytes).toDigitalSignature()
+        }
+        val network = memberService.members.map {
+            InMemoryBlockSyncManager(
+                it,
+                memberService,
+                InMemoryBlockStore(),
+                signingService
+            )
+        }
+
+        var sentSize = 0
+        var msgSent = 0
+        var msgCreated = 0
+        for (i in 0 until 100) {
+            for (j in 0 until 10 * network.size) {
+                val member = network[j.rem(network.size)]
+                member.createBlock(msgCreated.toString().toByteArray(Charsets.UTF_8))
+                ++msgCreated
+            }
+            val sourceMember = network[i.rem(network.size)]
+            val peer = network[random.nextInt(network.size)]
+            if (sourceMember != peer) {
+                val syncMessage = sourceMember.getSyncMessage(peer.self)
+                val msgSize = syncMessage.serialize().size
+                sentSize += msgSize
+                ++msgSent
+                println("blocks sent ${syncMessage.blocks.size} ${msgSize} ${sourceMember.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(sourceMember.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - sourceMember.blockStore.blocks).size}")
+                peer.processSyncMessage(syncMessage)
+            }
+        }
+        println("average msg size = ${sentSize / msgSent}")
+        var syncSize = 0
+        var syncCount = 0
+        var worstRound = 0
+        var totalBlocks = 0
+        var excessBlockCount = 0
+        for (memberIndex1 in 0 until network.size - 1) {
+            val member1 = network[memberIndex1]
+            for (memberIndex2 in memberIndex1 until network.size) {
+                val member2 = network[memberIndex2]
+                var round = 0
+                while (member1.blockStore.deliveredBlocks.toSet() != member2.blockStore.deliveredBlocks.toSet()) {
+                    val (membera, memberb) = if (round and 1 == 0) {
+                        Pair(member1, member2)
+                    } else {
+                        Pair(member2, member1)
+                    }
+                    val sync1 = membera.getSyncMessage(memberb.self)
+                    val sync1Size = sync1.serialize().size
+                    syncSize += sync1Size
+                    ++syncCount
+                    totalBlocks += sync1.blocks.size
+                    val excess =
+                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    excessBlockCount += excess
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    memberb.processSyncMessage(sync1)
+                    round++
+                    worstRound = max(round, worstRound)
+                }
+            }
+        }
+        println("bytes to sync = $syncSize average ${syncSize / syncCount} worst round $worstRound excess block $excessBlockCount of $totalBlocks")
+        for (member in network) {
+            assertEquals(network.size, member.blockStore.roots.size)
+            assertEquals(true, member.blockStore.getMissing().isEmpty())
+            assertEquals(
+                network[0].blockStore.blocks,
+                member.blockStore.blocks
+            )
+        }
+        assertEquals(true, worstRound <= 4, "sync too slow took $worstRound rounds")
+    }
 }

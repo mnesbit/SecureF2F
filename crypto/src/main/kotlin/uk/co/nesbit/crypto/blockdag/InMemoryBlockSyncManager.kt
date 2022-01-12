@@ -16,6 +16,7 @@ class InMemoryBlockSyncManager(
 ) : BlockSyncManager {
     private val random = newSecureRandom()
     private val lastMessage = mutableMapOf<SecureHash, BlockSyncMessage>()
+    private val failures = mutableMapOf<SecureHash, Int>()
 
     init {
         val rootBlock = Block.createRootBlock(self, signingService)
@@ -49,21 +50,27 @@ class InMemoryBlockSyncManager(
             blockList.addAll(lastMessage.directRequests)
             val blocksKeys = lastMessage.invertibleBloomFilter.decode(keySet)
             if (blocksKeys.ok) {
+                failures[peer] = 0
                 val matchedBlocks = blockStore.blocks.filter { ByteBuffer.wrap(it.bytes).int in blocksKeys.deleted }
                 blockList.addAll(matchedBlocks)
-                max(4 * blocksKeys.added.size + (lastMessage.invertibleBloomFilter.entries.size / 2), MIN_FILTER_SIZE)
+                max((2 * blocksKeys.added.size + lastMessage.invertibleBloomFilter.entries.size) / 2, MIN_FILTER_SIZE)
             } else {
+                val failed = failures.getOrDefault(peer, 0) + 1
+                failures[peer] = failed
                 val fromPeer =
                     blockStore.deliveredBlocks.mapNotNull { blockStore.getBlock(it) }.filter { it.origin == peer }
                         .map { it.id }.toSet()
                 val prevSet = blockStore.predecessorSet(fromPeer) + fromPeer
                 val followSet = blockStore.deliveredBlocks - prevSet
-                blockList.addAll(followSet)
+                if (failed > 3) {
+                    blockList.addAll(followSet)
+                }
                 val expandedRequests = blockStore.predecessorSet(lastMessage.directRequests) - prevSet
                 blockList.addAll(expandedRequests)
-                max(2 * lastMessage.invertibleBloomFilter.entries.size, 4 * blockList.size)
+                max(2 * lastMessage.invertibleBloomFilter.entries.size, 2 * (followSet + expandedRequests).size)
             }
         } else {
+            failures[peer] = 1
             MIN_FILTER_SIZE
         }
         val ibf = InvertibleBloomFilter.createIBF(
@@ -71,6 +78,7 @@ class InMemoryBlockSyncManager(
             newSize,
             keySet
         )
+        blockList.removeAll(blockStore.heads)
         return BlockSyncMessage.createBlockSyncMessage(
             self,
             ibf,
