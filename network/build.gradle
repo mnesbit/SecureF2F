@@ -1,6 +1,10 @@
+plugins {
+    id 'com.google.devtools.ksp'
+}
+
 description 'Akka based network routing simulator'
 
-apply plugin: 'kotlin-kapt'
+apply plugin: 'com.google.devtools.ksp'
 
 dependencies {
     // Actor framework
@@ -17,7 +21,8 @@ dependencies {
 
     // JSON via Moshi
     implementation "com.squareup.moshi:moshi-kotlin:$moshi_version"
-    kapt "com.squareup.moshi:moshi-kotlin-codegen:$moshi_version"
+    implementation "com.google.devtools.ksp:symbol-processing-api:$ksp_version"
+    ksp "com.squareup.moshi:moshi-kotlin-codegen:$moshi_version"
 
     api project(':avro')
     api project(':crypto')
