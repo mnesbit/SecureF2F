@@ -11,6 +11,7 @@ import java.nio.ByteBuffer
 import java.security.KeyPair
 import java.security.PublicKey
 import kotlin.math.max
+import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.test.assertEquals
 
@@ -234,8 +235,8 @@ class BlockDAGTest {
             )
         }
 
-        var sentSize = 0
-        var msgSent = 0
+        var sentSize = 0L
+        var msgSent = 0L
         for (i in 0 until runLength) {
             val member = network[i.rem(network.size)]
             member.createBlock(i.toString().toByteArray(Charsets.UTF_8))
@@ -245,7 +246,7 @@ class BlockDAGTest {
                 val msgSize = syncMessage.serialize().size
                 sentSize += msgSize
                 ++msgSent
-                println("blocks sent ${syncMessage.blocks.size} ${msgSize} ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
+                println("blocks sent ${syncMessage.blocks.size} $msgSize ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
                 peer.processSyncMessage(syncMessage)
             }
         }
@@ -271,10 +272,9 @@ class BlockDAGTest {
                     syncSize += sync1Size
                     ++syncCount
                     totalBlocks += sync1.blocks.size
-                    val excess =
-                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    val excess = (memberb.blockStore.blocks intersect (sync1.blocks.map { it.id }.toSet())).size
                     excessBlockCount += excess
-                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} $sync1Size ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
                     memberb.processSyncMessage(sync1)
                     round++
                     worstRound = max(round, worstRound)
@@ -342,8 +342,8 @@ class BlockDAGTest {
                 peer.processSyncMessage(syncMessage)
             }
         }
-        var syncSize = 0
-        var syncCount = 0
+        var syncSize = 0L
+        var syncCount = 0L
         var worstRound = 0
         var totalBlocks = 0
         var excessBlockCount = 0
@@ -363,10 +363,9 @@ class BlockDAGTest {
                     syncSize += sync1Size
                     ++syncCount
                     totalBlocks += sync1.blocks.size
-                    val excess =
-                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    val excess = (memberb.blockStore.blocks intersect (sync1.blocks.map { it.id }.toSet())).size
                     excessBlockCount += excess
-                    println("sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    println("sync sent$round ${sync1.blocks.size} $sync1Size ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
                     memberb.processSyncMessage(sync1)
                     round++
                     worstRound = max(round, worstRound)
@@ -414,8 +413,8 @@ class BlockDAGTest {
             )
         }
 
-        var sentSize = 0
-        var msgSent = 0
+        var sentSize = 0L
+        var msgSent = 0L
         for (i in 0 until 2000) {
             val member = network[i.rem(network.size)]
             member.createBlock(i.toString().toByteArray(Charsets.UTF_8))
@@ -426,13 +425,13 @@ class BlockDAGTest {
                 val msgSize = syncMessage.serialize().size
                 sentSize += msgSize
                 ++msgSent
-                println("blocks sent ${syncMessage.blocks.size} ${msgSize} ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
+                println("blocks sent ${syncMessage.blocks.size} $msgSize ${member.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(member.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - member.blockStore.blocks).size}")
                 peer.processSyncMessage(syncMessage)
             }
         }
         println("average msg size = ${sentSize / msgSent}")
-        var syncSize = 0
-        var syncCount = 0
+        var syncSize = 0L
+        var syncCount = 0L
         var worstRound = 0
         var totalBlocks = 0
         var excessBlockCount = 0
@@ -455,10 +454,9 @@ class BlockDAGTest {
                     syncSize += sync1Size
                     ++syncCount
                     totalBlocks += sync1.blocks.size
-                    val excess =
-                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    val excess = (memberb.blockStore.blocks intersect (sync1.blocks.map { it.id }.toSet())).size
                     excessBlockCount += excess
-                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} $sync1Size ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
                     memberb.processSyncMessage(sync1)
                     round++
                     worstRound = max(round, worstRound)
@@ -505,8 +503,8 @@ class BlockDAGTest {
             )
         }
 
-        var sentSize = 0
-        var msgSent = 0
+        var sentSize = 0L
+        var msgSent = 0L
         var msgCreated = 0
         for (i in 0 until 100) {
             for (j in 0 until 10 * network.size) {
@@ -521,13 +519,13 @@ class BlockDAGTest {
                 val msgSize = syncMessage.serialize().size
                 sentSize += msgSize
                 ++msgSent
-                println("blocks sent ${syncMessage.blocks.size} ${msgSize} ${sourceMember.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(sourceMember.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - sourceMember.blockStore.blocks).size}")
+                println("blocks sent ${syncMessage.blocks.size} $msgSize ${sourceMember.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(sourceMember.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - sourceMember.blockStore.blocks).size}")
                 peer.processSyncMessage(syncMessage)
             }
         }
         println("average msg size = ${sentSize / msgSent}")
-        var syncSize = 0
-        var syncCount = 0
+        var syncSize = 0L
+        var syncCount = 0L
         var worstRound = 0
         var totalBlocks = 0
         var excessBlockCount = 0
@@ -547,10 +545,9 @@ class BlockDAGTest {
                     syncSize += sync1Size
                     ++syncCount
                     totalBlocks += sync1.blocks.size
-                    val excess =
-                        (memberb.blockStore.deliveredBlocks.toSet() intersect sync1.blocks.map { it.id }.toSet()).size
+                    val excess = (memberb.blockStore.blocks intersect (sync1.blocks.map { it.id }.toSet())).size
                     excessBlockCount += excess
-                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} ${sync1Size} ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
+                    println("$memberIndex1->$memberIndex2 sync sent$round ${sync1.blocks.size} $sync1Size ${membera.blockStore.blocks.size} ${memberb.blockStore.blocks.size} diff ${(membera.blockStore.blocks - memberb.blockStore.blocks).size} ${(memberb.blockStore.blocks - membera.blockStore.blocks).size} excess $excess")
                     memberb.processSyncMessage(sync1)
                     round++
                     worstRound = max(round, worstRound)
@@ -567,5 +564,87 @@ class BlockDAGTest {
             )
         }
         assertEquals(true, worstRound <= 4, "sync too slow took $worstRound rounds")
+    }
+
+    @ParameterizedTest
+    @CsvSource("100,20")
+    fun `BlockSyncManager sync with built in peer selection`(networkSize: Int, rounds: Int) {
+        val random = newSecureRandom()
+        val keys = (0 until networkSize).map { generateEdDSAKeyPair(random) }
+        val memberService = object : MemberService {
+            private val memberMap: Map<SecureHash, PublicKey> =
+                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+            override val members: Set<SecureHash> = memberMap.keys
+
+            override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
+
+            override fun addMember(key: PublicKey): SecureHash {
+                throw NotImplementedError("Not implemented")
+            }
+        }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val signingService = { id: SecureHash, bytes: ByteArray ->
+            keyMap[id]!!.sign(bytes).toDigitalSignature()
+        }
+
+        val network = memberService.members.map {
+            InMemoryBlockSyncManager(
+                it,
+                memberService,
+                InMemoryBlockStore(),
+                signingService
+            )
+        }
+        val allBlocks = mutableSetOf<SecureHash>()
+        var sentSize = 0L
+        var msgSent = 0L
+        var totalExcess = 0L
+        var totalBlocks = 0L
+        for (i in 0 until rounds) {
+            val shuffledNetwork = network.shuffled()
+            for (sourceMember in shuffledNetwork) {
+                val selfIndex = network.indexOf(sourceMember)
+                val block = sourceMember.createBlock(i.toString().toByteArray())
+                allBlocks += block.id
+                val (peerId, syncMessage) = sourceMember.getSyncMessage()
+                assertEquals(false, peerId == sourceMember.self)
+                val peerIndex = network.indexOfFirst { it.self == peerId }
+                val peer = network[peerIndex]
+                val msgSize = syncMessage.serialize().size
+                sentSize += msgSize
+                ++msgSent
+                totalBlocks += syncMessage.blocks.size
+                val excess = (peer.blockStore.blocks intersect (syncMessage.blocks.map { it.id }.toSet())).size
+                totalExcess += excess
+                println("$selfIndex->$peerIndex sent ${syncMessage.blocks.size} $msgSize ${sourceMember.blockStore.blocks.size} ${peer.blockStore.blocks.size} diff ${(sourceMember.blockStore.blocks - peer.blockStore.blocks).size} ${(peer.blockStore.blocks - sourceMember.blockStore.blocks).size} excess $excess")
+                peer.processSyncMessage(syncMessage)
+            }
+        }
+        println("average msg size = ${sentSize / msgSent} totalExcess $totalExcess of $totalBlocks")
+
+        var maxDiff = 0
+        var diffCount = 0.0
+        var diffTotal = 0.0
+        var diff2Total = 0.0
+        for (member in network) {
+            val diff = (allBlocks - member.blockStore.blocks).size
+            maxDiff = max(maxDiff, diff)
+            ++diffCount
+            diffTotal += diff
+            diff2Total += diff * diff
+        }
+        val variance = (diff2Total - ((diffTotal * diffTotal) / diffTotal)) / (diffTotal - 1.0)
+        println(
+            "total ${allBlocks.size} maxDiff $maxDiff average diff = ${diffTotal / diffCount} stddev = ${
+                sqrt(
+                    variance
+                )
+            }"
+        )
+        assertEquals(
+            true,
+            (diffTotal / diffCount) < (memberService.members.size * rounds) / 2,
+            "Insufficient synchronisation ${diffTotal / diffCount} threshold ${(memberService.members.size * rounds) / 2}"
+        )
     }
 }

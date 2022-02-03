@@ -106,7 +106,7 @@ class InMemoryBlockStore : BlockStore {
         }
     }
 
-    override fun storeBlock(block: Block) {
+    override fun storeBlock(block: Block): Boolean {
         val blockId = block.id
         if (_blocks.put(blockId, block) == null) {
             missing -= blockId
@@ -122,7 +122,9 @@ class InMemoryBlockStore : BlockStore {
                 _roots += blockId
             }
             updateRounds(block)
+            return true
         }
+        return false
     }
 
     override fun getBlock(id: SecureHash): Block? = _blocks[id]

@@ -9,6 +9,7 @@ interface BlockSyncManager {
     val signingService: (SecureHash, ByteArray) -> DigitalSignature
 
     fun createBlock(data: ByteArray): Block
+    fun getSyncMessage(): Pair<SecureHash, BlockSyncMessage>
     fun getSyncMessage(peer: SecureHash): BlockSyncMessage
     fun processSyncMessage(message: BlockSyncMessage)
 }

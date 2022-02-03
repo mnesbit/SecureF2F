@@ -1,6 +1,7 @@
 package uk.co.nesbit.crypto.blockdag
 
 import uk.co.nesbit.crypto.DigitalSignature
+import uk.co.nesbit.crypto.MurmurHash3
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
@@ -17,6 +18,7 @@ class InMemoryBlockSyncManager(
     private val random = newSecureRandom()
     private val lastMessage = mutableMapOf<SecureHash, BlockSyncMessage>()
     private val failures = mutableMapOf<SecureHash, Int>()
+    private val pendingReplies = LinkedHashSet<SecureHash>()
 
     init {
         val rootBlock = Block.createRootBlock(self, signingService)
@@ -24,7 +26,7 @@ class InMemoryBlockSyncManager(
     }
 
     companion object {
-        val MIN_FILTER_SIZE = 25
+        const val MIN_FILTER_SIZE = 25
     }
 
     override fun createBlock(
@@ -45,7 +47,7 @@ class InMemoryBlockSyncManager(
     ): BlockSyncMessage {
         val lastMessage = lastMessage[peer]
         val blockList = mutableSetOf<SecureHash>()
-        val keySet = blockStore.deliveredBlocks.map { ByteBuffer.wrap(it.bytes).int }.toSet()
+        val keySet = blockStore.blocks.map { ByteBuffer.wrap(it.bytes).int }.toSet()
         val newSize = if (lastMessage != null) {
             blockList.addAll(lastMessage.directRequests)
             val blocksKeys = lastMessage.invertibleBloomFilter.decode(keySet)
@@ -53,25 +55,33 @@ class InMemoryBlockSyncManager(
                 failures[peer] = 0
                 val matchedBlocks = blockStore.blocks.filter { ByteBuffer.wrap(it.bytes).int in blocksKeys.deleted }
                 blockList.addAll(matchedBlocks)
-                max((2 * blocksKeys.added.size + lastMessage.invertibleBloomFilter.entries.size) / 2, MIN_FILTER_SIZE)
+                max(
+                    (4 * (blocksKeys.added.size + blocksKeys.deleted.size) + lastMessage.invertibleBloomFilter.entries.size) / 2,
+                    MIN_FILTER_SIZE
+                )
             } else {
                 val failed = failures.getOrDefault(peer, 0) + 1
                 failures[peer] = failed
                 val fromPeer =
-                    blockStore.deliveredBlocks.mapNotNull { blockStore.getBlock(it) }.filter { it.origin == peer }
+                    blockStore.blocks.mapNotNull { blockStore.getBlock(it) }.filter { it.origin == peer }
                         .map { it.id }.toSet()
-                val prevSet = blockStore.predecessorSet(fromPeer) + fromPeer
-                val followSet = blockStore.deliveredBlocks - prevSet
+                val lastHeads = lastMessage.heads.map { it.id }.toSet()
+                val prevSet = blockStore.predecessorSet(fromPeer) + fromPeer +
+                        blockStore.predecessorSet(lastHeads) + lastHeads
+                val followSet = blockStore.blocks - prevSet
                 if (failed > 3) {
                     blockList.addAll(followSet)
                 }
                 val expandedRequests = blockStore.predecessorSet(lastMessage.directRequests) - prevSet
                 blockList.addAll(expandedRequests)
-                max(2 * lastMessage.invertibleBloomFilter.entries.size, 2 * (followSet + expandedRequests).size)
+                max(
+                    2 * lastMessage.invertibleBloomFilter.entries.size,
+                    4 * (followSet + expandedRequests).size
+                )
             }
         } else {
-            failures[peer] = 1
-            MIN_FILTER_SIZE
+            failures[peer] = 0
+            4 * blockStore.blocks.size
         }
         val ibf = InvertibleBloomFilter.createIBF(
             random.nextInt(),
@@ -99,8 +109,31 @@ class InMemoryBlockSyncManager(
                 blockStore.storeBlock(block)
             }
             lastMessage[message.sender] = message
+            pendingReplies += message.sender
         } catch (ex: SignatureException) {
             // do nothing
         }
+    }
+
+    private fun nextPeers(): List<SecureHash> {
+        val log2 = 32 - memberService.members.size.countLeadingZeroBits()
+        val peers = mutableListOf<SecureHash>()
+        for (ring in 0 until (log2 / 2)) {
+            val sortedPeers = memberService.members.sortedBy { x ->
+                MurmurHash3.hash32(x.bytes, 0, x.bytes.size, ring)
+            }
+            val indexOfSelf = sortedPeers.indexOf(self)
+            val peer = sortedPeers[(indexOfSelf + 1).rem(sortedPeers.size)]
+            peers += peer
+        }
+        return peers.shuffled()
+    }
+
+    override fun getSyncMessage(): Pair<SecureHash, BlockSyncMessage> {
+        val peers = nextPeers()
+        pendingReplies.addAll(peers)
+        val nextTarget = pendingReplies.first()
+        pendingReplies.remove(nextTarget)
+        return Pair(nextTarget, getSyncMessage(nextTarget))
     }
 }

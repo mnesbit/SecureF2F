@@ -7,7 +7,7 @@ fun interface BlockDeliveryListener {
 }
 
 interface BlockStore {
-    fun storeBlock(block: Block)
+    fun storeBlock(block: Block): Boolean
     fun getBlock(id: SecureHash): Block?
     fun getRound(id: SecureHash): Int?
     fun getMissing(): Set<SecureHash>
