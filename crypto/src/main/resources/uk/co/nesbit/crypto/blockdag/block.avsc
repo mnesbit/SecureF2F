@@ -1,0 +1,26 @@
+{
+  "namespace": "uk.co.nesbit.crypto.blockdag",
+  "name": "Block",
+  "type": "record",
+  "fields": [
+    {
+      "name": "origin",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "predecessors",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "payload",
+      "type": "bytes"
+    },
+    {
+      "name": "signature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

@@ -42,6 +42,7 @@ allprojects {
 
         // Prevent the project from creating temporary files outside of the build directory.
         systemProperty 'java.io.tmpdir', buildDir.absolutePath
+        maxHeapSize = '4096m'
     }
 
 
@@ -52,6 +53,7 @@ allprojects {
 
         // Test utilities
         testImplementation "org.junit.jupiter:junit-jupiter-api:$junit5_version"
+        testImplementation "org.junit.jupiter:junit-jupiter-params:$junit5_version"
         testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junit5_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:$kotlin_version"

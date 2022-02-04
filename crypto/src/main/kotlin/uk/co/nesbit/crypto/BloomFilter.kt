@@ -8,40 +8,27 @@ import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import java.util.*
+import kotlin.math.ceil
 
 class BloomFilter private constructor(
-        val expectedItemCount: Int,
-        val falsePositiveRate: Double,
-        val hashSeed: Int,
-        private val filterBits: BitSet
+    private val bitCount: Int,
+    private val hashRounds: Int,
+    val hashSeed: Int,
+    private val filterBits: BitSet
 ) : AvroConvertible {
-
-    private val bitCount: Int = bitCountCalc(expectedItemCount, falsePositiveRate)
-    private val hashRounds: Int = Math.ceil((bitCount * LN2) / expectedItemCount).toInt()
 
     constructor(bloomFilterRecord: GenericRecord) :
             this(
-                    bloomFilterRecord.getTyped("expectedItemCount"),
-                    bloomFilterRecord.getTyped("falsePositiveRate"),
-                    bloomFilterRecord.getTyped("hashSeed"),
-                    BitSet.valueOf(bloomFilterRecord.getTyped<ByteArray>("filterBits"))
+                bloomFilterRecord.getTyped("bitCount"),
+                bloomFilterRecord.getTyped("hashRounds"),
+                bloomFilterRecord.getTyped("hashSeed"),
+                BitSet.valueOf(bloomFilterRecord.getTyped<ByteArray>("filterBits"))
             )
-
-    constructor (
-            expectedItemCount: Int,
-            falsePositiveRate: Double,
-            hashSeed: Int
-    ) : this(
-            expectedItemCount,
-            falsePositiveRate,
-            hashSeed,
-            BitSet(bitCountCalc(expectedItemCount, falsePositiveRate))
-    )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val bloomFilterSchema: Schema = Schema.Parser()
-                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/bloomfilter.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/bloomfilter.avsc"))
 
         fun deserialize(bytes: ByteArray): BloomFilter {
             val bloomFilterRecord = bloomFilterSchema.deserialize(bytes)
@@ -51,17 +38,29 @@ class BloomFilter private constructor(
         private val LN2: Double = Math.log(2.0)
         private val LN2_SQUARED: Double = LN2 * LN2
 
-        fun bitCountCalc(expectedItemCount: Int, falsePositiveRate: Double): Int {
-            return Math.ceil((-expectedItemCount.toDouble() * Math.log(falsePositiveRate)) / LN2_SQUARED).toInt()
+        private fun bitCountCalc(expectedItemCount: Int, falsePositiveRate: Double): Int {
+            return ceil((-expectedItemCount.toDouble() * Math.log(falsePositiveRate)) / LN2_SQUARED).toInt()
         }
 
-        val EmptyFilter = BloomFilter(1, 0.02, 1)
+        fun createBloomFilter(
+            expectedItemCount: Int,
+            falsePositiveRate: Double,
+            hashSeed: Int
+        ): BloomFilter {
+            val bitCount = bitCountCalc(expectedItemCount, falsePositiveRate)
+            return BloomFilter(
+                bitCount,
+                ceil((bitCount * LN2) / expectedItemCount).toInt(),
+                hashSeed,
+                BitSet(bitCount)
+            )
+        }
     }
 
     override fun toGenericRecord(): GenericRecord {
         val bloomFilterRecord = GenericData.Record(bloomFilterSchema)
-        bloomFilterRecord.putTyped("expectedItemCount", expectedItemCount)
-        bloomFilterRecord.putTyped("falsePositiveRate", falsePositiveRate)
+        bloomFilterRecord.putTyped("bitCount", bitCount)
+        bloomFilterRecord.putTyped("hashRounds", hashRounds)
         bloomFilterRecord.putTyped("hashSeed", hashSeed)
         bloomFilterRecord.putTyped("filterBits", filterBits.toByteArray())
         return bloomFilterRecord
@@ -78,6 +77,7 @@ class BloomFilter private constructor(
     }
 
     fun possiblyContains(bytes: ByteArray): Boolean {
+        if (bitCount == 0 || hashRounds == 0) return false
         val hash1 = Integer.toUnsignedLong(MurmurHash3.hash32(bytes, 0, bytes.size, hashSeed))
         val hash2 = Integer.toUnsignedLong(MurmurHash3.hash32(bytes, 0, bytes.size, hash1.toInt()))
         for (i in 0 until hashRounds) {
@@ -96,8 +96,8 @@ class BloomFilter private constructor(
 
         other as BloomFilter
 
-        if (expectedItemCount != other.expectedItemCount) return false
-        if (falsePositiveRate != other.falsePositiveRate) return false
+        if (bitCount != other.bitCount) return false
+        if (hashRounds != other.hashRounds) return false
         if (hashSeed != other.hashSeed) return false
         if (filterBits != other.filterBits) return false
 
@@ -105,10 +105,11 @@ class BloomFilter private constructor(
     }
 
     override fun hashCode(): Int {
-        var result = expectedItemCount
-        result = 31 * result + falsePositiveRate.hashCode()
+        var result = bitCount
+        result = 31 * result + hashRounds
         result = 31 * result + hashSeed
         result = 31 * result + filterBits.hashCode()
         return result
     }
+
 }

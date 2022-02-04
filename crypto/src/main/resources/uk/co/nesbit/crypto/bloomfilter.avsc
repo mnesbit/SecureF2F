@@ -4,12 +4,12 @@
   "type": "record",
   "fields": [
     {
-      "name": "expectedItemCount",
+      "name": "bitCount",
       "type": "int"
     },
     {
-      "name": "falsePositiveRate",
-      "type": "double"
+      "name": "hashRounds",
+      "type": "int"
     },
     {
       "name": "hashSeed",

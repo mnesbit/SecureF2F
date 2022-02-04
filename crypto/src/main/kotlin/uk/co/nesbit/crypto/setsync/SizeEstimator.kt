@@ -10,6 +10,7 @@ import java.lang.Math.abs
 import java.lang.Math.max
 import java.util.*
 
+
 // Based upon https://www.ics.uci.edu/~eppstein/pubs/EppGooUye-SIGCOMM-11.pdf
 class SizeEstimator private constructor(
     val totalItems: Int,
@@ -25,8 +26,11 @@ class SizeEstimator private constructor(
     )
 
     companion object {
+        private const val MERSENNE_PRIME = 2147483647
+
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val sizeEstimatorSchema: Schema = Schema.Parser()
+            .addTypes(mapOf(InvertibleBloomFilter.ibfSchema.fullName to InvertibleBloomFilter.ibfSchema))
             .parse(javaClass.enclosingClass.getResourceAsStream("sizeestimator.avsc"))
 
         fun deserialize(bytes: ByteArray): SizeEstimator {
@@ -51,7 +55,7 @@ class SizeEstimator private constructor(
         ): Pair<List<InvertibleBloomFilter>, MutableList<Int>> {
             val strataEstimators = List(7) { index -> InvertibleBloomFilter(baseSeed + index, 80) }
             val minHashEstimators = MutableList(2000) { Int.MAX_VALUE }
-            val perms = minHashEstimators.indices.map { MurmurHash3.hash32(it + baseSeed) }
+            val perms = minHashEstimators.indices.map { abs(MurmurHash3.hash32(it + baseSeed)) }
             for (item in items) {
                 val itemHash = MurmurHash3.hash32(item)
                 val leadingZeros = itemHash.countLeadingZeroBits()
@@ -59,7 +63,7 @@ class SizeEstimator private constructor(
                     strataEstimators[leadingZeros].add(item)
                 } else {
                     for (i in minHashEstimators.indices) {
-                        val value = itemHash xor perms[i]
+                        val value = (i + itemHash * perms[i]).rem(MERSENNE_PRIME)
                         if (value < minHashEstimators[i]) {
                             minHashEstimators[i] = value
                         }

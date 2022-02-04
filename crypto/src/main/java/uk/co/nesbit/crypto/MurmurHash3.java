@@ -18,6 +18,8 @@ package uk.co.nesbit.crypto;
  * See http://github.com/yonik/java_util for future updates to this file.
  */
 public final class MurmurHash3 {
+    private static final int c1 = 0xcc9e2d51;
+    private static final int c2 = 0x1b873593;
 
     /**
      * 128 bits of state
@@ -64,9 +66,6 @@ public final class MurmurHash3 {
      * Returns the MurmurHash3_x86_32 hash.
      */
     public static int hash32(byte[] data, int offset, int len, int seed) {
-
-        final int c1 = 0xcc9e2d51;
-        final int c2 = 0x1b873593;
 
         int h1 = seed;
         int roundedEnd = offset + (len & 0xfffffffc);  // round down to 4 byte block
@@ -121,9 +120,6 @@ public final class MurmurHash3 {
      * of String.getBytes().
      */
     public static int hash32(CharSequence data, int offset, int len, int seed) {
-
-        final int c1 = 0xcc9e2d51;
-        final int c2 = 0x1b873593;
 
         int h1 = seed;
 

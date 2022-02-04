@@ -27,30 +27,38 @@ class InvertibleBloomEntry(
         val ibfEntrySchema: Schema = Schema.Parser()
             .parse(javaClass.enclosingClass.getResourceAsStream("invertiblebloomentry.avsc"))
 
+        @JvmStatic
+        fun calcHash(newKey: Int) = MurmurHash3.hash32(newKey.toLong() + 0x100000000L)
+
         fun deserialize(bytes: ByteArray): InvertibleBloomEntry {
             val ibfEntryRecord = ibfEntrySchema.deserialize(bytes)
             return InvertibleBloomEntry(ibfEntryRecord)
         }
     }
 
-    val isPure: Boolean get() = ((count == 1 || count == -1) && hash == calcHash(key))
+    private var _isPure: Boolean? = null
+    val isPure: Boolean
+        get() {
+            if (_isPure == null) {
+                _isPure = ((count == 1 || count == -1) && hash == calcHash(key))
+            }
+            return _isPure!!
+        }
     val isEmpty: Boolean get() = (count == 0 && hash == 0 && key == 0)
 
-    fun add(newKey: Int) {
-        val entryHash = calcHash(newKey)
+    fun add(newKey: Int, entryHash: Int) {
+        _isPure = null
         key = key xor newKey
         hash = hash xor entryHash
         ++count
     }
 
-    fun sub(newKey: Int) {
-        val entryHash = calcHash(newKey)
+    fun sub(newKey: Int, entryHash: Int) {
+        _isPure = null
         key = key xor newKey
         hash = hash xor entryHash
         --count
     }
-
-    private fun calcHash(newKey: Int) = MurmurHash3.hash32(newKey.toLong() + 0x100000000L)
 
     fun diff(other: InvertibleBloomEntry): InvertibleBloomEntry {
         return InvertibleBloomEntry(

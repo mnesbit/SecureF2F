@@ -102,12 +102,18 @@ object AvroTypeHelpers {
 
 fun Schema.deserialize(bytes: ByteArray): GenericRecord {
     val datumReader = GenericDatumReader<GenericRecord>(this)
-    val decoder = SafeDecoder(bytes)
-    val record = datumReader.read(null, decoder)
-    if (!decoder.fullyConsumed) {
-        throw IOException()
+    try {
+        val decoder = DecoderFactory.get().binaryDecoder(bytes, null)
+        val data = datumReader.read(null, decoder)
+        if (!decoder.isEnd) {
+            throw IOException()
+        }
+        return data
+    } catch (io: IOException) {
+        throw io
+    } catch (ex: Exception) {
+        throw IOException("Invalid length", ex)
     }
-    return record
 }
 
 fun Schema.deserializeJSON(json: String): GenericRecord {
@@ -319,6 +325,24 @@ fun GenericRecord.getIntArray(fieldName: String): List<Int> {
 }
 
 @Suppress("UNCHECKED_CAST")
+fun GenericRecord.getByteArrayArray(fieldName: String): List<ByteArray> {
+    val fieldSchema = schema.getField(fieldName).schema()
+    require(fieldSchema.type == Schema.Type.ARRAY) { "Not an array field" }
+    val elementSchema = fieldSchema.elementType
+    return if (elementSchema.type == Schema.Type.FIXED) {
+        val arrayData = get(fieldName) as GenericData.Array<GenericData.Fixed>
+        arrayData.map {
+            it.bytes().copyOf()
+        }
+    } else {
+        val arrayData = get(fieldName) as GenericData.Array<ByteBuffer>
+        arrayData.map {
+            it.array().copyOf()
+        }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 inline fun <reified T> GenericRecord.putTyped(fieldName: String, value: T) {
     if (value == null) {
         put(fieldName, null)
@@ -521,8 +545,23 @@ inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName:
 
 @Suppress("UNCHECKED_CAST")
 fun GenericRecord.putIntArray(fieldName: String, value: List<Int>) {
-    val arrayRecord = GenericData.Array<Int>(schema.getField(fieldName).schema(), value)
+    val arrayRecord = GenericData.Array(schema.getField(fieldName).schema(), value)
     put(fieldName, arrayRecord)
+}
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.putByteArrayArray(fieldName: String, value: List<ByteArray>) {
+    val fieldSchema = schema.getField(fieldName).schema()
+    require(fieldSchema.type == Schema.Type.ARRAY) { "Not an array field" }
+    val elementSchema = fieldSchema.elementType
+    if (elementSchema.type == Schema.Type.FIXED) {
+        require(value.all { it.size == elementSchema.fixedSize }) { "Fixed field requires each element of size ${fieldSchema.fixedSize}" }
+        val arrayRecord = GenericData.Array(fieldSchema, value.map { GenericData.Fixed(elementSchema, it) })
+        put(fieldName, arrayRecord)
+    } else {
+        val arrayRecord = GenericData.Array(fieldSchema, value.map { ByteBuffer.wrap(it) })
+        put(fieldName, arrayRecord)
+    }
 }
 
 enum class AvroExtendedType {

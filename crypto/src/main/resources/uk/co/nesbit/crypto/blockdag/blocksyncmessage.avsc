@@ -1,0 +1,40 @@
+{
+  "namespace": "uk.co.nesbit.crypto.blockdag",
+  "name": "BlockSyncMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "sender",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "invertibleBloomFilter",
+      "type": "uk.co.nesbit.crypto.setsync.InvertibleBloomFilter"
+    },
+    {
+      "name": "heads",
+      "type": {
+        "type": "array",
+        "items": "Block"
+      }
+    },
+    {
+      "name": "directRequests",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "blocks",
+      "type": {
+        "type": "array",
+        "items": "Block"
+      }
+    },
+    {
+      "name": "signature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}
