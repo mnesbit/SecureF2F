@@ -5,6 +5,7 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.DigitalSignature
+import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.merkle.MerkleTree
 import java.security.SignatureException
@@ -42,7 +43,7 @@ class Block private constructor(
             origin: SecureHash,
             predecessors: List<SecureHash>,
             payload: ByteArray,
-            signingService: (SecureHash, ByteArray) -> DigitalSignature
+            signingService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
         ): Block {
             require(predecessors.isNotEmpty()) { "predecessors list must not be empty" }
             val templateObject = Block(
@@ -53,12 +54,12 @@ class Block private constructor(
             )
             val signatureBytes = templateObject.id.serialize()
             val signature = signingService(origin, signatureBytes)
-            return templateObject.changeSignature(signature)
+            return templateObject.changeSignature(signature.toDigitalSignature())
         }
 
         fun createRootBlock(
             origin: SecureHash,
-            signingService: (SecureHash, ByteArray) -> DigitalSignature
+            signingService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
         ): Block = createBlock(origin, listOf(origin), ByteArray(0), signingService)
 
         fun deserialize(bytes: ByteArray): Block {

@@ -1,12 +1,13 @@
 package uk.co.nesbit.crypto.blockdag
 
-import uk.co.nesbit.crypto.DigitalSignature
+import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
 
 interface BlockSyncManager {
+    var self: SecureHash
     val memberService: MemberService
     val blockStore: BlockStore
-    val signingService: (SecureHash, ByteArray) -> DigitalSignature
+    val signingService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
 
     fun createBlock(data: ByteArray): Block
     fun getSyncMessage(): Pair<SecureHash, BlockSyncMessage>

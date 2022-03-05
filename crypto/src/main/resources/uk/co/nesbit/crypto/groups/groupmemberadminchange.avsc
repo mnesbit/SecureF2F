@@ -1,0 +1,38 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMemberAdminChange",
+  "type": "record",
+  "fields": [
+    {
+      "name": "memberKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "role",
+      "type": {
+        "name": "GroupMemberRole",
+        "type": "enum",
+        "symbols": [
+          "ADMIN",
+          "ORDINARY"
+        ]
+      }
+    },
+    {
+      "name": "otherInfo",
+      "type": {
+        "name": "otherInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "sponsorSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

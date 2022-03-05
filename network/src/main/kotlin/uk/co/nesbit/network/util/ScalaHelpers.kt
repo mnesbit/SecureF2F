@@ -24,7 +24,7 @@ abstract class AbstractActorWithLoggingAndTimers : AbstractActorWithTimers() {
     protected fun log(): LoggingAdapter {
         if (_log == null) {
             _log = object : LoggingAdapter {
-                private var logger: Logger = LoggerFactory.getLogger(self.toString())
+                private val logger: Logger = LoggerFactory.getLogger(self.toString())
                 override fun isErrorEnabled(): Boolean = logger.isErrorEnabled
 
                 override fun isWarningEnabled(): Boolean = logger.isWarnEnabled

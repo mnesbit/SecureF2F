@@ -1,0 +1,58 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupCreate",
+  "type": "record",
+  "fields": [
+    {
+      "name": "groupId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "groupIdentifier",
+      "type": "string"
+    },
+    {
+      "name": "groupInfo",
+      "type": {
+        "name": "groupInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "initialMemberName",
+      "type": "string"
+    },
+    {
+      "name": "initialMemberKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "initialMemberDhKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "initialMemberAddress",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "initialMemberInfo",
+      "type": {
+        "name": "groupInfoType",
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "createTime",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "founderSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

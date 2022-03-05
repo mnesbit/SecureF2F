@@ -107,3 +107,5 @@ fun PublicKey.toGenericRecord(): GenericRecord {
 }
 
 fun PublicKey.serialize() = this.toGenericRecord().serialize()
+
+val PublicKey.id: SecureHash get() = SecureHash.secureHash(this.encoded)

@@ -6,5 +6,4 @@ import java.security.PublicKey
 interface MemberService {
     val members: Set<SecureHash>
     fun getMemberKey(id: SecureHash): PublicKey?
-    fun addMember(key: PublicKey): SecureHash
 }

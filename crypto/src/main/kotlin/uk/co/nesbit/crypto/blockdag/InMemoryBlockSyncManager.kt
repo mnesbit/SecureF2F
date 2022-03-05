@@ -1,24 +1,33 @@
 package uk.co.nesbit.crypto.blockdag
 
-import uk.co.nesbit.crypto.DigitalSignature
-import uk.co.nesbit.crypto.MurmurHash3
-import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.newSecureRandom
+import org.slf4j.Logger
+import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
 import java.nio.ByteBuffer
 import java.security.SignatureException
 import kotlin.math.max
 
 class InMemoryBlockSyncManager(
-    val self: SecureHash,
+    initialId: SecureHash,
     override val memberService: MemberService,
     override val blockStore: BlockStore,
-    override val signingService: (SecureHash, ByteArray) -> DigitalSignature
+    override val signingService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
 ) : BlockSyncManager {
     private val random = newSecureRandom()
     private val lastMessage = mutableMapOf<SecureHash, BlockSyncMessage>()
     private val failures = mutableMapOf<SecureHash, Int>()
     private val pendingReplies = LinkedHashSet<SecureHash>()
+
+    private var _self: SecureHash = initialId
+    override var self: SecureHash
+        get() = _self
+        set(value) {
+            if (value != _self) {
+                val rootBlock = Block.createRootBlock(value, signingService)
+                blockStore.storeBlock(rootBlock)
+                _self = value
+            }
+        }
 
     init {
         val rootBlock = Block.createRootBlock(self, signingService)
@@ -26,6 +35,7 @@ class InMemoryBlockSyncManager(
     }
 
     companion object {
+        val log: Logger = contextLogger()
         const val MIN_FILTER_SIZE = 25
     }
 
@@ -111,6 +121,7 @@ class InMemoryBlockSyncManager(
             lastMessage[message.sender] = message
             pendingReplies += message.sender
         } catch (ex: SignatureException) {
+            log.info("verify error ${ex.message} ignoring message")
             // do nothing
         }
     }

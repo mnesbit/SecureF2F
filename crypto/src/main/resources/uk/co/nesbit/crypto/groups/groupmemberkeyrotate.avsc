@@ -1,0 +1,38 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMemberKeyRotate",
+  "type": "record",
+  "fields": [
+    {
+      "name": "memberKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "keyIssueTime",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "rotateMemberKey",
+      "type": "boolean"
+    },
+    {
+      "name": "oldKeyHash",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "newKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "memberSignatures",
+      "type": {
+        "name": "signatureArrayType",
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.DigitalSignature"
+      }
+    }
+  ]
+}

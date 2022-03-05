@@ -30,15 +30,15 @@ class KeyServiceImpl(
     }
 
     override fun generateSigningKey(): SecureHash {
-        val newSigningKeys = generateEdDSAKeyPair(random)
-        val newId = SecureHash.secureHash(newSigningKeys.public.encoded)
+        val newSigningKeys = generateNACLKeyPair(random)
+        val newId = newSigningKeys.public.id
         signingKeys[newId] = newSigningKeys
         return newId
     }
 
     override fun generateDhKey(): SecureHash {
-        val newDhKeys = generateCurve25519DHKeyPair(random)
-        val newId = SecureHash.secureHash(newDhKeys.public.encoded)
+        val newDhKeys = generateNACLDHKeyPair(random)
+        val newId = newDhKeys.public.id
         dhKeys[newId] = newDhKeys
         return newId
     }
