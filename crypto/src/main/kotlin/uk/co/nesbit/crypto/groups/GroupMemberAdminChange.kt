@@ -61,9 +61,9 @@ class GroupMemberAdminChange private constructor(
             require(sponsorInfo.role == GroupMemberRole.ADMIN) {
                 "Sponsor not an admin"
             }
-            if (role != memberInfo.role) {
-                require(sponsorInfo.issueEpoch < memberInfo.issueEpoch) {
-                    "Cannot change the role of a more senior member"
+            if (role != memberInfo.role && memberInfo.role == GroupMemberRole.ADMIN) {
+                require(sponsorInfo.issueEpoch < memberInfo.issueEpoch || sponsorKeyId == memberKeyId) {
+                    "Cannot change the role of a more senior admin"
                 }
             }
             val templateObject = GroupMemberAdminChange(
@@ -113,11 +113,25 @@ class GroupMemberAdminChange private constructor(
             DigitalSignature("ADMINCHANGEREQUEST", ByteArray(0))
         ).serialize()
         sponsorSignature.verify(sponsorInfo.memberKey, signatureObject)
-        if (role != memberInfo.role) {
-            require(memberInfo.issueEpoch > sponsorInfo.issueEpoch) {
-                "Cannot change role of a more senior member"
+        if (role != memberInfo.role && memberInfo.role == GroupMemberRole.ADMIN) {
+            require(sponsorInfo.issueEpoch < memberInfo.issueEpoch || sponsorKeyId == memberKeyId) {
+                "Cannot change the role of a more senior admin"
             }
         }
+    }
+
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        val newEpoch = groupInfo.epoch + 1
+        val newMembers = groupInfo.members.map { member ->
+            if (member.memberKeyId == memberKeyId) {
+                val newSponsor = if (role != member.role) sponsorKeyId else member.sponsor
+                val newMemberEpoch = if (role != member.role) newEpoch else member.issueEpoch
+                member.copy(role = role, otherInfo = otherInfo, sponsor = newSponsor, issueEpoch = newMemberEpoch)
+            } else {
+                member
+            }
+        }
+        return groupInfo.copy(epoch = newEpoch, members = newMembers)
     }
 
     override fun equals(other: Any?): Boolean {

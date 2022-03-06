@@ -103,6 +103,32 @@ class GroupMemberRemove private constructor(
         sponsorSignature.verify(sponsorInfo.memberKey, signatureObject)
     }
 
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        val newEpoch = groupInfo.epoch + 1
+        val sponsor = groupInfo.findMemberById(sponsorKeyId)!!
+        val updatedSponsor = sponsor.copy(groupDhKey = newSponsorDhKey)
+        val newMembersList = groupInfo.members.mapNotNull {
+            val member = if (it.sponsor == memberKeyId) {
+                it.copy(sponsor = sponsorKeyId)
+            } else {
+                it
+            }
+            when (member.memberKeyId) {
+                sponsorKeyId -> {
+                    updatedSponsor
+                }
+                memberKeyId -> {
+                    null
+                }
+                else -> {
+                    member
+                }
+            }
+        }
+        return groupInfo.copy(epoch = newEpoch, members = newMembersList, prevGroupStateHash = groupInfo.groupStateHash)
+
+    }
+
     override fun toGenericRecord(): GenericRecord {
         val groupRemoveRequestRecord = GenericData.Record(groupRemoveRequestSchema)
         groupRemoveRequestRecord.putTyped("memberKeyId", memberKeyId)

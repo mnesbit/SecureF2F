@@ -124,14 +124,18 @@ class GroupManagerImpl private constructor(
                     blockSyncManager.blockStore.heads.mapNotNull { blockSyncManager.blockStore.getBlock(it) }
                 val groupsForHeads =
                     headBlocks.map { groupInfoBySource.getOrDefault(it.origin, GroupInfo.EmptyGroup) }.toSet()
-                val mergeBlock = GroupMerge.createGroupMerge(
-                    groupsForHeads.map { it.groupStateHash },
-                    ownInfo.memberKeyId
-                ) { k, v ->
-                    keyManager.sign(k, v)
+                try {
+                    val mergeBlock = GroupMerge.createGroupMerge(
+                        groupsForHeads.map { it.groupStateHash }.toSet(),
+                        ownInfo.memberKeyId
+                    ) { k, v ->
+                        keyManager.sign(k, v)
+                    }
+                    val groupChange = GroupBlockPayload(mergeBlock)
+                    blockSyncManager.createBlock(groupChange.serialize())
+                } catch (ex: Exception) {
+                    log.info("merge invalid")
                 }
-                val groupChange = GroupBlockPayload(mergeBlock)
-                blockSyncManager.createBlock(groupChange.serialize())
             }
         }
     }
@@ -222,6 +226,12 @@ class GroupManagerImpl private constructor(
             }
         } else {
             log.info("$self Got merge change ${change.change}")
+            try {
+                change.change.verify(groupInfoBySource[block.origin]!!)
+            } catch (ex: Exception) {
+                log.info("Merge didn't validate")
+                return
+            }
             val previousGroupInfos =
                 predecessors.map { groupInfoBySource.getOrDefault(it.origin, GroupInfo.EmptyGroup).groupStateHash }
                     .toSet()
@@ -314,7 +324,8 @@ class GroupManagerImpl private constructor(
         ) { k, v ->
             keyManager.sign(k, v)
         }
-        GroupBlockPayload(groupModify)
+        val groupChange = GroupBlockPayload(groupModify)
+        blockSyncManager.createBlock(groupChange.serialize())
     }
 
     override fun addMember(

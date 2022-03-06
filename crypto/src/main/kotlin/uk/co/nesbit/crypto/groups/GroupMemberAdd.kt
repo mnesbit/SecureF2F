@@ -124,6 +124,12 @@ class GroupMemberAdd(
         }
     }
 
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        val newEpoch = groupInfo.epoch + 1
+        val newMembersList = groupInfo.members + newInfo.copy(issueEpoch = newEpoch)
+        return groupInfo.copy(epoch = newEpoch, members = newMembersList, prevGroupStateHash = groupInfo.groupStateHash)
+    }
+
     private fun changeSignature(newSignature: DigitalSignature): GroupMemberAdd = GroupMemberAdd(
         newInfo,
         sponsorKeyId,

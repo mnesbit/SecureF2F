@@ -9,21 +9,15 @@ import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
 
 class GroupMerge(
-    val previousGroupInfoHashes: List<SecureHash>,
+    val previousGroupInfoHashes: Set<SecureHash>,
     override val sponsorKeyId: SecureHash,
     val sponsorSignature: DigitalSignature
 ) : GroupChange {
     constructor(groupMergeRecord: GenericRecord) : this(
-        groupMergeRecord.getObjectArray("previousGroupInfoHashes", ::SecureHash),
+        groupMergeRecord.getObjectArray("previousGroupInfoHashes", ::SecureHash).toSortedSet(),
         groupMergeRecord.getTyped("sponsorKeyId"),
         groupMergeRecord.getTyped("sponsorSignature")
     )
-
-    init {
-        require(previousGroupInfoHashes.size > 1) {
-            "Merge requires at least two predecessor chains $previousGroupInfoHashes"
-        }
-    }
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
@@ -42,12 +36,12 @@ class GroupMerge(
         }
 
         fun createGroupMerge(
-            previousGroupInfoHashes: List<SecureHash>,
+            previousGroupInfoHashes: Set<SecureHash>,
             sponsorId: SecureHash,
             keyService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
         ): GroupMerge {
             val templateObject = GroupMerge(
-                previousGroupInfoHashes,
+                previousGroupInfoHashes.toSortedSet(),
                 sponsorId,
                 DigitalSignature("MERGEREQUEST", ByteArray(0))
             )
@@ -65,7 +59,7 @@ class GroupMerge(
 
     override fun toGenericRecord(): GenericRecord {
         val groupMemberAddRecord = GenericData.Record(groupMergeSchema)
-        groupMemberAddRecord.putObjectArray("previousGroupInfoHashes", previousGroupInfoHashes)
+        groupMemberAddRecord.putObjectArray("previousGroupInfoHashes", previousGroupInfoHashes.toList())
         groupMemberAddRecord.putTyped("sponsorKeyId", sponsorKeyId)
         groupMemberAddRecord.putTyped("sponsorSignature", sponsorSignature)
         return groupMemberAddRecord
@@ -80,7 +74,10 @@ class GroupMerge(
             DigitalSignature("MERGEREQUEST", ByteArray(0))
         ).serialize()
         sponsorSignature.verify(sponsorInfo.memberKey, signatureObject)
+    }
 
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        throw IllegalArgumentException("Merge should not be applied to a single Groupinfo")
     }
 
     override fun equals(other: Any?): Boolean {

@@ -12,7 +12,7 @@
       "type": "string"
     },
     {
-      "name": "groupInfo",
+      "name": "initialGroupInfo",
       "type": {
         "name": "groupInfoType",
         "type": "map",

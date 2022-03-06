@@ -144,6 +144,28 @@ class GroupMemberKeyRotate private constructor(
         }
     }
 
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        val newEpoch = groupInfo.epoch + 1
+        val newMembers = groupInfo.members.map { member ->
+            if (member.memberKeyId == memberKeyId) {
+                if (rotateMemberKey) {
+                    val newKeyHistory =
+                        member.historicKeys + HistoricKeyInfo(member.memberKey, member.keyIssued, keyIssueTime)
+                    member.copy(
+                        memberKey = newKey,
+                        keyIssued = keyIssueTime,
+                        historicKeys = newKeyHistory
+                    )
+                } else {
+                    member.copy(groupDhKey = newKey)
+                }
+            } else {
+                member
+            }
+        }
+        return groupInfo.copy(epoch = newEpoch, members = newMembers)
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

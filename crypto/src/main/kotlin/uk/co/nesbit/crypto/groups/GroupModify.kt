@@ -77,6 +77,11 @@ class GroupModify(
         sponsorSignature.verify(sponsorInfo.memberKey, signatureObject)
     }
 
+    override fun apply(groupInfo: GroupInfo): GroupInfo {
+        val newEpoch = groupInfo.epoch + 1
+        return groupInfo.copy(epoch = newEpoch, groupInfo = newGroupInfo, prevGroupStateHash = groupInfo.groupStateHash)
+    }
+
     private fun changeSignature(newSignature: DigitalSignature): GroupModify = GroupModify(
         newGroupInfo,
         sponsorKeyId,

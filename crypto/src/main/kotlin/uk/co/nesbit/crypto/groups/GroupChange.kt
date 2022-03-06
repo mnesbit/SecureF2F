@@ -6,4 +6,5 @@ import uk.co.nesbit.crypto.SecureHash
 interface GroupChange : AvroConvertible {
     val sponsorKeyId: SecureHash
     fun verify(groupInfo: GroupInfo)
+    fun apply(groupInfo: GroupInfo): GroupInfo
 }

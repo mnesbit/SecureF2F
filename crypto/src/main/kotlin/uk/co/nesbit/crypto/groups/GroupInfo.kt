@@ -53,7 +53,7 @@ class GroupInfo private constructor(
             return GroupInfo(groupInfoRecord)
         }
 
-        private fun createInitialGroup(
+        fun createInitialGroup(
             groupId: SecureHash,
             groupName: String,
             groupInfo: Map<String, String>,
@@ -148,123 +148,8 @@ class GroupInfo private constructor(
     }
 
     fun applyGroupChange(operation: GroupChange): GroupInfo {
-        return when (operation) {
-            is GroupCreate -> applyGroupCreate(operation)
-            is GroupMemberAdd -> applyMemberAdd(operation)
-            is GroupMemberRemove -> applyMemberRemove(operation)
-            is GroupModify -> applyGroupModify(operation)
-            is GroupMemberAdminChange -> applyMemberAdminChange(operation)
-            is GroupMemberKeyRotate -> applyMemberKeyRotate(operation)
-            is GroupMemberAddressChange -> applyMemberAddressChange(operation)
-            else -> throw IllegalArgumentException("unknown group operation ${operation.javaClass.name}")
-        }
-    }
-
-    private fun applyGroupCreate(
-        groupCreate: GroupCreate
-    ): GroupInfo {
-        groupCreate.verify(this)
-        return createInitialGroup(
-            groupCreate.groupId,
-            groupCreate.groupIdentifier,
-            groupCreate.groupInfo,
-            groupCreate.initialMemberName,
-            groupCreate.initialMemberKey,
-            groupCreate.initialMemberDhKey,
-            groupCreate.initialMemberAddress,
-            groupCreate.initialMemberInfo,
-            groupCreate.createTime
-        )
-    }
-
-    private fun applyMemberAdd(
-        add: GroupMemberAdd
-    ): GroupInfo {
-        add.verify(this)
-        val newEpoch = epoch + 1
-        val newMembersList = members + add.newInfo.copy(issueEpoch = newEpoch)
-        return this.copy(epoch = newEpoch, members = newMembersList, prevGroupStateHash = groupStateHash)
-    }
-
-    private fun applyMemberRemove(remove: GroupMemberRemove): GroupInfo {
-        remove.verify(this)
-        val newEpoch = epoch + 1
-        val sponsor = findMemberById(remove.sponsorKeyId)!!
-        val updatedSponsor = sponsor.copy(groupDhKey = remove.newSponsorDhKey)
-        val newMembersList = members.mapNotNull {
-            val member = if (it.sponsor == remove.memberKeyId) {
-                it.copy(sponsor = remove.sponsorKeyId)
-            } else {
-                it
-            }
-            when (member.memberKeyId) {
-                remove.sponsorKeyId -> {
-                    updatedSponsor
-                }
-                remove.memberKeyId -> {
-                    null
-                }
-                else -> {
-                    member
-                }
-            }
-        }
-        return this.copy(epoch = newEpoch, members = newMembersList, prevGroupStateHash = groupStateHash)
-    }
-
-    private fun applyGroupModify(modify: GroupModify): GroupInfo {
-        modify.verify(this)
-        val newEpoch = epoch + 1
-        return this.copy(epoch = newEpoch, groupInfo = modify.newGroupInfo, prevGroupStateHash = groupStateHash)
-    }
-
-    private fun applyMemberAdminChange(modify: GroupMemberAdminChange): GroupInfo {
-        modify.verify(this)
-        val newEpoch = epoch + 1
-        val newMembers = members.map { member ->
-            if (member.memberKeyId == modify.memberKeyId) {
-                member.copy(role = modify.role, otherInfo = modify.otherInfo)
-            } else {
-                member
-            }
-        }
-        return copy(epoch = newEpoch, members = newMembers)
-    }
-
-    private fun applyMemberAddressChange(modify: GroupMemberAddressChange): GroupInfo {
-        modify.verify(this)
-        val newEpoch = epoch + 1
-        val newMembers = members.map { member ->
-            if (member.memberKeyId == modify.memberKeyId) {
-                member.copy(routingAddress = modify.newRoutingAddress)
-            } else {
-                member
-            }
-        }
-        return copy(epoch = newEpoch, members = newMembers)
-    }
-
-    private fun applyMemberKeyRotate(modify: GroupMemberKeyRotate): GroupInfo {
-        modify.verify(this)
-        val newEpoch = epoch + 1
-        val newMembers = members.map { member ->
-            if (member.memberKeyId == modify.memberKeyId) {
-                if (modify.rotateMemberKey) {
-                    val newKeyHistory =
-                        member.historicKeys + HistoricKeyInfo(member.memberKey, member.keyIssued, modify.keyIssueTime)
-                    member.copy(
-                        memberKey = modify.newKey,
-                        keyIssued = modify.keyIssueTime,
-                        historicKeys = newKeyHistory
-                    )
-                } else {
-                    member.copy(groupDhKey = modify.newKey)
-                }
-            } else {
-                member
-            }
-        }
-        return copy(epoch = newEpoch, members = newMembers)
+        operation.verify(this)
+        return operation.apply(this)
     }
 
     override fun equals(other: Any?): Boolean {

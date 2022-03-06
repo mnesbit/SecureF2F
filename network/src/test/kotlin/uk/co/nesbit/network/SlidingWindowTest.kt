@@ -3,6 +3,7 @@ package uk.co.nesbit.network
 import org.junit.jupiter.api.Assertions.assertArrayEquals
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junitpioneer.jupiter.SetSystemProperty
 import uk.co.nesbit.network.treeEngine.DataPacket
 import uk.co.nesbit.network.treeEngine.SlidingWindowHelper
 import uk.co.nesbit.network.treeEngine.SlidingWindowHelper.Companion.MAX_RECEIVE_BUFFER
@@ -12,6 +13,8 @@ import java.time.Clock
 import java.time.Instant
 import java.util.*
 
+// prevent gradle crashing from too much console logging
+@SetSystemProperty(key = "org.slf4j.simpleLogger.defaultLogLevel", value = "error")
 class SlidingWindowTest {
     private fun getPacket(i: Int): ByteArray {
         return i.toString().toByteArray(Charsets.UTF_8)

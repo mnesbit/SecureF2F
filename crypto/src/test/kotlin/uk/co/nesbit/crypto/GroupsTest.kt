@@ -5,7 +5,6 @@ import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.groups.*
 import java.time.Clock
 import java.time.temporal.ChronoUnit
-import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
@@ -422,7 +421,7 @@ class GroupsTest {
         val aliceKey = generateNACLKeyPair()
         val aliceKeyId = aliceKey.public.id
         val groupMerge = GroupMerge.createGroupMerge(
-            listOf(
+            setOf(
                 SecureHash.secureHash("1"),
                 SecureHash.secureHash("2")
             ),
@@ -538,7 +537,8 @@ class GroupsTest {
         val sponsorName: String,
         val memberName: String,
         val action: ActionType,
-        val parallelChange: Boolean = false
+        val parallelChange: Boolean = false,
+        val expectThrows: Boolean = false
     )
 
     private fun groupActionRunner(actions: List<GroupAction>): Map<String, GroupInfo> {
@@ -559,73 +559,75 @@ class GroupsTest {
         for (action in actions) {
             val sponsor = network.values.first { it.self == action.sponsorName }
             val sponsorInfo = sponsor.groupInfo.findMemberByName(action.sponsorName)!!
-            when (action.action) {
-                ActionType.NoOp -> {
-                    // do nothing
+            try {
+                when (action.action) {
+                    ActionType.NoOp -> {
+                        // do nothing
+                    }
+                    ActionType.AddMember -> {
+                        val addMemberName = "member$memberCounter"
+                        assertEquals(action.memberName, addMemberName)
+                        val addKey = keyManager.generateSigningKey()
+                        val addDhKey = keyManager.generateDhKey()
+                        val addAddress = SecureHash.secureHash("Addr${++addrCounter}")
+                        val addDetails = InitialMemberDetails(
+                            addMemberName,
+                            keyManager.getSigningKey(addKey),
+                            keyManager.getDhKey(addDhKey),
+                            addAddress
+                        )
+                        sponsor.addMember(
+                            addDetails,
+                            GroupMemberRole.ORDINARY,
+                            mapOf("Member Info" to "${++memberCounter}"),
+                            Clock.systemUTC().instant()
+                        )
+                        val newGroupManager: GroupManager = GroupManagerImpl.joinGroup(
+                            keyManager,
+                            addDetails,
+                            sponsorInfo.memberKey,
+                            sponsorInfo.routingAddress
+                        )
+                        network[addAddress] = newGroupManager
+                    }
+                    ActionType.RemoveMember -> {
+                        val deleteTarget = sponsor.groupInfo.members.single { it.memberName == action.memberName }
+                        sponsor.deleteMember(deleteTarget.memberKeyId)
+                    }
+                    ActionType.ModifyGroupInfo -> {
+                        sponsor.changeGroupInfo(mapOf("Group info" to "${++memberCounter}"))
+                    }
+                    ActionType.FlipMemberRole -> {
+                        val changeTarget = sponsor.groupInfo.members.single { it.memberName == action.memberName }
+                        val newRole =
+                            if (changeTarget.role == GroupMemberRole.ADMIN) GroupMemberRole.ORDINARY else GroupMemberRole.ADMIN
+                        sponsor.changeMemberRole(changeTarget.memberKeyId, newRole)
+                    }
+                    ActionType.ModifyMemberInfo -> {
+                        val changeTarget = sponsor.groupInfo.members.single { it.memberName == action.memberName }
+                        sponsor.changeMemberInfo(changeTarget.memberKeyId, mapOf("Member Info" to "${++memberCounter}"))
+                    }
+                    ActionType.RotateDhKey -> {
+                        assertEquals(action.sponsorName, action.memberName)
+                        sponsor.rotateDhKey()
+                    }
+                    ActionType.RotateKey -> {
+                        assertEquals(action.sponsorName, action.memberName)
+                        sponsor.rotateKey(Clock.systemUTC().instant())
+                    }
+                    ActionType.ChangeAddress -> {
+                        assertEquals(action.sponsorName, action.memberName)
+                        val newAddress = SecureHash.secureHash("Addr${++addrCounter}")
+                        network.remove(sponsorInfo.routingAddress)
+                        sponsor.setNewAddress(newAddress)
+                        network[newAddress] = sponsor
+                    }
                 }
-                ActionType.AddMember -> {
-                    val addMemberName = "member$memberCounter"
-                    assertEquals(action.memberName, addMemberName)
-                    val addKey = keyManager.generateSigningKey()
-                    val addDhKey = keyManager.generateDhKey()
-                    val addAddress = SecureHash.secureHash("Addr${++addrCounter}")
-                    val addDetails = InitialMemberDetails(
-                        addMemberName,
-                        keyManager.getSigningKey(addKey),
-                        keyManager.getDhKey(addDhKey),
-                        addAddress
-                    )
-                    sponsor.addMember(
-                        addDetails,
-                        GroupMemberRole.ORDINARY,
-                        mapOf("Member Info" to "${++memberCounter}"),
-                        Clock.systemUTC().instant()
-                    )
-                    val newGroupManager: GroupManager = GroupManagerImpl.joinGroup(
-                        keyManager,
-                        addDetails,
-                        sponsorInfo.memberKey,
-                        sponsorInfo.routingAddress
-                    )
-                    network[addAddress] = newGroupManager
-                }
-                ActionType.RemoveMember -> {
-                    val eligibleMembers =
-                        sponsor.groupInfo.members.filter { it.issueEpoch > sponsorInfo.issueEpoch }
-                    val deleteTarget = eligibleMembers.single { it.memberName == action.memberName }
-                    sponsor.deleteMember(deleteTarget.memberKeyId)
-                }
-                ActionType.ModifyGroupInfo -> {
-                    sponsor.changeGroupInfo(mapOf("Group info" to Random.nextInt().toString()))
-                }
-                ActionType.FlipMemberRole -> {
-                    val eligibleMembers =
-                        sponsor.groupInfo.members.filter { it.issueEpoch > sponsorInfo.issueEpoch }
-                    val changeTarget = eligibleMembers.single { it.memberName == action.memberName }
-                    val newRole =
-                        if (changeTarget.role == GroupMemberRole.ADMIN) GroupMemberRole.ORDINARY else GroupMemberRole.ADMIN
-                    sponsor.changeMemberRole(changeTarget.memberKeyId, newRole)
-                }
-                ActionType.ModifyMemberInfo -> {
-                    val eligibleMembers =
-                        sponsor.groupInfo.members.filter { it.issueEpoch > sponsorInfo.issueEpoch }
-                    val changeTarget = eligibleMembers.single { it.memberName == action.memberName }
-                    sponsor.changeMemberInfo(changeTarget.memberKeyId, mapOf("Member Info" to "${++memberCounter}"))
-                }
-                ActionType.RotateDhKey -> {
-                    assertEquals(action.sponsorName, action.memberName)
-                    sponsor.rotateDhKey()
-                }
-                ActionType.RotateKey -> {
-                    assertEquals(action.sponsorName, action.memberName)
-                    sponsor.rotateKey(Clock.systemUTC().instant())
-                }
-                ActionType.ChangeAddress -> {
-                    assertEquals(action.sponsorName, action.memberName)
-                    val newAddress = SecureHash.secureHash("Addr${++addrCounter}")
-                    network.remove(sponsorInfo.routingAddress)
-                    sponsor.setNewAddress(newAddress)
-                    network[newAddress] = sponsor
+            } catch (ex: Exception) {
+                if (action.expectThrows) {
+                    println("As expected failed with: ${ex.message}")
+                } else {
+                    throw ex
                 }
             }
             if (!action.parallelChange) {
@@ -724,8 +726,9 @@ class GroupsTest {
             GroupAction("member0", "member1", ActionType.AddMember),
             GroupAction("member0", "member2", ActionType.AddMember),
             GroupAction("member0", "member2", ActionType.FlipMemberRole),
-            GroupAction("member2", "member3", ActionType.AddMember, true),
-            GroupAction("member0", "member2", ActionType.RemoveMember, true),
+            GroupAction("member2", "member3", ActionType.AddMember, parallelChange = true),
+            GroupAction("member0", "member2", ActionType.RemoveMember, parallelChange = true),
+            GroupAction("member0", "member0", ActionType.ModifyGroupInfo)
         )
         val results = groupActionRunner(actionList)
         assertEquals(4, results.size)
@@ -788,5 +791,48 @@ class GroupsTest {
         assertEquals(results["member0"], results["member1"])
         assertEquals(results["member0"], results["member2"])
         assertEquals(results["member0"], results["member3"])
+    }
+
+    @Test
+    fun `GroupManager info changes`() {
+        val actionList = listOf(
+            GroupAction("member0", "member1", ActionType.AddMember),
+            GroupAction("member0", "member2", ActionType.AddMember),
+            GroupAction("member0", "member0", ActionType.ModifyGroupInfo),
+            GroupAction("member0", "member1", ActionType.ModifyMemberInfo),
+        )
+        val results = groupActionRunner(actionList)
+        assertEquals(3, results.size)
+        assertEquals(results["member0"], results["member1"])
+        assertEquals(results["member0"], results["member2"])
+        assertEquals("4", results["member0"]!!.groupInfo["Group info"])
+        assertEquals("5", results["member0"]!!.findMemberByName("member1")!!.otherInfo["Member Info"])
+    }
+
+    @Test
+    fun `GroupManager no escalation`() {
+        val actionList = listOf(
+            GroupAction("member0", "member1", ActionType.AddMember),
+            GroupAction("member0", "member2", ActionType.AddMember),
+            GroupAction("member0", "member2", ActionType.FlipMemberRole),
+            GroupAction("member2", "member1", ActionType.FlipMemberRole),
+            GroupAction("member1", "member3", ActionType.AddMember),
+            GroupAction("member1", "member0", ActionType.FlipMemberRole, expectThrows = true),
+            GroupAction("member1", "member2", ActionType.FlipMemberRole, expectThrows = true),
+            GroupAction("member2", "member1", ActionType.FlipMemberRole),
+            GroupAction("member2", "member1", ActionType.FlipMemberRole),
+            GroupAction("member2", "member0", ActionType.FlipMemberRole, expectThrows = true),
+            GroupAction("member2", "member2", ActionType.FlipMemberRole),
+            GroupAction("member2", "member2", ActionType.FlipMemberRole, expectThrows = true),
+        )
+        val results = groupActionRunner(actionList)
+        assertEquals(4, results.size)
+        assertEquals(results["member0"], results["member1"])
+        assertEquals(results["member0"], results["member2"])
+        assertEquals(results["member0"], results["member3"])
+        assertEquals(GroupMemberRole.ADMIN, results["member0"]!!.findMemberByName("member0")!!.role)
+        assertEquals(GroupMemberRole.ADMIN, results["member0"]!!.findMemberByName("member1")!!.role)
+        assertEquals(GroupMemberRole.ORDINARY, results["member0"]!!.findMemberByName("member2")!!.role)
+        assertEquals(GroupMemberRole.ORDINARY, results["member0"]!!.findMemberByName("member3")!!.role)
     }
 }
