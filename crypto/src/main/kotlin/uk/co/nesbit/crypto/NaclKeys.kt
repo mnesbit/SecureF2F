@@ -64,6 +64,12 @@ class NACLEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
         }
     }
 
+    override fun isDestroyed(): Boolean = false
+
+    override fun destroy() {
+        Arrays.fill(keyBytes, 0)
+    }
+
     fun toI2PPrivateKey(): PrivateKey {
         return EdDSAPrivateKey(EdDSAPrivateKeySpec(keyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
     }

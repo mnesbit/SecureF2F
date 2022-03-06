@@ -10,8 +10,10 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import java.nio.ByteBuffer
+import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
+import javax.security.auth.DestroyFailedException
 
 
 object PublicKeyHelper {
@@ -109,3 +111,13 @@ fun PublicKey.toGenericRecord(): GenericRecord {
 fun PublicKey.serialize() = this.toGenericRecord().serialize()
 
 val PublicKey.id: SecureHash get() = SecureHash.secureHash(this.encoded)
+
+fun PrivateKey.safeDestroy() {
+    if (!isDestroyed && !javaClass.getMethod("destroy").isDefault) {
+        try {
+            destroy()
+        } catch (ex: DestroyFailedException) {
+            // not always implemented
+        }
+    }
+}

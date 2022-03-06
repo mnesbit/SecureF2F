@@ -24,6 +24,7 @@ class CryptoHelpersTest {
         val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
         deserializedShortSignature.verify(keyPair.public, bytes)
         assertEquals(signature, shortSignature.toDigitalSignatureAndKey(keyPair.public))
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -40,6 +41,7 @@ class CryptoHelpersTest {
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
         assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -50,6 +52,7 @@ class CryptoHelpersTest {
         val serializedPublicKey = keyPair.public.serialize()
         val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
         assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -64,6 +67,7 @@ class CryptoHelpersTest {
         val shortSignatureBytes = shortSignature.serialize()
         val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
         deserializedShortSignature.verify(keyPair.public, bytes)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -80,6 +84,7 @@ class CryptoHelpersTest {
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
         assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -90,6 +95,7 @@ class CryptoHelpersTest {
         val serializedPublicKey = keyPair.public.serialize()
         val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
         assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -104,6 +110,7 @@ class CryptoHelpersTest {
         val shortSignatureBytes = shortSignature.serialize()
         val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
         deserializedShortSignature.verify(keyPair.public, bytes)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -120,6 +127,7 @@ class CryptoHelpersTest {
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
         assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -130,6 +138,7 @@ class CryptoHelpersTest {
         val serializedPublicKey = keyPair.public.serialize()
         val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
         assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -149,6 +158,8 @@ class CryptoHelpersTest {
         val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
         val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
         assertArrayEquals(sec1, sec2)
+        keyPair1.private.safeDestroy()
+        keyPair2.private.safeDestroy()
     }
 
     @Test
@@ -168,6 +179,8 @@ class CryptoHelpersTest {
         val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
         val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
         assertArrayEquals(sec1, sec2)
+        keyPair1.private.safeDestroy()
+        keyPair2.private.safeDestroy()
     }
 
     @Test
@@ -187,6 +200,8 @@ class CryptoHelpersTest {
         val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
         val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
         assertArrayEquals(sec1, sec2)
+        keyPair1.private.safeDestroy()
+        keyPair2.private.safeDestroy()
     }
 
     @Test
@@ -209,6 +224,7 @@ class CryptoHelpersTest {
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
         }
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -223,6 +239,7 @@ class CryptoHelpersTest {
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
         }
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -237,6 +254,7 @@ class CryptoHelpersTest {
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
         }
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -294,6 +312,14 @@ class CryptoHelpersTest {
         assertFails {
             getSharedDHSecret(key3, key5.public)
         }
+        key1.private.safeDestroy()
+        key2.private.safeDestroy()
+        key3.private.safeDestroy()
+        key4.private.safeDestroy()
+        key5.private.safeDestroy()
+        key6.private.safeDestroy()
+        key7.private.safeDestroy()
+        key8.private.safeDestroy()
     }
 
     @Test
@@ -326,7 +352,8 @@ class CryptoHelpersTest {
         assertFails {
             sig4.verify(SecureHash.secureHash(bytes2))
         }
-
+        keyRSA.private.safeDestroy()
+        keyECDSA.private.safeDestroy()
     }
 
     @Test
@@ -342,6 +369,7 @@ class CryptoHelpersTest {
         val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
         deserializedShortSignature.verify(keyPair.public, bytes)
         assertEquals(signature, shortSignature.toDigitalSignatureAndKey(keyPair.public))
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -358,6 +386,7 @@ class CryptoHelpersTest {
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
         assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -368,6 +397,7 @@ class CryptoHelpersTest {
         val serializedPublicKey = keyPair.public.serialize()
         val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
         assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -382,6 +412,7 @@ class CryptoHelpersTest {
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
         }
+        keyPair.private.safeDestroy()
     }
 
 
@@ -409,6 +440,9 @@ class CryptoHelpersTest {
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        i2pPrivate.safeDestroy()
+        tinkPrivate.safeDestroy()
     }
 
     @Test
@@ -435,6 +469,9 @@ class CryptoHelpersTest {
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        naclPrivate.safeDestroy()
+        tinkPrivate.safeDestroy()
     }
 
     @Test
@@ -450,6 +487,7 @@ class CryptoHelpersTest {
         val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
         deserializedShortSignature.verify(keyPair.public, bytes)
         assertEquals(signature, shortSignature.toDigitalSignatureAndKey(keyPair.public))
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -466,6 +504,7 @@ class CryptoHelpersTest {
         val shortSignature2 = DigitalSignature(shortSignatureRecord)
         assertFalse(shortSignature === shortSignature2)
         assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -476,6 +515,7 @@ class CryptoHelpersTest {
         val serializedPublicKey = keyPair.public.serialize()
         val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
         assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -490,6 +530,7 @@ class CryptoHelpersTest {
         assertFailsWith<SignatureException> {
             signature.verify(bytes)
         }
+        keyPair.private.safeDestroy()
     }
 
     @Test
@@ -516,6 +557,9 @@ class CryptoHelpersTest {
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        i2pPrivate.safeDestroy()
+        naclPrivate.safeDestroy()
     }
 
     @Test
@@ -542,6 +586,9 @@ class CryptoHelpersTest {
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        tinkPrivate.safeDestroy()
+        naclPrivate.safeDestroy()
     }
 
     @Test
@@ -561,6 +608,8 @@ class CryptoHelpersTest {
         val sec1 = getSharedDHSecret(keyPair1, deserializedPublicKey2)
         val sec2 = getSharedDHSecret(keyPair2, deserializedPublicKey1)
         assertArrayEquals(sec1, sec2)
+        keyPair1.private.safeDestroy()
+        keyPair2.private.safeDestroy()
     }
 
 }

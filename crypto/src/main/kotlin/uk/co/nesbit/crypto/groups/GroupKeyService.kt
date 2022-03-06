@@ -13,4 +13,5 @@ interface GroupKeyService {
     fun getSharedDHSecret(id: SecureHash, remotePublicKey: PublicKey): ByteArray
     fun getSigningKey(id: SecureHash): PublicKey
     fun getDhKey(id: SecureHash): PublicKey
+    fun destroyKey(id: SecureHash)
 }

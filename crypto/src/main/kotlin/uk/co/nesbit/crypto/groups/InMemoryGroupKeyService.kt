@@ -52,4 +52,17 @@ class InMemoryGroupKeyService(
         require(keys != null) { "Key id $id not found" }
         return keys.public
     }
+
+    override fun destroyKey(id: SecureHash) {
+        val signingKey = findSigningById(id)
+        if (signingKey != null) {
+            signingKey.private.safeDestroy()
+            signingKeys.remove(id)
+        }
+        val dhKey = findDhById(id)
+        if (dhKey != null) {
+            dhKey.private.safeDestroy()
+            dhKeys.remove(id)
+        }
+    }
 }
