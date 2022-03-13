@@ -2,6 +2,8 @@ package uk.co.nesbit.crypto
 
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPrivateKey
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
@@ -475,6 +477,35 @@ class CryptoHelpersTest {
     }
 
     @Test
+    fun `Tink and BC interop`() {
+        val keyPair = generateTinkEd25519KeyPair()
+        val bcPublic = (keyPair.public as TinkEd25519PublicKey).toBCPublicKey()
+        val bcPrivate = (keyPair.private as TinkEd25519PrivateKey).toBCPrivateKey()
+        val bcKeyPair = KeyPair(bcPublic, bcPrivate)
+        val tinkPublic = (bcPublic as BCEdDSAPublicKey).toTinkPublicKey()
+        val tinkPrivate = (bcPrivate as BCEdDSAPrivateKey).toTinkPrivateKey()
+        assertEquals(keyPair.public, tinkPublic)
+        assertEquals(keyPair.private, tinkPrivate)
+        val message = "1234567890".toByteArray(Charsets.UTF_8)
+        val sig1 = keyPair.sign(message)
+        assertEquals(keyPair.public, sig1.publicKey)
+        assertEquals("NONEwithTinkEd25519", sig1.signatureAlgorithm)
+        val sig2 = bcKeyPair.sign(message)
+        assertEquals(bcKeyPair.public, sig2.publicKey)
+        assertEquals("Ed25519", sig2.signatureAlgorithm)
+        assertArrayEquals(sig1.signature, sig2.signature)
+        sig1.verify(message)
+        sig2.verify(message)
+        val swapped1 = sig1.toDigitalSignature().toDigitalSignatureAndKey(bcKeyPair.public)
+        swapped1.verify(message)
+        val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
+        swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        bcPrivate.safeDestroy()
+        tinkPrivate.safeDestroy()
+    }
+
+    @Test
     fun `test NACL EdDSA serialisation round trip`() {
         val keyPair = generateNACLKeyPair()
         val bytes = "jhsdjsjfajkf".toByteArray()
@@ -563,31 +594,31 @@ class CryptoHelpersTest {
     }
 
     @Test
-    fun `NACL and Tink interop`() {
+    fun `NACL and BC interop`() {
         val keyPair = generateNACLKeyPair()
-        val tinkPublic = (keyPair.public as NACLEd25519PublicKey).toTinkPublicKey()
-        val tinkPrivate = (keyPair.private as NACLEd25519PrivateKey).toTinkPrivateKey()
-        val tinkKeyPair = KeyPair(tinkPublic, tinkPrivate)
-        val naclPublic = (tinkPublic as TinkEd25519PublicKey).toNACLPublicKey()
-        val naclPrivate = (tinkPrivate as TinkEd25519PrivateKey).toNACLPrivateKey()
+        val bcPublic = (keyPair.public as NACLEd25519PublicKey).toBCPublicKey()
+        val bcPrivate = (keyPair.private as NACLEd25519PrivateKey).toBCPrivateKey()
+        val bcKeyPair = KeyPair(bcPublic, bcPrivate)
+        val naclPublic = (bcPublic as BCEdDSAPublicKey).toNACLPublicKey()
+        val naclPrivate = (bcPrivate as BCEdDSAPrivateKey).toNACLPrivateKey()
         assertEquals(keyPair.public, naclPublic)
         assertEquals(keyPair.private, naclPrivate)
         val message = "1234567890".toByteArray(Charsets.UTF_8)
         val sig1 = keyPair.sign(message)
         assertEquals(keyPair.public, sig1.publicKey)
         assertEquals("NONEwithNACLEd25519", sig1.signatureAlgorithm)
-        val sig2 = tinkKeyPair.sign(message)
-        assertEquals(tinkKeyPair.public, sig2.publicKey)
-        assertEquals("NONEwithTinkEd25519", sig2.signatureAlgorithm)
+        val sig2 = bcKeyPair.sign(message)
+        assertEquals(bcKeyPair.public, sig2.publicKey)
+        assertEquals("Ed25519", sig2.signatureAlgorithm)
         assertArrayEquals(sig1.signature, sig2.signature)
         sig1.verify(message)
         sig2.verify(message)
-        val swapped1 = sig1.toDigitalSignature().toDigitalSignatureAndKey(tinkKeyPair.public)
+        val swapped1 = sig1.toDigitalSignature().toDigitalSignatureAndKey(bcKeyPair.public)
         swapped1.verify(message)
         val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
         swapped2.verify(message)
         keyPair.private.safeDestroy()
-        tinkPrivate.safeDestroy()
+        bcPrivate.safeDestroy()
         naclPrivate.safeDestroy()
     }
 
@@ -610,6 +641,94 @@ class CryptoHelpersTest {
         assertArrayEquals(sec1, sec2)
         keyPair1.private.safeDestroy()
         keyPair2.private.safeDestroy()
+    }
+
+    @Test
+    fun `test BC EdDSA serialisation round trip`() {
+        val keyPair = generateBCEdDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureBytes = signature.serialize()
+        val deserializedSignature = DigitalSignatureAndKey.deserialize(signatureBytes)
+        deserializedSignature.verify(bytes)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureBytes = shortSignature.serialize()
+        val deserializedShortSignature = DigitalSignature.deserialize(shortSignatureBytes)
+        deserializedShortSignature.verify(keyPair.public, bytes)
+        assertEquals(signature, shortSignature.toDigitalSignatureAndKey(keyPair.public))
+        keyPair.private.safeDestroy()
+    }
+
+    @Test
+    fun `test BC EdDSA GenericRecord round trip`() {
+        val keyPair = generateBCEdDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        val signatureRecord = signature.toGenericRecord()
+        val signature2 = DigitalSignatureAndKey(signatureRecord)
+        assertFalse(signature === signature2)
+        assertEquals(signature, signature2)
+        val shortSignature = signature.toDigitalSignature()
+        val shortSignatureRecord = shortSignature.toGenericRecord()
+        val shortSignature2 = DigitalSignature(shortSignatureRecord)
+        assertFalse(shortSignature === shortSignature2)
+        assertEquals(shortSignature, shortSignature2)
+        keyPair.private.safeDestroy()
+    }
+
+    @Test
+    fun `test BC EdDSA PublicKey round trip`() {
+        val keyPair = generateBCEdDSAKeyPair()
+        val publicKeyRecord = keyPair.public.toGenericRecord()
+        assertEquals(keyPair.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord))
+        val serializedPublicKey = keyPair.public.serialize()
+        val deserializedPublicKey = PublicKeyHelper.deserialize(serializedPublicKey)
+        assertEquals(keyPair.public, deserializedPublicKey)
+        keyPair.private.safeDestroy()
+    }
+
+    @Test
+    fun `test BC EdDSA verify`() {
+        val keyPair = generateBCEdDSAKeyPair()
+        val bytes = "jhsdjsjfajkf".toByteArray()
+        val signature = keyPair.sign(bytes)
+        signature.verify(bytes)
+
+        bytes[0] = 'k'.code.toByte()
+
+        assertFailsWith<SignatureException> {
+            signature.verify(bytes)
+        }
+        keyPair.private.safeDestroy()
+    }
+
+    @Test
+    fun `BC and i2p interop`() {
+        val keyPair = generateBCEdDSAKeyPair()
+        val i2pPublic = (keyPair.public as BCEdDSAPublicKey).toI2pPublicKey()
+        val i2pPrivate = (keyPair.private as BCEdDSAPrivateKey).toI2pPrivateKey()
+        val i2pKeyPair = KeyPair(i2pPublic, i2pPrivate)
+        val bcPublic = (i2pPublic as EdDSAPublicKey).toBCPublicKey()
+        val bcPrivate = (i2pPrivate as EdDSAPrivateKey).toBCPrivateKey()
+        assertEquals(keyPair.public, bcPublic)
+        assertEquals(keyPair.private, bcPrivate)
+        val message = "1234567890".toByteArray(Charsets.UTF_8)
+        val sig1 = keyPair.sign(message)
+        assertEquals(keyPair.public, sig1.publicKey)
+        assertEquals("Ed25519", sig1.signatureAlgorithm)
+        val sig2 = i2pKeyPair.sign(message)
+        assertEquals(i2pKeyPair.public, sig2.publicKey)
+        assertEquals("NONEwithEdDSA", sig2.signatureAlgorithm)
+        assertArrayEquals(sig1.signature, sig2.signature)
+        sig1.verify(message)
+        sig2.verify(message)
+        val swapped1 = sig1.toDigitalSignature().toDigitalSignatureAndKey(i2pKeyPair.public)
+        swapped1.verify(message)
+        val swapped2 = sig2.toDigitalSignature().toDigitalSignatureAndKey(keyPair.public)
+        swapped2.verify(message)
+        keyPair.private.safeDestroy()
+        bcPrivate.safeDestroy()
+        i2pPrivate.safeDestroy()
     }
 
 }

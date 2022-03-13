@@ -5,6 +5,7 @@ import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
@@ -52,6 +53,24 @@ class DigitalSignature(val signatureAlgorithm: String,
                         throw SignatureException("Signature did not match")
                 }
             }
+            "Ed25519" -> {
+                ProviderCache.withSignatureInstance(signatureAlgorithm, "BC") {
+                    if (publicKey is BCEdDSAPublicKey) {
+                        initVerify(publicKey)
+                    } else if (publicKey is NACLEd25519PublicKey) {
+                        initVerify(publicKey.toBCPublicKey())
+                    } else if (publicKey is TinkEd25519PublicKey) {
+                        initVerify(publicKey.toBCPublicKey())
+                    } else if (publicKey is EdDSAPublicKey) {
+                        initVerify(publicKey.toBCPublicKey())
+                    } else {
+                        initVerify(publicKey)
+                    }
+                    update(bytes)
+                    if (!verify(signature))
+                        throw SignatureException("Signature did not match")
+                }
+            }
             "NONEwithEdDSA" -> {
                 ProviderCache.withEdDSAEngine {
                     require(signatureAlgorithm == algorithm) { "Signature algorithm not EdDSA" }
@@ -61,6 +80,8 @@ class DigitalSignature(val signatureAlgorithm: String,
                         initVerify(publicKey.toI2PPublicKey())
                     } else if (publicKey is NACLEd25519PublicKey) {
                         initVerify(publicKey.toI2PPublicKey())
+                    } else if (publicKey is BCEdDSAPublicKey) {
+                        initVerify(publicKey.toI2pPublicKey())
                     } else {
                         initVerify(publicKey)
                     }
@@ -77,6 +98,8 @@ class DigitalSignature(val signatureAlgorithm: String,
                     Ed25519Verify(publicKey.abyte)
                 } else if (publicKey is NACLEd25519PublicKey) {
                     Ed25519Verify(publicKey.keyBytes)
+                } else if (publicKey is BCEdDSAPublicKey) {
+                    Ed25519Verify((publicKey.toNACLPublicKey() as NACLEd25519PublicKey).keyBytes)
                 } else {
                     Ed25519Verify(publicKey.encoded)
                 }
@@ -93,6 +116,8 @@ class DigitalSignature(val signatureAlgorithm: String,
                     publicKey.abyte
                 } else if (publicKey is TinkEd25519PublicKey) {
                     publicKey.encoded
+                } else if (publicKey is BCEdDSAPublicKey) {
+                    (publicKey.toNACLPublicKey() as NACLEd25519PublicKey).keyBytes
                 } else throw IllegalArgumentException()
                 if (!nacl.cryptoSignVerifyDetached(signature, bytes, bytes.size, publicKeyBytes)) {
                     throw SignatureException("Signature did not match")

@@ -56,6 +56,18 @@ object PublicKeyHelper {
                 }
                 pk!!
             }
+            "Ed25519" -> {
+                require(keyFormat == "X.509") { "Don't know how to deserialize" }
+                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
+                cacheKey.put(publicKeyBytes)
+                cacheKey.flip()
+                val pk = keyCache.get(cacheKey) {
+                    ProviderCache.withKeyFactoryInstance(keyAlgorithm, "BC") {
+                        generatePublic(keySpec)
+                    }
+                }
+                pk!!
+            }
             "EC", "RSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)

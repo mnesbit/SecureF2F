@@ -1,10 +1,8 @@
 package uk.co.nesbit.crypto
 
 import net.i2p.crypto.eddsa.EdDSAEngine
-import java.security.KeyFactory
-import java.security.KeyPairGenerator
-import java.security.MessageDigest
-import java.security.Signature
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import java.security.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import javax.crypto.Cipher
@@ -13,14 +11,22 @@ import javax.crypto.Mac
 
 @Suppress("UNCHECKED_CAST")
 object ProviderCache {
+    init {
+        System.setProperty("org.bouncycastle.pkcs8.v1_info_only", "true")
+        if (Security.getProvider("BC") == null) {
+            Security.addProvider(BouncyCastleProvider())
+        }
+    }
+
     private val pools = ConcurrentHashMap<String, ConcurrentLinkedQueue<*>>()
 
     fun <R> withMacInstance(algorithm: String, block: Mac.() -> R): R = withMacInstance(algorithm, null, block)
 
     fun <R> withMacInstance(algorithm: String, provider: String?, block: Mac.() -> R): R {
-        val pool = pools.getOrPut("MAC[$algorithm|$provider]") { ConcurrentLinkedQueue<Mac>() } as ConcurrentLinkedQueue<Mac>
+        val pool =
+            pools.getOrPut("MAC[$algorithm|$provider]") { ConcurrentLinkedQueue<Mac>() } as ConcurrentLinkedQueue<Mac>
         val mac = pool.poll()
-                ?: if (provider != null) Mac.getInstance(algorithm, provider) else Mac.getInstance(algorithm)
+            ?: if (provider != null) Mac.getInstance(algorithm, provider) else Mac.getInstance(algorithm)
         try {
             return mac.block()
         } finally {

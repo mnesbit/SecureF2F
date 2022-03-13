@@ -10,6 +10,7 @@ import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import org.bouncycastle.jcajce.spec.EdDSAParameterSpec
 import java.io.ByteArrayOutputStream
 import java.security.*
 import java.security.spec.ECGenParameterSpec
@@ -37,6 +38,15 @@ fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
     val keyGen = net.i2p.crypto.eddsa.KeyPairGenerator()
     keyGen.initialize(256, secureRandom)
     return keyGen.generateKeyPair()
+}
+
+fun generateBCEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
+    return ProviderCache.withKeyPairGeneratorInstance("Ed25519", "BC") {
+        val ecSpec = EdDSAParameterSpec(EdDSAParameterSpec.Ed25519)
+        initialize(ecSpec, secureRandom)
+        generateKeyPair()
+    }
+
 }
 
 fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -127,6 +137,14 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
                 DigitalSignatureAndKey(algorithm, sig, public)
             }
 
+        }
+        "Ed25519" -> {
+            return ProviderCache.withSignatureInstance("Ed25519", "BC") {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
         }
         "TinkEd25519" -> {
             val signer = Ed25519Sign(private.encoded)
