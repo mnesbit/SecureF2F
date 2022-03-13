@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMemberRemove",
+  "type": "record",
+  "fields": [
+    {
+      "name": "memberKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "newSponsorDhKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "sponsorSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

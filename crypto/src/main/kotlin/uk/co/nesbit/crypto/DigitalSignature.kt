@@ -1,17 +1,15 @@
 package uk.co.nesbit.crypto
 
-import com.google.crypto.tink.subtle.Ed25519Verify
-import net.i2p.crypto.eddsa.EdDSAPublicKey
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
 import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
-import java.security.GeneralSecurityException
 import java.security.PublicKey
 import java.security.SignatureException
 import java.util.*
@@ -52,15 +50,12 @@ class DigitalSignature(val signatureAlgorithm: String,
                         throw SignatureException("Signature did not match")
                 }
             }
-            "NONEwithEdDSA" -> {
-                ProviderCache.withEdDSAEngine {
-                    require(signatureAlgorithm == algorithm) { "Signature algorithm not EdDSA" }
-                    if (publicKey is EdDSAPublicKey) {
+            "Ed25519" -> {
+                ProviderCache.withSignatureInstance(signatureAlgorithm, "BC") {
+                    if (publicKey is BCEdDSAPublicKey) {
                         initVerify(publicKey)
-                    } else if (publicKey is TinkEd25519PublicKey) {
-                        initVerify(publicKey.toI2PPublicKey())
                     } else if (publicKey is NACLEd25519PublicKey) {
-                        initVerify(publicKey.toI2PPublicKey())
+                        initVerify(publicKey.toBCPublicKey())
                     } else {
                         initVerify(publicKey)
                     }
@@ -68,31 +63,12 @@ class DigitalSignature(val signatureAlgorithm: String,
                     if (!verify(signature))
                         throw SignatureException("Signature did not match")
                 }
-
-            }
-            "NONEwithTinkEd25519" -> {
-                val verifier = if (publicKey is TinkEd25519PublicKey) {
-                    Ed25519Verify(publicKey.keyBytes)
-                } else if (publicKey is EdDSAPublicKey) {
-                    Ed25519Verify(publicKey.abyte)
-                } else if (publicKey is NACLEd25519PublicKey) {
-                    Ed25519Verify(publicKey.keyBytes)
-                } else {
-                    Ed25519Verify(publicKey.encoded)
-                }
-                try {
-                    verifier.verify(signature, bytes)
-                } catch (ex: GeneralSecurityException) {
-                    throw SignatureException("Signature did not match")
-                }
             }
             "NONEwithNACLEd25519" -> {
                 val publicKeyBytes = if (publicKey is NACLEd25519PublicKey) {
                     publicKey.keyBytes
-                } else if (publicKey is EdDSAPublicKey) {
-                    publicKey.abyte
-                } else if (publicKey is TinkEd25519PublicKey) {
-                    publicKey.encoded
+                } else if (publicKey is BCEdDSAPublicKey) {
+                    (publicKey.toNACLPublicKey() as NACLEd25519PublicKey).keyBytes
                 } else throw IllegalArgumentException()
                 if (!nacl.cryptoSignVerifyDetached(signature, bytes, bytes.size, publicKeyBytes)) {
                     throw SignatureException("Signature did not match")

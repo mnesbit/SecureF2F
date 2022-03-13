@@ -45,6 +45,12 @@ class Curve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
         Curve25519.clamp(keyBytes) // ensure it is a valid private key
     }
 
+    override fun isDestroyed(): Boolean = false
+
+    override fun destroy() {
+        Arrays.fill(keyBytes, 0)
+    }
+
     override fun toString(): String = "PRV25519:${keyBytes.printHexBinary()}"
 
     override fun equals(other: Any?): Boolean {

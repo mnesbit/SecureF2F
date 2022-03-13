@@ -1,0 +1,20 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupBlockPayload",
+  "type": "record",
+  "fields": [
+    {
+      "name": "change",
+      "type": [
+        "GroupCreate",
+        "GroupModify",
+        "GroupMemberAdd",
+        "GroupMemberRemove",
+        "GroupMemberAdminChange",
+        "GroupMemberKeyRotate",
+        "GroupMemberAddressChange",
+        "GroupMerge"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMerge",
+  "type": "record",
+  "fields": [
+    {
+      "name": "previousGroupInfoHashes",
+      "type": {
+        "name": "arrayType",
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.SecureHash"
+      }
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

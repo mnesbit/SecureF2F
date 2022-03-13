@@ -1,4 +1,4 @@
-import static org.gradle.api.JavaVersion.VERSION_15
+import static org.gradle.api.JavaVersion.VERSION_17
 
 plugins {
     id 'org.jetbrains.kotlin.jvm'
@@ -21,17 +21,17 @@ allprojects {
     }
 
     tasks.withType(JavaCompile) {
-        sourceCompatibility = VERSION_15
-        targetCompatibility = VERSION_15
+        sourceCompatibility = VERSION_17
+        targetCompatibility = VERSION_17
         options.encoding = 'UTF-8'
         options.compilerArgs += '-XDenableSunApiLintControl'
     }
 
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
         kotlinOptions {
-            languageVersion = '1.5'
-            apiVersion = '1.5'
-            jvmTarget = VERSION_15
+            languageVersion = '1.6'
+            apiVersion = '1.6'
+            jvmTarget = VERSION_17
             javaParameters = true   // Useful for reflection.
             freeCompilerArgs = ['-Xjvm-default=all']
         }
@@ -57,12 +57,13 @@ allprojects {
         testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junit5_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
         testImplementation "org.jetbrains.kotlin:kotlin-test-junit5:$kotlin_version"
-        testRuntimeOnly "org.apache.logging.log4j:log4j-slf4j18-impl:$log4j2_version"
+        testRuntimeOnly "org.slf4j:slf4j-simple:$slf4j_version"
+        testImplementation "org.junit-pioneer:junit-pioneer:$junit_pioneer_version"
     }
 }
 
 wrapper {
-    gradleVersion = "7.2"
+    gradleVersion = "7.4"
     distributionType = Wrapper.DistributionType.ALL
 }
 

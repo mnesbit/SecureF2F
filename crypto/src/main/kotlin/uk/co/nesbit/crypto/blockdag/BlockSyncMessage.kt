@@ -5,6 +5,7 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.DigitalSignature
+import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.setsync.InvertibleBloomFilter
 import java.security.SignatureException
@@ -52,7 +53,7 @@ class BlockSyncMessage private constructor(
             heads: Iterable<Block>,
             directRequests: Iterable<SecureHash>,
             blocks: Iterable<Block>,
-            signingService: (SecureHash, ByteArray) -> DigitalSignature
+            signingService: (SecureHash, ByteArray) -> DigitalSignatureAndKey
         ): BlockSyncMessage {
             val templateObject = BlockSyncMessage(
                 sender,
@@ -64,7 +65,7 @@ class BlockSyncMessage private constructor(
             )
             val signatureBytes = templateObject.serialize()
             val signature = signingService(sender, signatureBytes)
-            return templateObject.changeSignature(signature)
+            return templateObject.changeSignature(signature.toDigitalSignature())
         }
     }
 

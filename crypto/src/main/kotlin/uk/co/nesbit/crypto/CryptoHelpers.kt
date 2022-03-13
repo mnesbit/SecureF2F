@@ -1,6 +1,5 @@
 package uk.co.nesbit.crypto
 
-import com.google.crypto.tink.subtle.Ed25519Sign
 import com.goterl.lazysodium.LazySodiumJava
 import com.goterl.lazysodium.SodiumJava
 import com.goterl.lazysodium.interfaces.DiffieHellman
@@ -10,6 +9,7 @@ import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
+import org.bouncycastle.jcajce.spec.EdDSAParameterSpec
 import java.io.ByteArrayOutputStream
 import java.security.*
 import java.security.spec.ECGenParameterSpec
@@ -34,9 +34,12 @@ fun newSecureRandom(): SecureRandom {
 }
 
 fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val keyGen = net.i2p.crypto.eddsa.KeyPairGenerator()
-    keyGen.initialize(256, secureRandom)
-    return keyGen.generateKeyPair()
+    return ProviderCache.withKeyPairGeneratorInstance("Ed25519", "BC") {
+        val ecSpec = EdDSAParameterSpec(EdDSAParameterSpec.Ed25519)
+        initialize(ecSpec, secureRandom)
+        generateKeyPair()
+    }
+
 }
 
 fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -45,11 +48,6 @@ fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
         initialize(ecSpec, secureRandom)
         generateKeyPair()
     }
-}
-
-fun generateTinkEd25519KeyPair(): KeyPair {
-    val keyGen = Ed25519Sign.KeyPair.newKeyPair()
-    return KeyPair(TinkEd25519PublicKey(keyGen.publicKey), TinkEd25519PrivateKey(keyGen.privateKey))
 }
 
 fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -119,19 +117,13 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
                 DigitalSignatureAndKey(algorithm, sig, public)
             }
         }
-        "EdDSA" -> {
-            return ProviderCache.withEdDSAEngine {
+        "Ed25519" -> {
+            return ProviderCache.withSignatureInstance("Ed25519", "BC") {
                 initSign(private)
                 update(bytes)
                 val sig = sign()
                 DigitalSignatureAndKey(algorithm, sig, public)
             }
-
-        }
-        "TinkEd25519" -> {
-            val signer = Ed25519Sign(private.encoded)
-            val sig = signer.sign(bytes)
-            return DigitalSignatureAndKey("NONEwithTinkEd25519", sig, public)
         }
         "NACLEd25519" -> {
             val naclPublicKey = ByteArray(Sign.PUBLICKEYBYTES)

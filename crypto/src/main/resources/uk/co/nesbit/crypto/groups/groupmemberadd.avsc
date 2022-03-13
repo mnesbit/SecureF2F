@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMemberAdd",
+  "type": "record",
+  "fields": [
+    {
+      "name": "newInfo",
+      "type": "GroupMemberInfo"
+    },
+    {
+      "name": "sponsorKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "sponsorSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

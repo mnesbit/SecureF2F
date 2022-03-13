@@ -1,0 +1,23 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "GroupMemberAddressChange",
+  "type": "record",
+  "fields": [
+    {
+      "name": "memberKeyId",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "oldRoutingAddress",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "newRoutingAddress",
+      "type": "uk.co.nesbit.crypto.SecureHash"
+    },
+    {
+      "name": "memberSignature",
+      "type": "uk.co.nesbit.crypto.DigitalSignature"
+    }
+  ]
+}

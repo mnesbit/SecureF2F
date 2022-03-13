@@ -1,0 +1,25 @@
+{
+  "namespace": "uk.co.nesbit.crypto.groups",
+  "name": "HistoricKeyInfo",
+  "type": "record",
+  "fields": [
+    {
+      "name": "key",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "validFrom",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "validUntil",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import uk.co.nesbit.crypto.GCMConstants.GCM_TAG_LENGTH
 import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 import java.security.PublicKey
 import java.security.SecureRandom
+import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -71,8 +72,10 @@ object Ecies {
                 ?: ByteArray(0), ephemeralKeyPair.public.encoded, targetPublicKey.encoded
         )
         val sharedSecret = getSharedDHSecret(ephemeralKeyPair, targetPublicKey)
+        ephemeralKeyPair.private.safeDestroy()
         val count = counter.getAndIncrement().toByteArray()
         val (aesKey, aesNonce) = generateKeys(sharedSecret, ephemeralKeyPair.public, targetPublicKey, count)
+        Arrays.fill(sharedSecret, 0)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
             val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, aesNonce)
             init(Cipher.ENCRYPT_MODE, aesKey, spec)
@@ -114,6 +117,7 @@ object Ecies {
         )
         val sharedSecret = dhFunction(dhEmphemeralPublicKey)
         val (aesKey, aesNonce) = generateKeys(sharedSecret, dhEmphemeralPublicKey, targetPublicKey, count)
+        Arrays.fill(sharedSecret, 0)
         return ProviderCache.withCipherInstance("AES/GCM/NoPadding", "SunJCE") {
             val spec = GCMParameterSpec(GCM_TAG_LENGTH * 8, aesNonce)
             init(Cipher.DECRYPT_MODE, aesKey, spec)
@@ -175,8 +179,10 @@ object EciesChaCha {
             aad ?: ByteArray(0), ephemeralKeyPair.public.encoded, targetPublicKey.encoded
         )
         val sharedSecret = getSharedDHSecret(ephemeralKeyPair, targetPublicKey)
+        ephemeralKeyPair.private.safeDestroy()
         val count = counter.getAndIncrement().toByteArray()
         val (chaChaKey, chaChaNonce) = generateKeys(sharedSecret, ephemeralKeyPair.public, targetPublicKey, count)
+        Arrays.fill(sharedSecret, 0)
         return concatByteArrays(
             ephemeralKeyPair.public.encoded,
             count,

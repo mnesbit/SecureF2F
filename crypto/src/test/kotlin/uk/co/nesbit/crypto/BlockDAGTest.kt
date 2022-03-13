@@ -19,7 +19,7 @@ class BlockDAGTest {
     @Test
     fun `Round trip serialize block`() {
         val keyPair = generateEdDSAKeyPair()
-        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val keyId = keyPair.public.id
         val memberService = object : MemberService {
             override val members: Set<SecureHash>
                 get() = setOf(keyId)
@@ -28,14 +28,10 @@ class BlockDAGTest {
                 assertEquals(keyId, id)
                 return keyPair.public
             }
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
         val signingService = { id: SecureHash, x: ByteArray ->
             assertEquals(keyId, id)
-            keyPair.sign(x).toDigitalSignature()
+            keyPair.sign(x)
         }
         val payload = "01233456789".toByteArray(Charsets.UTF_8)
         val predecessors = (0..3).map { SecureHash.secureHash(it.toString()) }
@@ -56,10 +52,10 @@ class BlockDAGTest {
     @Test
     fun `test block store heads logic`() {
         val keyPair = generateEdDSAKeyPair()
-        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val keyId = keyPair.public.id
         val signingService = { id: SecureHash, x: ByteArray ->
             assertEquals(keyId, id)
-            keyPair.sign(x).toDigitalSignature()
+            keyPair.sign(x)
         }
         val random = Random.Default
         val blockIds = mutableListOf<SecureHash>()
@@ -95,10 +91,10 @@ class BlockDAGTest {
     @Test
     fun `BlockStore predecessor test`() {
         val keyPair = generateEdDSAKeyPair()
-        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val keyId = keyPair.public.id
         val signingService = { id: SecureHash, x: ByteArray ->
             assertEquals(keyId, id)
-            keyPair.sign(x).toDigitalSignature()
+            keyPair.sign(x)
         }
         val blocks = mutableMapOf<Int, Block>()
         val blockStore: BlockStore = InMemoryBlockStore()
@@ -143,10 +139,10 @@ class BlockDAGTest {
     @Test
     fun `BlockSyncMessage serialization test`() {
         val keyPair = generateEdDSAKeyPair()
-        val keyId = SecureHash.secureHash(keyPair.public.encoded)
+        val keyId = keyPair.public.id
         val signingService = { id: SecureHash, x: ByteArray ->
             assertEquals(keyId, id)
-            keyPair.sign(x).toDigitalSignature()
+            keyPair.sign(x)
         }
         val memberService = object : MemberService {
             override val members: Set<SecureHash>
@@ -155,10 +151,6 @@ class BlockDAGTest {
             override fun getMemberKey(id: SecureHash): PublicKey? {
                 assertEquals(keyId, id)
                 return keyPair.public
-            }
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
             }
         }
         val random = Random.Default
@@ -212,18 +204,14 @@ class BlockDAGTest {
         val keys = (0 until members).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
-                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+                keys.associate { Pair(it.public.id, it.public) }
             override val members: Set<SecureHash> = memberMap.keys
 
             override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
-        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { it.public.id }
         val signingService = { id: SecureHash, bytes: ByteArray ->
-            keyMap[id]!!.sign(bytes).toDigitalSignature()
+            keyMap[id]!!.sign(bytes)
         }
 
         val network = memberService.members.map {
@@ -300,18 +288,14 @@ class BlockDAGTest {
         val keys = (0..9).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
-                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+                keys.associate { Pair(it.public.id, it.public) }
             override val members: Set<SecureHash> = memberMap.keys
 
             override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
-        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { it.public.id }
         val signingService = { id: SecureHash, bytes: ByteArray ->
-            keyMap[id]!!.sign(bytes).toDigitalSignature()
+            keyMap[id]!!.sign(bytes)
         }
 
         val network = memberService.members.map {
@@ -391,18 +375,14 @@ class BlockDAGTest {
         val keys = (0 until 10).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
-                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+                keys.associate { Pair(it.public.id, it.public) }
             override val members: Set<SecureHash> = memberMap.keys
 
             override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
-        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { it.public.id }
         val signingService = { id: SecureHash, bytes: ByteArray ->
-            keyMap[id]!!.sign(bytes).toDigitalSignature()
+            keyMap[id]!!.sign(bytes)
         }
         val network = memberService.members.map {
             InMemoryBlockSyncManager(
@@ -481,18 +461,14 @@ class BlockDAGTest {
         val keys = (0 until 10).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
-                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+                keys.associate { Pair(it.public.id, it.public) }
             override val members: Set<SecureHash> = memberMap.keys
 
             override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
-        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { it.public.id }
         val signingService = { id: SecureHash, bytes: ByteArray ->
-            keyMap[id]!!.sign(bytes).toDigitalSignature()
+            keyMap[id]!!.sign(bytes)
         }
         val network = memberService.members.map {
             InMemoryBlockSyncManager(
@@ -573,18 +549,14 @@ class BlockDAGTest {
         val keys = (0 until networkSize).map { generateEdDSAKeyPair(random) }
         val memberService = object : MemberService {
             private val memberMap: Map<SecureHash, PublicKey> =
-                keys.associate { Pair(SecureHash.secureHash(it.public.encoded), it.public) }
+                keys.associate { Pair(it.public.id, it.public) }
             override val members: Set<SecureHash> = memberMap.keys
 
             override fun getMemberKey(id: SecureHash): PublicKey? = memberMap[id]
-
-            override fun addMember(key: PublicKey): SecureHash {
-                throw NotImplementedError("Not implemented")
-            }
         }
-        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { SecureHash.secureHash(it.public.encoded) }
+        val keyMap: Map<SecureHash, KeyPair> = keys.associateBy { it.public.id }
         val signingService = { id: SecureHash, bytes: ByteArray ->
-            keyMap[id]!!.sign(bytes).toDigitalSignature()
+            keyMap[id]!!.sign(bytes)
         }
 
         val network = memberService.members.map {
