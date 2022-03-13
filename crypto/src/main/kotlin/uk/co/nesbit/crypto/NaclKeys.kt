@@ -4,11 +4,6 @@ import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTE
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
 import com.goterl.lazysodium.interfaces.Sign
 import djb.Curve25519
-import net.i2p.crypto.eddsa.EdDSAPrivateKey
-import net.i2p.crypto.eddsa.EdDSAPublicKey
-import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
-import net.i2p.crypto.eddsa.spec.EdDSAPrivateKeySpec
-import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.edec.EdECObjectIdentifiers
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
@@ -38,14 +33,6 @@ class NACLEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
             val x509KeySpec = X509EncodedKeySpec(pubKeyInfo.encoded)
             generatePublic(x509KeySpec)
         }
-    }
-
-    fun toI2PPublicKey(): PublicKey {
-        return EdDSAPublicKey(EdDSAPublicKeySpec(keyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
-    }
-
-    fun toTinkPublicKey(): PublicKey {
-        return TinkEd25519PublicKey(keyBytes)
     }
 
     override fun toString(): String = "PUBNACL25519:${keyBytes.printHexBinary()}"
@@ -80,14 +67,6 @@ fun BCEdDSAPublicKey.toNACLPublicKey(): PublicKey {
     }
 }
 
-fun EdDSAPublicKey.toNACLPublicKey(): PublicKey {
-    return NACLEd25519PublicKey(this.abyte)
-}
-
-fun EdDSAPublicKey.toBCPublicKey(): PublicKey {
-    return NACLEd25519PublicKey(this.abyte).toBCPublicKey()
-}
-
 class NACLEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
     init {
         require(keyBytes.size == Sign.ED25519_SEEDBYTES) {
@@ -108,14 +87,6 @@ class NACLEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
             val pkcs8KeySpec = PKCS8EncodedKeySpec(privKeyInfo.encoded)
             generatePrivate(pkcs8KeySpec)
         }
-    }
-
-    fun toI2PPrivateKey(): PrivateKey {
-        return EdDSAPrivateKey(EdDSAPrivateKeySpec(keyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
-    }
-
-    fun toTinkPrivateKey(): PrivateKey {
-        return TinkEd25519PrivateKey(keyBytes)
     }
 
     override fun toString(): String = "PRVNACL25519:${keyBytes.printHexBinary()}"
@@ -140,18 +111,6 @@ class NACLEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
     override fun hashCode(): Int {
         return keyBytes.contentHashCode()
     }
-}
-
-fun EdDSAPrivateKey.toNACLPrivateKey(): PrivateKey {
-    return NACLEd25519PrivateKey(this.seed)
-}
-
-fun EdDSAPrivateKey.toBCPrivateKey(): PrivateKey {
-    return NACLEd25519PrivateKey(this.seed).toBCPrivateKey()
-}
-
-fun BCEdDSAPublicKey.toI2pPublicKey(): PublicKey {
-    return EdDSAPublicKey(X509EncodedKeySpec(encoded))
 }
 
 // Based upon https://github.com/str4d/ed25519-java/blob/master/src/net/i2p/crypto/eddsa/EdDSAPrivateKey.java
@@ -243,10 +202,6 @@ fun BCEdDSAPrivateKey.toNACLPrivateKey(): PrivateKey {
         val pkcs8KeySpec = getKeySpec(key, PKCS8EncodedKeySpec::class.java)
         NACLEd25519PrivateKey(decodePKCS8(pkcs8KeySpec.encoded))
     }
-}
-
-fun BCEdDSAPrivateKey.toI2pPrivateKey(): PrivateKey {
-    return EdDSAPrivateKey(PKCS8EncodedKeySpec(encoded))
 }
 
 class NACLCurve25519PublicKey(val keyBytes: ByteArray) : PublicKey {

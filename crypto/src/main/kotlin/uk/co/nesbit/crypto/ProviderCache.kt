@@ -1,6 +1,5 @@
 package uk.co.nesbit.crypto
 
-import net.i2p.crypto.eddsa.EdDSAEngine
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.*
 import java.util.concurrent.ConcurrentHashMap
@@ -40,16 +39,6 @@ object ProviderCache {
         val pool = pools.getOrPut("SIGNATURE[$algorithm|$provider]") { ConcurrentLinkedQueue<Signature>() } as ConcurrentLinkedQueue<Signature>
         val sig = pool.poll()
                 ?: if (provider != null) Signature.getInstance(algorithm, provider) else Signature.getInstance(algorithm)
-        try {
-            return sig.block()
-        } finally {
-            pool.offer(sig)
-        }
-    }
-
-    fun <R> withEdDSAEngine(block: Signature.() -> R): R {
-        val pool = pools.getOrPut("EDDSA[EDDSA]") { ConcurrentLinkedQueue<Signature>() } as ConcurrentLinkedQueue<Signature>
-        val sig = pool.poll() ?: EdDSAEngine()
         try {
             return sig.block()
         } finally {

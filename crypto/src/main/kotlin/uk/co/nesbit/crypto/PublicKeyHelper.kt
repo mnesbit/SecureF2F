@@ -2,9 +2,6 @@ package uk.co.nesbit.crypto
 
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
-import net.i2p.crypto.eddsa.EdDSAPublicKey
-import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
-import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
@@ -42,20 +39,6 @@ object PublicKeyHelper {
         val keyFormat = genericRecord.getTyped<String>("keyFormat")
         val keySpec = X509EncodedKeySpec(publicKeyBytes)
         return when (keyAlgorithm) {
-            "EdDSA" -> {
-                require(keyFormat == "RAW" || keyFormat == "X.509") { "Don't know how to deserialize" }
-                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
-                cacheKey.put(publicKeyBytes)
-                cacheKey.flip()
-                val pk = keyCache.get(cacheKey) {
-                    if (keyFormat == "RAW") {
-                        EdDSAPublicKey(EdDSAPublicKeySpec(publicKeyBytes, EdDSANamedCurveTable.ED_25519_CURVE_SPEC))
-                    } else {
-                        EdDSAPublicKey(keySpec)
-                    }
-                }
-                pk!!
-            }
             "Ed25519" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
@@ -90,10 +73,6 @@ object PublicKeyHelper {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 Curve25519PublicKey(publicKeyBytes)
             }
-            "TinkEd25519" -> {
-                require(keyFormat == "RAW") { "Don't know how to deserialize" }
-                TinkEd25519PublicKey(publicKeyBytes)
-            }
             "NACLEd25519" -> {
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 NACLEd25519PublicKey(publicKeyBytes)
@@ -110,13 +89,8 @@ object PublicKeyHelper {
 fun PublicKey.toGenericRecord(): GenericRecord {
     val keyRecord = GenericData.Record(PublicKeyHelper.publicKeySchema)
     keyRecord.putTyped("keyAlgorithm", this.algorithm)
-    if (this is EdDSAPublicKey) { // Shorten the EdDSA back to 32 bytes
-        keyRecord.putTyped("keyFormat", "RAW")
-        keyRecord.putTyped("publicKey", this.abyte)
-    } else {
-        keyRecord.putTyped("keyFormat", this.format)
-        keyRecord.putTyped("publicKey", this.encoded)
-    }
+    keyRecord.putTyped("keyFormat", this.format)
+    keyRecord.putTyped("publicKey", this.encoded)
     return keyRecord
 }
 
