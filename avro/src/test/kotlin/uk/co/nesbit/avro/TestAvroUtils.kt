@@ -1,5 +1,6 @@
 package uk.co.nesbit.avro
 
+import org.apache.avro.AvroRuntimeException
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericArray
 import org.apache.avro.generic.GenericData
@@ -12,6 +13,7 @@ import java.math.BigDecimal
 import java.time.*
 import java.time.temporal.ChronoUnit
 import java.util.*
+import kotlin.test.assertFailsWith
 
 class TestAvroUtils {
     private val schemaWithLogicalTypes = """
@@ -207,7 +209,7 @@ class TestAvroUtils {
 
     @Test
     fun `Test avro visitor utility`() {
-        val sch = PathComponent::class.java.getResourceAsStream("/uk/co/nesbit/avro/complicatedSchema.avsc")
+        val sch = PathComponent::class.java.getResourceAsStream("/uk/co/nesbit/avro/complicatedSchema.avsc")!!
             .readTextAndClose()
         val complicatedSchemaWithNesting = Schema.Parser().parse(sch)
         val record = GenericData.Record(complicatedSchemaWithNesting)
@@ -270,7 +272,6 @@ class TestAvroUtils {
         assertEquals(simpleMap, intMap) // just a quick test of map logic
         var counter = 0
         deserialized.visit { obj, schema, path, root ->
-            println("obj: $obj type: ${schema.type} path: ${path.toStringPath()}")
             if (schema.type !in setOf(Schema.Type.RECORD, Schema.Type.ARRAY, Schema.Type.MAP)) {
                 when (obj) {
                     is ByteArray -> {
@@ -556,6 +557,74 @@ class TestAvroUtils {
             }
 
         })
+    }
+
+    @Test
+    fun `test path logic`() {
+        val sch = PathComponent::class.java.getResourceAsStream("/uk/co/nesbit/avro/complicatedSchema.avsc")!!
+            .readTextAndClose()
+        val complicatedSchemaWithNesting = Schema.Parser().parse(sch)
+        val record = GenericData.Record(complicatedSchemaWithNesting)
+        record.putTyped("stringField", "string1")
+        record.putTyped("intField", 1)
+        record.putTyped("longField", 2L)
+        record.putTyped("binaryField", "bytes".toByteArray(Charsets.UTF_8))
+        record.putTyped("floatField", 1.234f)
+        record.putTyped("doubleField", 5.6789)
+        record.putTyped("booleanField", true)
+        record.putTyped("fixedField", "0123456789ABCDEF".toByteArray(Charsets.UTF_8))
+        val enumTemp = GenericData.EnumSymbol(complicatedSchemaWithNesting.getField("enumField").schema(), "HEARTS")
+        record.putTyped("enumField", enumTemp)
+        val unionRecordTypeB = GenericData.Record(complicatedSchemaWithNesting.getField("unionField").schema().types[1])
+        unionRecordTypeB.putTyped("b", 1)
+        record.putTyped("unionField", unionRecordTypeB)
+        record.putTyped("decimalField", BigDecimal.valueOf(1234567809L, 2))
+        record.putTyped("uuidField", UUID.nameUUIDFromBytes("hello".toByteArray(Charsets.UTF_8)))
+        record.put("nulledUnionField", null)
+        val now = Clock.systemUTC().instant()
+        val nowDateTime = LocalDateTime.ofInstant(now, ZoneOffset.UTC)
+        record.putTyped("dateField", nowDateTime.toLocalDate())
+        record.putTyped("timeMilliField", nowDateTime.toLocalTime())
+        record.putTyped("timeMicroField", nowDateTime.toLocalTime())
+        record.putTyped("timestampMilliField", nowDateTime)
+        record.putTyped("timestampMicroField", nowDateTime)
+        val simpleArrayRecord =
+            GenericData.Array<Int>(complicatedSchemaWithNesting.getField("arrayField").schema(), listOf(1, 2, 3, 4))
+        record.putTyped("arrayField", simpleArrayRecord)
+        val simpleMap = mapOf("a" to 1, "b" to 2, "c" to 3)
+        record.putTyped("mapField", simpleMap)
+        val nestedRecord = GenericData.Record(complicatedSchemaWithNesting.getField("nestedRecord").schema())
+        nestedRecord.putTyped("intSubField", 100)
+        nestedRecord.putTyped("unionSubField", unionRecordTypeB)
+        nestedRecord.putTyped("arraySubField", simpleArrayRecord)
+        val simpleMap2 = mapOf("a" to "apple", "b" to "blaster", "c" to "cyberman")
+        nestedRecord.putTyped("mapSubField", simpleMap2)
+        record.putTyped("nestedRecord", nestedRecord)
+        val nestedArray =
+            GenericData.Array<GenericRecord>(2, complicatedSchemaWithNesting.getField("nestedArray").schema())
+        nestedArray.add(nestedRecord)
+        nestedArray.add(nestedRecord)
+        record.putTyped("nestedArray", nestedArray)
+        val nestedMap = mutableMapOf<String, GenericRecord>()
+        nestedMap["first"] = nestedRecord
+        nestedMap["second"] = nestedRecord
+        record.putTyped("nestedMap", nestedMap)
+        val path1 = record.find("stringField")
+        assertEquals("string1", path1.first.toString())
+        assertEquals(Schema.create(Schema.Type.STRING), path1.second)
+        assertFailsWith<AvroRuntimeException> { record.find("fakeField") }
+        assertFailsWith<AvroRuntimeException> { record.find("string1.fakeField") }
+        val path2 = record.find("arrayField[1]")
+        assertEquals(2, path2.first)
+        assertEquals(Schema.create(Schema.Type.INT), path2.second)
+        assertFailsWith<IndexOutOfBoundsException> { record.find("arrayField[6]") }
+        assertFailsWith<IndexOutOfBoundsException> { record.find("arrayField[-1]") }
+        assertFailsWith<AvroRuntimeException> { record.find("arrayField.a") }
+        val path3 = record.find("mapField[\"c\"]")
+        assertEquals(3, path3.first)
+        assertEquals(Schema.create(Schema.Type.INT), path3.second)
+        assertFailsWith<AvroRuntimeException> { record.find("mapField[0]") }
+        assertFailsWith<AvroRuntimeException> { record.find("mapField.a") }
     }
 
     @Test

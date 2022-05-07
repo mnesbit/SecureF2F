@@ -11,6 +11,7 @@ import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPrivateKey
 import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCXDHPublicKey
 import org.bouncycastle.jcajce.spec.RawEncodedKeySpec
 import uk.co.nesbit.utils.printHexBinary
 import java.security.PrivateKey
@@ -213,6 +214,16 @@ class NACLCurve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
 
     override fun toString(): String = "PUBNACL25519:${keyBytes.printHexBinary()}"
 
+    fun toBCPublicKey(): PublicKey {
+        return ProviderCache.withKeyFactoryInstance<PublicKey>("X25519", "BC") {
+            val pubKeyInfo = SubjectPublicKeyInfo(AlgorithmIdentifier(EdECObjectIdentifiers.id_X25519), keyBytes)
+            val x509KeySpec = X509EncodedKeySpec(pubKeyInfo.encoded)
+            generatePublic(x509KeySpec)
+        }
+    }
+
+    fun toCurve25519PublicKey(): PublicKey = Curve25519PublicKey(keyBytes)
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -233,6 +244,14 @@ class NACLCurve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
     override fun getEncoded(): ByteArray = keyBytes
 
     override fun getFormat(): String = "RAW"
+}
+
+fun BCXDHPublicKey.toNACLCurve25519PublicKey(): PublicKey {
+    val key = this
+    return ProviderCache.withKeyFactoryInstance<PublicKey>("X25519", "BC") {
+        val rawKeySpec = getKeySpec(key, RawEncodedKeySpec::class.java)
+        NACLCurve25519PublicKey(rawKeySpec.encoded)
+    }
 }
 
 class NACLCurve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {

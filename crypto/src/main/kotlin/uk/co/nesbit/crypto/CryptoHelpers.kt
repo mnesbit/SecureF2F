@@ -100,9 +100,9 @@ fun generateNACLDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPa
 }
 
 fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
-    when (this.private.algorithm) {
+    val signature = when (this.private.algorithm) {
         "EC" -> {
-            return ProviderCache.withSignatureInstance("SHA256withECDSA") {
+            ProviderCache.withSignatureInstance("SHA256withECDSA") {
                 initSign(private)
                 update(bytes)
                 val sig = sign()
@@ -110,7 +110,7 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             }
         }
         "RSA" -> {
-            return ProviderCache.withSignatureInstance("SHA256withRSA") {
+            ProviderCache.withSignatureInstance("SHA256withRSA") {
                 initSign(private)
                 update(bytes)
                 val sig = sign()
@@ -118,7 +118,7 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             }
         }
         "Ed25519" -> {
-            return ProviderCache.withSignatureInstance("Ed25519", "BC") {
+            ProviderCache.withSignatureInstance("Ed25519", "BC") {
                 initSign(private)
                 update(bytes)
                 val sig = sign()
@@ -131,17 +131,26 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             nacl.cryptoSignSeedKeypair(naclPublicKey, naclSecretKey, private.encoded)
             val signature = ByteArray(Sign.BYTES)
             nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclSecretKey)
-            return DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
+            DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
+    }
+    return if (this.public.algorithm != "ThresholdPublicKey") {
+        signature
+    } else {
+        val thresholdPublicKey = public
+        require(thresholdPublicKey is ThresholdPublicKey) {
+            "Algorithm invalid"
+        }
+        thresholdPublicKey.createMultiSig(listOf(signature.toDigitalSignature()))
     }
 }
 
 fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
     require(hash.algorithm == "SHA-256") { "Signing other than SHA-256 not implemented" }
-    when (this.private.algorithm) {
+    val signature = when (this.private.algorithm) {
         "EC" -> {
-            return ProviderCache.withSignatureInstance("NONEwithECDSA") {
+            ProviderCache.withSignatureInstance("NONEwithECDSA") {
                 initSign(private)
                 update(hash.bytes)
                 val sig = sign()
@@ -149,11 +158,33 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
             }
         }
         "RSA" -> {
-            return ProviderCache.withSignatureInstance("NONEwithRSA", "SunJCE") {
+            ProviderCache.withSignatureInstance("NONEwithRSA", "SunJCE") {
                 initSign(private)
                 // Java wraps hash in DER encoded Digest structure before signing
                 val bytes = ByteArrayOutputStream()
-                bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
+                bytes.write(
+                    byteArrayOf(
+                        0x30,
+                        0x31,
+                        0x30,
+                        0x0d,
+                        0x06,
+                        0x09,
+                        0x60,
+                        0x86.toByte(),
+                        0x48,
+                        0x01,
+                        0x65,
+                        0x03,
+                        0x04,
+                        0x02,
+                        0x01,
+                        0x05,
+                        0x00,
+                        0x04,
+                        0x20
+                    )
+                )
                 bytes.write(hash.bytes)
                 val digest = bytes.toByteArray()
                 update(digest)
@@ -162,6 +193,15 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
             }
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
+    }
+    return if (this.public.algorithm != "ThresholdPublicKey") {
+        signature
+    } else {
+        val thresholdPublicKey = public
+        require(thresholdPublicKey is ThresholdPublicKey) {
+            "Algorithm invalid"
+        }
+        thresholdPublicKey.createMultiSig(listOf(signature.toDigitalSignature()))
     }
 }
 

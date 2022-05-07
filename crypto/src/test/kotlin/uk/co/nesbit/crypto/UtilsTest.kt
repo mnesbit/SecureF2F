@@ -1,5 +1,6 @@
 package uk.co.nesbit.crypto
 
+import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
@@ -139,5 +140,31 @@ class UtilsTest {
         val maxLongBytes = Long.MAX_VALUE.toByteArray()
         val maxLong = maxLongBytes.toLong()
         assertEquals(Long.MAX_VALUE, maxLong)
+    }
+
+    @Test
+    fun `PublicKey to PEM tests`() {
+        val keys = listOf(
+            generateEdDSAKeyPair().public,
+            generateECDSAKeyPair().public,
+            generateNACLKeyPair().public,
+            generateRSAKeyPair().public,
+            generateCurve25519DHKeyPair().public,
+            generateDHKeyPair().public,
+            generateECDHKeyPair().public,
+            generateNACLDHKeyPair().public
+        )
+        for (key in keys) {
+            val pem = key.toPEM()
+            println(pem)
+            val pk = PublicKeyHelper.fromPEM(pem)
+            if (key is NACLEd25519PublicKey) {
+                assertEquals(key, (pk as BCEdDSAPublicKey).toNACLPublicKey())
+            } else if (key is NACLCurve25519PublicKey) {
+                assertEquals(key, (pk as Curve25519PublicKey).toNACLCurve25519PublicKey())
+            } else {
+                assertEquals(key, pk)
+            }
+        }
     }
 }

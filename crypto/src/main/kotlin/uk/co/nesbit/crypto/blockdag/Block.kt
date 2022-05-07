@@ -81,7 +81,7 @@ class Block private constructor(
         val merkleLeaves = listOf(origin.serialize()) +
                 predecessors.sorted().map { it.serialize() } +
                 payload
-        val merkleTree = MerkleTree(merkleLeaves)
+        val merkleTree = MerkleTree.createMerkleTree(merkleLeaves)
         merkleTree.root
     }
 

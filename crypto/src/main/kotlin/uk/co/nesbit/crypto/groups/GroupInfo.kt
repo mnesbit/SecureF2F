@@ -91,7 +91,7 @@ class GroupInfo private constructor(
     val groupStateHash: SecureHash by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val baseBytes = this.copy(members = emptyList()).serialize()
         val treeBytes = members.map { it.serialize() } + baseBytes
-        val merkleTree = MerkleTree(treeBytes)
+        val merkleTree = MerkleTree.createMerkleTree(treeBytes)
         merkleTree.root
     }
 
