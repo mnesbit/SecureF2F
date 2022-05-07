@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
 import java.security.KeyPair
+import java.security.PublicKey
 import java.security.SignatureException
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
@@ -465,4 +466,86 @@ class CryptoHelpersTest {
         keyPair2.private.safeDestroy()
     }
 
+    @Test
+    fun `ThresholdKey test`() {
+        val keyA = generateECDSAKeyPair()
+        val keyB = generateNACLKeyPair()
+        val keyC = generateRSAKeyPair()
+        val keyD = generateEdDSAKeyPair()
+        val keyPairs = listOf(keyA, keyB, keyC, keyD)
+        val thresholdPublicKey = ThresholdPublicKey(
+            1,
+            listOf(keyA.public, keyB.public, keyC.public, keyD.public)
+        )
+        val encodedBytes = thresholdPublicKey.encoded
+        val decoded = ThresholdPublicKey.deserialize(encodedBytes)
+        assertEquals(thresholdPublicKey, decoded)
+
+        val serializedAsPublicKey = (thresholdPublicKey as PublicKey).serialize()
+        val deserialized2 = PublicKeyHelper.deserialize(serializedAsPublicKey)
+        assertEquals(thresholdPublicKey, deserialized2)
+
+        val bytes = "0123456789".toByteArray()
+        val hash = SecureHash.secureHash(bytes)
+        for (keypair in keyPairs) {
+            val sigPair = KeyPair(thresholdPublicKey, keypair.private)
+            val signature = sigPair.sign(bytes)
+            signature.verify(bytes)
+            if (keypair.private.algorithm in setOf("EC", "RSA")) { // test pre-hashed mode where possible
+                val signature2 = sigPair.sign(hash)
+                signature2.verify(bytes)
+                signature.verify(hash)
+                signature2.verify(hash)
+            }
+        }
+    }
+
+    @Test
+    fun `ThresholdKey test 2`() {
+        val keyA = generateECDSAKeyPair()
+        val keyB = generateNACLKeyPair()
+        val keyC = generateRSAKeyPair()
+        val keyD = generateEdDSAKeyPair()
+        val keyPairs = listOf(keyA, keyB, keyC, keyD)
+        val thresholdPublicKey = ThresholdPublicKey(
+            2,
+            listOf(keyA.public, keyB.public, keyC.public, keyD.public)
+        )
+        val bytes = "0123456789".toByteArray()
+        for (i in 0 until (1 shl keyPairs.size)) {
+            val keys = keyPairs.map { it }.filterIndexed { index, _ -> (i and (1 shl index)) != 0 }
+            val individualSignatures = keys.map { it.sign(bytes).toDigitalSignature() }
+            val multiSig = thresholdPublicKey.createMultiSig(individualSignatures)
+            if (i.countOneBits() < thresholdPublicKey.threshold) {
+                assertFailsWith<SignatureException> {
+                    multiSig.verify(bytes)
+                }
+            } else {
+                multiSig.verify(bytes)
+            }
+        }
+
+        val otherKeyPair = generateECDSAKeyPair()
+        val badSig1 = otherKeyPair.sign(bytes).toDigitalSignature()
+        val okSigPart = keyA.sign(bytes).toDigitalSignature()
+        val badMultiSig = thresholdPublicKey.createMultiSig(
+            listOf(
+                badSig1,
+                okSigPart
+            )
+        )
+        assertFailsWith<SignatureException> { // unknown key not allowed
+            badMultiSig.verify(bytes)
+        }
+        val okSigPart2 = keyA.sign(bytes).toDigitalSignature()
+        val badMultiSig2 = thresholdPublicKey.createMultiSig(
+            listOf(
+                okSigPart,
+                okSigPart2
+            )
+        )
+        assertFailsWith<SignatureException> { // dupes don't count towards threshold
+            badMultiSig2.verify(bytes)
+        }
+    }
 }

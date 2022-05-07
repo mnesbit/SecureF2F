@@ -1,0 +1,18 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "ThresholdPublicKey",
+  "type": "record",
+  "fields": [
+    {
+      "name": "threshold",
+      "type": "int"
+    },
+    {
+      "name": "childKeys",
+      "type": {
+        "type": "array",
+        "items": "uk.co.nesbit.crypto.PublicKey"
+      }
+    }
+  ]
+}

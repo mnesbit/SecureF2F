@@ -15,22 +15,24 @@ import java.nio.ByteBuffer
 import java.time.*
 import java.util.*
 
-fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
+fun resolveSchemas(schemas: Iterable<String>): Map<String, Schema> {
     val unprocessed = schemas.toMutableList()
     var parser = Schema.Parser()
     val types = LinkedHashMap<String, Schema>()
     var lastError: Exception? = null
+    var lastSchema: String? = null
     while (unprocessed.isNotEmpty()) {
         var progress = false
         val iter = unprocessed.listIterator()
         while (iter.hasNext()) {
             val newSchema = iter.next()
+            lastSchema = newSchema
             try {
                 parser.parse(newSchema)
                 for (typePair in parser.types) {
                     if (!types.containsKey(typePair.key)) {
                         val hash = SchemaNormalization.parsingFingerprint("SHA-256", typePair.value)
-                        val sig = "hashed.H" + hash.printHexBinary()
+                        val sig = "SHA256_" + hash.printHexBinary()
                         typePair.value.addAlias(sig)
                         types[typePair.key] = typePair.value
                     }
@@ -45,7 +47,7 @@ fun resolveSchemas(schemas: List<String>): Map<String, Schema> {
             }
         }
         if (!progress) {
-            throw IllegalArgumentException("Unable to resolve schemas", lastError)
+            throw IllegalArgumentException("Unable to resolve schemas $lastSchema ", lastError)
         }
     }
     return types
@@ -100,20 +102,32 @@ object AvroTypeHelpers {
     }
 }
 
-fun Schema.deserialize(bytes: ByteArray): GenericRecord {
-    val datumReader = GenericDatumReader<GenericRecord>(this)
-    try {
+private fun deserializeInternal(
+    bytes: ByteArray,
+    datumReader: GenericDatumReader<GenericRecord>
+): GenericRecord {
+    return try {
         val decoder = DecoderFactory.get().binaryDecoder(bytes, null)
         val data = datumReader.read(null, decoder)
         if (!decoder.isEnd) {
             throw IOException()
         }
-        return data
+        data
     } catch (io: IOException) {
         throw io
     } catch (ex: Exception) {
         throw IOException("Invalid length", ex)
     }
+}
+
+fun Schema.deserialize(bytes: ByteArray): GenericRecord {
+    val datumReader = GenericDatumReader<GenericRecord>(this)
+    return deserializeInternal(bytes, datumReader)
+}
+
+fun Schema.deserialize(bytes: ByteArray, oldSchema: Schema): GenericRecord {
+    val datumReader = GenericDatumReader<GenericRecord>(oldSchema, this)
+    return deserializeInternal(bytes, datumReader)
 }
 
 fun Schema.deserializeJSON(json: String): GenericRecord {
@@ -126,21 +140,25 @@ fun Schema.deserializeJSON(json: String): GenericRecord {
 inline fun <reified T> GenericRecord.getTyped(fieldName: String): T {
     val value = this.get(fieldName) ?: return null as T
     val clazz = T::class.java
+    val pluginHandlers = AvroTypeHelpers.helpers[clazz]
+    if (pluginHandlers != null) {
+        return pluginHandlers.dec(value as GenericRecord) as T
+    }
     if (AvroConvertible::class.java.isAssignableFrom(clazz)) {
         if (this.schema.getField(fieldName)
                 .schema().isUnion
         ) { // assume union base is AvroConvertible to avoid simple nullable unions
             val unionSchema = (value as GenericRecord).schema
             val unionClazz = clazz.classLoader.loadClass(unionSchema.fullName) // require named matches class name
+            val unionPluginHandler = AvroTypeHelpers.helpers[unionClazz]
+            if (unionPluginHandler != null) {
+                return getTyped(fieldName) { record -> unionPluginHandler.dec(record) as T }
+            }
             val unionConstructor = unionClazz.getConstructor(GenericRecord::class.java)
             return getTyped(fieldName) { record -> unionConstructor.newInstance(record) as T }
         }
         val constructor = clazz.getConstructor(GenericRecord::class.java)
         return constructor.newInstance(value)
-    }
-    val pluginHandlers = AvroTypeHelpers.helpers[clazz]
-    if (pluginHandlers != null) {
-        return pluginHandlers.dec(value as GenericRecord) as T
     }
     if (clazz.isEnum) {
         val enumString = (value as GenericEnumSymbol<*>).toString()
@@ -319,9 +337,25 @@ inline fun <reified T : Any> GenericRecord.getObjectArray(
 }
 
 @Suppress("UNCHECKED_CAST")
+inline fun <reified T : Any> GenericRecord.getObjectArrayIndexed(
+    fieldName: String,
+    constructor: (Int, GenericRecord) -> T
+): List<T> {
+    return (get(fieldName) as GenericArray<GenericRecord>).mapIndexed { index, record ->
+        constructor(index, record)
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
 fun GenericRecord.getIntArray(fieldName: String): List<Int> {
     val arrayData = get(fieldName) as GenericData.Array<Int>
     return arrayData.toList()
+}
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.getStringArray(fieldName: String): List<String> {
+    val arrayData = get(fieldName) as GenericData.Array<Utf8>
+    return arrayData.map { it.toString() }
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -545,6 +579,12 @@ inline fun <reified T : AvroConvertible> GenericRecord.putObjectArray(fieldName:
 
 @Suppress("UNCHECKED_CAST")
 fun GenericRecord.putIntArray(fieldName: String, value: List<Int>) {
+    val arrayRecord = GenericData.Array(schema.getField(fieldName).schema(), value)
+    put(fieldName, arrayRecord)
+}
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.putStringArray(fieldName: String, value: List<String>) {
     val arrayRecord = GenericData.Array(schema.getField(fieldName).schema(), value)
     put(fieldName, arrayRecord)
 }

@@ -1,8 +1,11 @@
 package uk.co.nesbit.crypto
 
 import org.apache.avro.Schema
+import org.apache.avro.generic.GenericArray
 import org.apache.avro.generic.GenericData
+import org.apache.avro.generic.GenericDatumReader
 import org.apache.avro.generic.GenericRecord
+import org.apache.avro.io.DecoderFactory
 import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import uk.co.nesbit.avro.AvroConvertible
 import uk.co.nesbit.avro.deserialize
@@ -38,7 +41,48 @@ class DigitalSignature(val signatureAlgorithm: String,
         return signatureRecord
     }
 
-    fun toDigitalSignatureAndKey(publicKey: PublicKey): DigitalSignatureAndKey = DigitalSignatureAndKey(signatureAlgorithm, signature, publicKey)
+    fun toDigitalSignatureAndKey(publicKey: PublicKey): DigitalSignatureAndKey =
+        DigitalSignatureAndKey(signatureAlgorithm, signature, publicKey)
+
+    private fun readMultiSig(): GenericArray<GenericRecord> {
+        val arraySchema = Schema.createArray(digitalSignatureSchema)
+        val datumReader = GenericDatumReader<GenericArray<GenericRecord>>(arraySchema)
+        val decoder = DecoderFactory.get().binaryDecoder(signature, null)
+        val signatures = datumReader.read(null, decoder)
+        if (!decoder.isEnd) {
+            throw SignatureException("Signature parsing incorrect")
+        }
+        return signatures
+    }
+
+    private fun verifyMultiSig(
+        publicKey: ThresholdPublicKey,
+        signatures: GenericArray<GenericRecord>,
+        verifyFunc: (DigitalSignature, PublicKey) -> Unit
+    ) {
+        var count = 0
+        val children = publicKey.childKeys.toMutableSet()
+        for (item in signatures) {
+            val innerSignature = DigitalSignature(item)
+            val childIterator = children.iterator()
+            var foundMatch = false
+            while (childIterator.hasNext()) {
+                val child = childIterator.next()
+                try {
+                    verifyFunc(innerSignature, child)
+                    ++count
+                    childIterator.remove()
+                    foundMatch = true
+                    break
+                } catch (ex: Exception) {
+                    //ignore
+                }
+            }
+            if (!foundMatch) throw SignatureException("Signature doesn't match any valid key")
+        }
+        if (count < publicKey.threshold) throw SignatureException("Threshold ${publicKey.threshold} not reached only $count valid")
+
+    }
 
     fun verify(publicKey: PublicKey, bytes: ByteArray) {
         when (this.signatureAlgorithm) {
@@ -74,6 +118,13 @@ class DigitalSignature(val signatureAlgorithm: String,
                     throw SignatureException("Signature did not match")
                 }
             }
+            "ThresholdSignature" -> {
+                if (publicKey !is ThresholdPublicKey) throw SignatureException("Key not a ThresholdPublicKey")
+                val signatures = readMultiSig()
+                verifyMultiSig(publicKey, signatures) { signature, pk ->
+                    signature.verify(pk, bytes)
+                }
+            }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")
         }
     }
@@ -94,12 +145,41 @@ class DigitalSignature(val signatureAlgorithm: String,
                     initVerify(publicKey)
                     val bytes = ByteArrayOutputStream()
                     // Java wraps hash in DER encoded Digest structure before signing
-                    bytes.write(byteArrayOf(0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86.toByte(), 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20))
+                    bytes.write(
+                        byteArrayOf(
+                            0x30,
+                            0x31,
+                            0x30,
+                            0x0d,
+                            0x06,
+                            0x09,
+                            0x60,
+                            0x86.toByte(),
+                            0x48,
+                            0x01,
+                            0x65,
+                            0x03,
+                            0x04,
+                            0x02,
+                            0x01,
+                            0x05,
+                            0x00,
+                            0x04,
+                            0x20
+                        )
+                    )
                     bytes.write(hash.bytes)
                     val digest = bytes.toByteArray()
                     update(digest)
                     if (!verify(signature))
                         throw SignatureException("Signature did not match")
+                }
+            }
+            "ThresholdSignature" -> {
+                if (publicKey !is ThresholdPublicKey) throw SignatureException("Key not a ThresholdPublicKey")
+                val signatures = readMultiSig()
+                verifyMultiSig(publicKey, signatures) { signature, pk ->
+                    signature.verify(pk, hash)
                 }
             }
             else -> throw NotImplementedError("Can't handle algorithm ${this.signatureAlgorithm}")

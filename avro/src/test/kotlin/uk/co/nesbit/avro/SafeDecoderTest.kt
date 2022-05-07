@@ -256,7 +256,9 @@ class SafeDecoderTest {
     @Test
     fun `Fixed test`() {
         val schemaBuilder = SchemaBuilder.builder("test")
-        val schema = schemaBuilder.record("Simple").fields().name("FixedField").type().fixed("X").size(16).noDefault().endRecord()
+        val schema = schemaBuilder.record("Simple").fields().name("FixedField").type().fixed("X").size(16).noDefault()
+            .endRecord()
+
         fun encodeDecode(f: ByteArray): Pair<ByteArray, ByteArray> {
             val record = GenericData.Record(schema)
             record.putTyped("FixedField", f)
@@ -279,7 +281,9 @@ class SafeDecoderTest {
     @Test
     fun `Bytes test`() {
         val schemaBuilder = SchemaBuilder.builder("test")
-        val schema = schemaBuilder.record("Simple").fields().name("BytesField").type().bytesType().noDefault().endRecord()
+        val schema =
+            schemaBuilder.record("Simple").fields().name("BytesField").type().bytesType().noDefault().endRecord()
+
         fun encodeDecode(b: ByteArray): Pair<ByteArray, ByteArray> {
             val record = GenericData.Record(schema)
             record.putTyped("BytesField", b)
@@ -315,7 +319,9 @@ class SafeDecoderTest {
     @Test
     fun `String test`() {
         val schemaBuilder = SchemaBuilder.builder("test")
-        val schema = schemaBuilder.record("Simple").fields().name("StringField").type().stringType().noDefault().endRecord()
+        val schema =
+            schemaBuilder.record("Simple").fields().name("StringField").type().stringType().noDefault().endRecord()
+
         fun encodeDecode(s: String): Pair<ByteArray, String> {
             val record = GenericData.Record(schema)
             record.putTyped("StringField", s)

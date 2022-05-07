@@ -41,6 +41,30 @@ object DefaultHashDigestProvider : MerkleTreeHashDigestProvider {
     }
 }
 
+// Simple variant of standard hashing, for use where Merkle trees are used in different roles and
+// need to be different to protect against copy-paste attacks
+class TweakableHashDigestProvider(
+    val leafPrefix: ByteArray,
+    val nodePrefix: ByteArray
+) : MerkleTreeHashDigestProvider {
+    init {
+        require(!leafPrefix.contentEquals(nodePrefix)) {
+            "Hash prefix for nodes must be different to that for leaves"
+        }
+    }
+
+    override fun leafNonce(index: Int): ByteArray? = null
+
+    override fun leafHash(index: Int, nonce: ByteArray?, bytes: ByteArray): SecureHash {
+        require(nonce == null) { "Nonce must be null" }
+        return SecureHash.doubleHash(concatByteArrays(leafPrefix, bytes))
+    }
+
+    override fun nodeHash(depth: Int, left: SecureHash, right: SecureHash): SecureHash {
+        return SecureHash.doubleHash(concatByteArrays(nodePrefix, left.bytes, right.bytes))
+    }
+}
+
 // This doesn't support log audit proofs as it uses depth in the node hashes
 // However, it is suited to low entropy leaves, such as blockchain transactions
 class NonceHashDigestProvider(val entropy: ByteArray) : MerkleTreeHashDigestProvider, AvroConvertible {

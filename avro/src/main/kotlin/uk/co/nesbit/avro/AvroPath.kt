@@ -1,5 +1,6 @@
 package uk.co.nesbit.avro
 
+import org.apache.avro.AvroRuntimeException
 import org.apache.avro.Conversions
 import org.apache.avro.Schema
 import org.apache.avro.generic.*
@@ -105,8 +106,18 @@ fun GenericRecord.visit(body: (obj: Any?, schema: Schema, path: List<PathCompone
     while (!callStack.isEmpty()) {
         val next = callStack.pop()
         when {
-            next.schema.type == Schema.Type.BYTES -> body((next.obj as ByteBuffer).array(), next.schema, next.path, this)
-            next.schema.type == Schema.Type.FIXED -> body((next.obj as GenericFixed).bytes(), next.schema, next.path, this)
+            next.schema.type == Schema.Type.BYTES -> body(
+                (next.obj as ByteBuffer).array(),
+                next.schema,
+                next.path,
+                this
+            )
+            next.schema.type == Schema.Type.FIXED -> body(
+                (next.obj as GenericFixed).bytes(),
+                next.schema,
+                next.path,
+                this
+            )
             else -> body(next.obj, next.schema, next.path, this)
         }
     }
@@ -131,6 +142,61 @@ interface AvroVisitor {
     fun timeVisitor(value: LocalTime, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun timestampVisitor(value: Instant, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun unknownVisitor(value: Any?, schema: Schema, path: List<PathComponent>, root: GenericRecord)
+}
+
+fun convertLogicalTypes(
+    obj: Any?,
+    schema: Schema
+): Any? {
+    val extendedType = schema.getExtendedType()
+    return when (extendedType) {
+        AvroExtendedType.UNION -> {
+            throw IllegalStateException("Unions should have been resolved")
+        }
+        AvroExtendedType.STRING -> {
+            (obj as CharSequence).toString()
+        }
+        AvroExtendedType.DECIMAL -> {
+            Conversions.DecimalConversion()
+                .fromBytes(ByteBuffer.wrap(obj as ByteArray), schema, schema.logicalType)
+        }
+        AvroExtendedType.UUID -> {
+            Conversions.UUIDConversion().fromCharSequence(obj as CharSequence, schema, schema.logicalType)
+        }
+        AvroExtendedType.DATE -> {
+            val days = (obj as Int).toLong()
+            LocalDate.ofEpochDay(days)
+        }
+        AvroExtendedType.TIME_MILLIS -> {
+            val millis = (obj as Int).toLong()
+            LocalTime.ofNanoOfDay(millis * 1000000L)
+        }
+        AvroExtendedType.TIME_MICROS -> {
+            val micros = (obj as Long)
+            LocalTime.ofNanoOfDay(micros * 1000L)
+        }
+        AvroExtendedType.TIMESTAMP_MILLIS -> {
+            val millis = (obj as Long)
+            Instant.ofEpochMilli(millis)
+        }
+        AvroExtendedType.TIMESTAMP_MICROS -> {
+            val micros = (obj as Long)
+            val millis = micros / 1000L
+            val extraNanos = (micros - (1000L * millis)) * 1000L
+            Instant.ofEpochMilli(millis).plusNanos(extraNanos)
+        }
+        else -> {
+            obj
+        }
+    }
+}
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.visitWithLogicalTypes(body: (obj: Any?, schema: Schema, path: List<PathComponent>, root: GenericRecord) -> Unit) {
+    visit { obj, schema, path, root ->
+        val objOut = convertLogicalTypes(obj, schema)
+        body(objOut, schema, path, root)
+    }
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -182,11 +248,13 @@ fun GenericRecord.visit(visitor: AvroVisitor) {
                 visitor.nullVisitor(schema, path, root)
             }
             AvroExtendedType.DECIMAL -> {
-                val decimalValue = Conversions.DecimalConversion().fromBytes(ByteBuffer.wrap(obj as ByteArray), schema, schema.logicalType)
+                val decimalValue = Conversions.DecimalConversion()
+                    .fromBytes(ByteBuffer.wrap(obj as ByteArray), schema, schema.logicalType)
                 visitor.decimalVisitor(decimalValue, schema, path, root)
             }
             AvroExtendedType.UUID -> {
-                val uuidValue = Conversions.UUIDConversion().fromCharSequence(obj as CharSequence, schema, schema.logicalType)
+                val uuidValue =
+                    Conversions.UUIDConversion().fromCharSequence(obj as CharSequence, schema, schema.logicalType)
                 visitor.uuidVisitor(uuidValue, schema, path, root)
             }
             AvroExtendedType.DATE -> {
@@ -230,11 +298,21 @@ fun splitStringPath(path: String): List<PathComponent> {
     while (componentEndIndex < path.length) {
         val ch = path[componentEndIndex]
         if (ch == '.') {
-            pathComponents.add(PathComponent(path.substring(componentStartIndex, componentEndIndex), ComponentType.FIELD))
+            pathComponents.add(
+                PathComponent(
+                    path.substring(componentStartIndex, componentEndIndex),
+                    ComponentType.FIELD
+                )
+            )
             componentStartIndex = componentEndIndex + 1
             componentEndIndex = componentStartIndex
         } else if (ch == '[') {
-            pathComponents.add(PathComponent(path.substring(componentStartIndex, componentEndIndex), ComponentType.FIELD))
+            pathComponents.add(
+                PathComponent(
+                    path.substring(componentStartIndex, componentEndIndex),
+                    ComponentType.FIELD
+                )
+            )
             ++componentEndIndex
             if (path[componentEndIndex] == '"') {
                 componentStartIndex = componentEndIndex + 1
@@ -242,7 +320,12 @@ fun splitStringPath(path: String): List<PathComponent> {
                 while (componentEndIndex < path.length) {
                     val chInner = path[componentEndIndex]
                     if (chInner == '"') {
-                        pathComponents.add(PathComponent(path.substring(componentStartIndex, componentEndIndex), ComponentType.KEY))
+                        pathComponents.add(
+                            PathComponent(
+                                path.substring(componentStartIndex, componentEndIndex),
+                                ComponentType.KEY
+                            )
+                        )
                         ++componentEndIndex
                         require(path[componentEndIndex] == ']') { "path component not correctly terminated" }
                         componentStartIndex = componentEndIndex + 1
@@ -259,20 +342,25 @@ fun splitStringPath(path: String): List<PathComponent> {
                 while (componentEndIndex < path.length) {
                     val chInner = path[componentEndIndex]
                     if (chInner == ']') {
-                        pathComponents.add(PathComponent(path.substring(componentStartIndex, componentEndIndex), ComponentType.INDEX))
+                        pathComponents.add(
+                            PathComponent(
+                                path.substring(componentStartIndex, componentEndIndex),
+                                ComponentType.INDEX
+                            )
+                        )
                         componentStartIndex = componentEndIndex + 1
                         if (componentStartIndex < path.length && path[componentStartIndex] == '.') ++componentStartIndex
                         componentEndIndex = componentStartIndex
                         break
                     } else if (chInner.isDigit()) {
                         ++componentEndIndex
-                    } else throw IllegalAccessException("path index component must be numeric")
+                    } else throw IndexOutOfBoundsException("path index component must be numeric")
                 }
                 require(componentStartIndex == componentEndIndex) { "path component not correctly terminated" }
             }
         } else if (ch.isLetterOrDigit() || ch == '_') {
             ++componentEndIndex
-        } else throw IllegalAccessException("Invalid character encountered $ch")
+        } else throw AvroRuntimeException("Invalid character encountered $ch")
     }
     if (componentStartIndex != componentEndIndex) {
         pathComponents.add(PathComponent(path.substring(componentStartIndex), ComponentType.FIELD))
@@ -317,17 +405,20 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
     for (component in path) {
         when (component.type) {
             ComponentType.FIELD -> {
+                if (schema.type != Schema.Type.RECORD) throw AvroRuntimeException("Not a record type")
                 val record = current as GenericRecord
                 current = record.get(component.part)
                 schema = schema.getField(component.part).schema()
             }
             ComponentType.INDEX -> {
+                if (schema.type != Schema.Type.ARRAY) throw AvroRuntimeException("Not an array type")
                 val index = component.part.toInt()
                 val array = current as GenericArray<*>
                 current = array[index]
                 schema = schema.elementType
             }
             ComponentType.KEY -> {
+                if (schema.type != Schema.Type.MAP) throw AvroRuntimeException("Not a map type")
                 val map = current as Map<CharSequence, *>
                 current = map[component.part] ?: map[Utf8(component.part)]
                 schema = schema.valueType
@@ -344,4 +435,12 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
         schema.type == Schema.Type.BYTES -> current = (current as ByteBuffer).array()
     }
     return Pair(current, schema)
+}
+
+
+@Suppress("UNCHECKED_CAST")
+fun GenericRecord.findWithLogicalTypes(path: List<PathComponent>): Pair<Any?, Schema> {
+    val (obj, schema) = find(path)
+    val outputObj = convertLogicalTypes(obj, schema)
+    return Pair(outputObj, schema)
 }
