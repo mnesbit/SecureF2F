@@ -6,6 +6,7 @@ import org.apache.avro.generic.GenericRecord
 import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
+import uk.co.nesbit.crypto.merkle.impl.MerkleProofImpl
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.toByteArray
 import java.util.*
@@ -26,7 +27,7 @@ private fun createNonce(random: Random): ByteArray {
 // and SHA2-256 double hashing throughout
 // Nonce is just null for this style of provider
 object DefaultHashDigestProvider : MerkleTreeHashDigestProvider {
-    private val ZERO_BYTE = ByteArray(1) { 1 }
+    private val ZERO_BYTE = ByteArray(1) { 0 }
     private val ONE_BYTE = ByteArray(1) { 1 }
 
     override fun leafNonce(index: Int): ByteArray? = null
@@ -77,6 +78,19 @@ class NonceHashDigestProvider(val entropy: ByteArray) : MerkleTreeHashDigestProv
         // use this instance if only verification is required and thus don't need to reveal the entropy
         val VERIFY_INSTANCE = NonceHashDigestProvider(ByteArray(0))
 
+        val SIZE_ONLY_VERIFY_INSTANCE = object : MerkleTreeHashDigestProvider {
+            override fun leafNonce(index: Int): ByteArray? = null
+
+            override fun leafHash(index: Int, nonce: ByteArray?, bytes: ByteArray): SecureHash {
+                require(nonce == null) { "Nonce must not be null" }
+                return SecureHash.deserialize(bytes)
+            }
+
+            override fun nodeHash(depth: Int, left: SecureHash, right: SecureHash): SecureHash {
+                return SecureHash.doubleHash(concatByteArrays(depth.toByteArray(), left.bytes, right.bytes))
+            }
+        }
+
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val nonceHashDigestProviderSchema: Schema = Schema.Parser()
             .parse(javaClass.enclosingClass.getResourceAsStream("noncehashdigestprovider.avsc"))
@@ -85,6 +99,15 @@ class NonceHashDigestProvider(val entropy: ByteArray) : MerkleTreeHashDigestProv
             val nonceDigestRecord = nonceHashDigestProviderSchema.deserialize(bytes)
             return NonceHashDigestProvider(nonceDigestRecord)
         }
+    }
+
+    fun getSizeProof(leaves: List<ByteArray>): MerkleProof {
+        val merkleTree = MerkleTree.createMerkleTree(leaves, this)
+        val allLeavesProof = merkleTree.createAuditProof(merkleTree.leaves.indices.toList())
+        val preHashedLeaves = allLeavesProof.leaves.map {
+            IndexedMerkleLeaf(it.index, null, leafHash(it.index, it.nonce, it.leafData).serialize())
+        }
+        return MerkleProofImpl(allLeavesProof.treeSize, preHashedLeaves, allLeavesProof.hashes)
     }
 
     override fun leafNonce(index: Int): ByteArray {
@@ -98,9 +121,7 @@ class NonceHashDigestProvider(val entropy: ByteArray) : MerkleTreeHashDigestProv
     }
 
     override fun nodeHash(depth: Int, left: SecureHash, right: SecureHash): SecureHash {
-        return SecureHash.secureHash(
-            SecureHash.doubleHash(concatByteArrays(depth.toByteArray(), left.bytes, right.bytes)).serialize()
-        )
+        return SecureHash.doubleHash(concatByteArrays(depth.toByteArray(), left.bytes, right.bytes))
     }
 
     override fun toGenericRecord(): GenericRecord {

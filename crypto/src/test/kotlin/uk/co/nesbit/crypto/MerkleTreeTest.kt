@@ -254,4 +254,17 @@ class MerkleTreeTest {
         assertEquals(4, roots.size)
         assertNotEquals(proof3, proof4)
     }
+
+    @Test
+    fun `Size only proof for NonceHashDigestProvider`() {
+        val leafData = (0 until 18).map { it.toByteArray() }
+        val nonceDigest = NonceHashDigestProvider()
+        val nonceMerkleTree = MerkleTree.createMerkleTree(leafData, nonceDigest)
+        val sizeOnlyProof = nonceDigest.getSizeProof(leafData)
+        assertEquals(leafData.size, sizeOnlyProof.leaves.size)
+        assertEquals(
+            true,
+            sizeOnlyProof.verify(nonceMerkleTree.root, NonceHashDigestProvider.SIZE_ONLY_VERIFY_INSTANCE)
+        )
+    }
 }
