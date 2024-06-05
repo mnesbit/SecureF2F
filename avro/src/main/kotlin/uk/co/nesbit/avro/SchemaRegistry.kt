@@ -16,6 +16,9 @@ import kotlin.concurrent.withLock
 class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>> = emptyList()) {
     companion object {
         const val FingerprintSize: Int = 32
+        const val FingerprintHash = "SHA-256"
+        const val FingerprintLengthBytes = (256 / 8)
+        val FingerprintAliasPrefix = FingerprintHash.replace("-", "") + "_"
         val AvroMessageHeader = byteArrayOf(0xC3.toByte(), 0x01)
     }
 
@@ -38,7 +41,7 @@ class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>>
         if (fingerprint != null) {
             return fingerprint.array()
         }
-        val wrappedFingerprint = ByteBuffer.wrap(SchemaNormalization.parsingFingerprint("SHA-256", schema))
+        val wrappedFingerprint = ByteBuffer.wrap(SchemaNormalization.parsingFingerprint(FingerprintHash, schema))
         lock.withLock {
             schemas[wrappedFingerprint] = schema
             fingerprints[schema] = wrappedFingerprint
@@ -50,7 +53,7 @@ class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>>
         }
     }
 
-    fun getFingeprint(schema: Schema): ByteArray {
+    fun getFingerprint(schema: Schema): ByteArray {
         val fingerprint = fingerprints[schema]
         if (fingerprint != null) {
             return fingerprint.array()
@@ -62,6 +65,14 @@ class SchemaRegistry(preregister: List<Pair<Class<out AvroConvertible>, Schema>>
 
     fun getSchemas(schemaName: String): List<Schema> {
         return schemasByName[schemaName] ?: emptyList()
+    }
+
+    fun getAllSchemas(): List<Schema> {
+        return schemas.values.toList()
+    }
+
+    fun getAllSchemaIds(): List<ByteArray> {
+        return schemas.map { it.key.array() }
     }
 
     fun getSchema(schemaId: ByteArray): Schema? {

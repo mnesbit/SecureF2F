@@ -57,7 +57,7 @@ class SphinxPublicIdentity(
     )
 
     init {
-        require(diffieHellmanPublicKey.algorithm in setOf("Curve25519", "NACLCurve25519")) { "Only Curve25519 Diffie-Hellman supported" }
+        require(diffieHellmanPublicKey.algorithm == "NACLCurve25519") { "Only NACLCurve25519 Diffie-Hellman supported" }
     }
 
     override fun toGenericRecord(): GenericRecord {
@@ -104,16 +104,14 @@ class SphinxIdentityKeyPair(
         val publicAddress: String? = null
 ) {
     companion object {
-        const val useNACL = true
-
         fun generateKeyPair(
                 secureRandom: SecureRandom = newSecureRandom(),
                 publicAddress: String? = null,
                 maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
                 minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
         ): SphinxIdentityKeyPair {
-            val signingKeys = if (useNACL) generateNACLKeyPair(secureRandom) else generateEdDSAKeyPair(secureRandom)
-            val dhKeys = if (useNACL) generateNACLDHKeyPair(secureRandom) else generateCurve25519DHKeyPair(secureRandom)
+            val signingKeys = generateNACLKeyPair(secureRandom)
+            val dhKeys = generateNACLDHKeyPair(secureRandom)
             val hashChain = PebbledHashChain.generateChain(
                     concatByteArrays(
                             signingKeys.public.encoded,
@@ -127,7 +125,7 @@ class SphinxIdentityKeyPair(
     }
 
     init {
-        require(diffieHellmanKeys.private.algorithm in setOf("Curve25519", "NACLCurve25519")) { "Only Curve25519 Diffie-Hellman supported" }
+        require(diffieHellmanKeys.private.algorithm == "NACLCurve25519") { "Only NACLCurve25519 Diffie-Hellman supported" }
     }
 
     fun getVersionedId(version: Int): VersionedIdentity = VersionedIdentity(public, hashChain.getSecureVersion(version))

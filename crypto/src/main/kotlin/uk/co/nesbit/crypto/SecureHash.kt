@@ -3,18 +3,19 @@ package uk.co.nesbit.crypto
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.avro.AvroConvertible
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getTyped
-import uk.co.nesbit.avro.putTyped
+import uk.co.nesbit.avro.*
+import uk.co.nesbit.avro.SchemaRegistry.Companion.FingerprintHash
+import uk.co.nesbit.utils.decodeHex
 import uk.co.nesbit.utils.printHexBinary
 import java.util.*
 import kotlin.experimental.xor
 
 data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvertible, Comparable<SecureHash> {
     constructor(hashRecord: GenericRecord) :
-            this(hashRecord.getTyped("algorithm"),
-                    hashRecord.getTyped("bytes"))
+            this(
+                hashRecord.getTyped("algorithm"),
+                hashRecord.getTyped("bytes")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
@@ -40,6 +41,24 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
         fun deserialize(bytes: ByteArray): SecureHash {
             val hashRecord = secureHashSchema.deserialize(bytes)
             return SecureHash(hashRecord)
+        }
+
+        fun deserializeJSON(json: String): SecureHash {
+            val hashRecord = secureHashSchema.deserializeJSON(json)
+            return SecureHash(hashRecord)
+        }
+
+        fun parse(str: String): SecureHash {
+            require(str.last() == ']') {
+                "$str not a valid format expected <algorithm>[<hex bytes>]"
+            }
+            val algEndIndex = str.indexOf("[")
+            require(algEndIndex > 0 && algEndIndex < str.length - 1) {
+                "$str not a valid format expected <algorithm>[<hex bytes>]"
+            }
+            val algorithm = str.substring(0, algEndIndex)
+            val bytes = str.substring(algEndIndex + 1, str.length - 1).decodeHex()
+            return SecureHash(algorithm, bytes)
         }
 
         val EMPTY_HASH = secureHash(ByteArray(0))
@@ -108,3 +127,9 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
 }
 
 fun ByteArray.secureHash(algorithm: String = "SHA-256") = SecureHash.secureHash(this, algorithm)
+
+// Can't put on SchemaRegistry directly due to circular build between modules
+fun SchemaRegistry.getSchemaByHash(schemaId: SecureHash): Schema? {
+    require(schemaId.algorithm == FingerprintHash)
+    return getSchema(schemaId.bytes)
+}

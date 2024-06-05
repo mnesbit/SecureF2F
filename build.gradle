@@ -1,4 +1,4 @@
-import static org.gradle.api.JavaVersion.VERSION_17
+import static org.gradle.api.JavaVersion.VERSION_21
 
 plugins {
     id 'org.jetbrains.kotlin.jvm'
@@ -21,17 +21,17 @@ allprojects {
     }
 
     tasks.withType(JavaCompile) {
-        sourceCompatibility = VERSION_17
-        targetCompatibility = VERSION_17
+        sourceCompatibility = VERSION_21
+        targetCompatibility = VERSION_21
         options.encoding = 'UTF-8'
         options.compilerArgs += '-XDenableSunApiLintControl'
     }
 
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
         kotlinOptions {
-            languageVersion = '1.6'
-            apiVersion = '1.6'
-            jvmTarget = VERSION_17
+            languageVersion = '2.0'
+            apiVersion = '2.0'
+            jvmTarget = VERSION_21
             javaParameters = true   // Useful for reflection.
             freeCompilerArgs = ['-Xjvm-default=all']
         }
@@ -63,7 +63,7 @@ allprojects {
 }
 
 wrapper {
-    gradleVersion = "7.4"
+    gradleVersion = "8.7"
     distributionType = Wrapper.DistributionType.ALL
 }
 
@@ -73,7 +73,7 @@ dependencies {
     implementation "com.typesafe.akka:akka-stream_2.13:$akka_version"
     testImplementation "com.typesafe.akka:akka-testkit_2.13:$akka_version"
     runtimeOnly "com.typesafe.akka:akka-slf4j_2.13:$akka_version"
-    runtimeOnly "org.apache.logging.log4j:log4j-slf4j18-impl:$log4j2_version"
+    runtimeOnly "org.apache.logging.log4j:log4j-slf4j2-impl:$log4j2_version"
     // for lock-free logging
     runtimeOnly "com.lmax:disruptor:$disruptor_version"
     implementation project(':avro')
@@ -81,4 +81,6 @@ dependencies {
     implementation project(':network')
 }
 
-mainClassName = "uk.co.nesbit.MainKt"
+application {
+    mainClass = "uk.co.nesbit.MainKt"
+}

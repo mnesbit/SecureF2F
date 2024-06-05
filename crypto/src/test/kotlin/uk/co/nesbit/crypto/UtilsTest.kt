@@ -4,7 +4,6 @@ import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.sphinx.SphinxIdentityKeyPair
 
 class UtilsTest {
     @Test
@@ -100,21 +99,21 @@ class UtilsTest {
 
     @Test
     fun `SignedData test`() {
-        val keys = SphinxIdentityKeyPair.generateKeyPair()
+        val keys = generateEdDSAKeyPair()
         val value1 = "0123456789".toByteArray(Charsets.UTF_8)
-        val data1 = SignedData(value1, keys.signingKeys.sign(value1).toDigitalSignature())
-        data1.verify(keys.signingKeys.public)
+        val data1 = SignedData(value1, keys.sign(value1).toDigitalSignature())
+        data1.verify(keys.public)
         val data1Bytes = data1.serialize()
         val data1Deserialized = SignedData.deserialize(data1Bytes)
         assertEquals(data1, data1Deserialized)
-        data1Deserialized.verify(keys.signingKeys.public)
-        val value2 = keys.public
-        val data2 = SignedData.createSignedData(value2) { keys.signingKeys.sign(it).toDigitalSignature() }
-        data2.verify(keys.signingKeys.public)
+        data1Deserialized.verify(keys.public)
+        val value2 = keys.public.id
+        val data2 = SignedData.createSignedData(value2) { keys.sign(it).toDigitalSignature() }
+        data2.verify(keys.public)
         val data2Bytes = data2.serialize()
         val data2Deserialized = SignedData.deserialize(data2Bytes)
         assertEquals(data2, data2Deserialized)
-        data2Deserialized.verify(keys.signingKeys.public)
+        data2Deserialized.verify(keys.public)
     }
 
     @Test
@@ -149,7 +148,6 @@ class UtilsTest {
             generateECDSAKeyPair().public,
             generateNACLKeyPair().public,
             generateRSAKeyPair().public,
-            generateCurve25519DHKeyPair().public,
             generateDHKeyPair().public,
             generateECDHKeyPair().public,
             generateNACLDHKeyPair().public
@@ -160,11 +158,28 @@ class UtilsTest {
             val pk = PublicKeyHelper.fromPEM(pem)
             if (key is NACLEd25519PublicKey) {
                 assertEquals(key, (pk as BCEdDSAPublicKey).toNACLPublicKey())
-            } else if (key is NACLCurve25519PublicKey) {
-                assertEquals(key, (pk as Curve25519PublicKey).toNACLCurve25519PublicKey())
             } else {
                 assertEquals(key, pk)
             }
+        }
+    }
+
+    @Test
+    fun `Signature encoding as Base64`() {
+        val keyPairs = listOf(
+            generateEdDSAKeyPair(),
+            generateECDSAKeyPair(),
+            generateNACLKeyPair(),
+            generateRSAKeyPair()
+        )
+        val testBytes = "123456789".toByteArray(Charsets.UTF_8)
+        for (keyPair in keyPairs) {
+            val signature = keyPair.sign(testBytes).toDigitalSignature()
+            val base64 = signature.toBase64()
+            println(base64)
+            val decoded = DigitalSignature.fromBase64(base64)
+            assertEquals(signature, decoded)
+            decoded.verify(keyPair.public, testBytes)
         }
     }
 }

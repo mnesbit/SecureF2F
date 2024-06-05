@@ -10,7 +10,7 @@ import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.PublicKeyHelper
 import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.generateCurve25519DHKeyPair
+import uk.co.nesbit.crypto.generateNACLDHKeyPair
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.PROTO_VERSION
@@ -40,7 +40,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
         require(initiatorNonce.size == NONCE_SIZE) { "Invalid nonce" }
         require(responderNonce.size == NONCE_SIZE) { "Invalid nonce" }
         require(schemaId == SecureHash("SHA-256", schemaFingerprint)) { "Schema mismatch" }
-        require(responderDHPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
+        require(responderDHPublicKey.algorithm == "NACLCurve25519") { "Only NACLCurve25519 Diffie-Hellman supported" }
     }
 
     companion object {
@@ -60,7 +60,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
                                    random: SecureRandom = newSecureRandom()): Pair<KeyPair, ResponderSessionParams> {
             val nonce = ByteArray(NONCE_SIZE)
             random.nextBytes(nonce)
-            val ephemeralDHKeyPair = generateCurve25519DHKeyPair(random)
+            val ephemeralDHKeyPair = generateNACLDHKeyPair(random)
             return Pair(ephemeralDHKeyPair, ResponderSessionParams(SecureHash("SHA-256", schemaFingerprint), PROTO_VERSION, initiatorParams.initiatorNonce, nonce, ephemeralDHKeyPair.public))
         }
     }
@@ -71,7 +71,7 @@ class ResponderSessionParams private constructor(private val schemaId: SecureHas
         require(initiatorNonce.size == NONCE_SIZE)
         require(responderNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
-        require(responderDHPublicKey.algorithm == "Curve25519")
+        require(responderDHPublicKey.algorithm == "NACLCurve25519")
         require(org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorParams.initiatorNonce, initiatorNonce)) { "Inconsistent Nonce" }
         require(!org.bouncycastle.util.Arrays.constantTimeAreEqual(initiatorNonce, responderNonce)) { "Echoed nonce" }
         require(!org.bouncycastle.util.Arrays.constantTimeAreEqual(responderDHPublicKey.encoded,

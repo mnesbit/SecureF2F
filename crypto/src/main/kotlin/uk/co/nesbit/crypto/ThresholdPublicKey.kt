@@ -19,7 +19,7 @@ class ThresholdPublicKey(
             "must have at least one child key"
         }
         require(childKeys.size == childKeys.toSet().size) {
-            "No diplicate keys allowed"
+            "No duplicate keys allowed"
         }
         require(threshold > 0 && threshold <= childKeys.size) {
             "invalid threshold $threshold"

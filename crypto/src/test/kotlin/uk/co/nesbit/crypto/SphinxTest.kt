@@ -14,11 +14,11 @@ import kotlin.experimental.xor
 
 class SphinxTest {
     private fun getDHKeyPair(rand: SecureRandom): KeyPair {
-        return if (SphinxIdentityKeyPair.useNACL) generateNACLDHKeyPair(rand) else generateCurve25519DHKeyPair(rand)
+        return generateNACLDHKeyPair(rand)
     }
 
     private fun wrapDH(bytes: ByteArray): PublicKey {
-        return if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PublicKey(bytes) else Curve25519PublicKey(bytes)
+        return NACLCurve25519PublicKey(bytes)
     }
 
     @Test

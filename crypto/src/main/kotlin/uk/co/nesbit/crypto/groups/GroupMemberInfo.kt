@@ -33,7 +33,7 @@ data class GroupMemberInfo(
         groupMemberInfoRecord.getTyped("keyIssued"),
         groupMemberInfoRecord.getTyped("issueEpoch"),
         groupMemberInfoRecord.getTyped("sponsor"),
-        groupMemberInfoRecord.getTyped("role"),
+        groupMemberInfoRecord.getTypedEnum("role"),
         groupMemberInfoRecord.getTyped<Map<String, String>>("otherInfo").toSortedMap(),
         groupMemberInfoRecord.getObjectArray("historicKeys", ::HistoricKeyInfo),
         groupMemberInfoRecord.getTyped("groupDhKey"),

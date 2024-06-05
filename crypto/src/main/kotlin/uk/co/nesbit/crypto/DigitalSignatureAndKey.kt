@@ -11,19 +11,23 @@ import uk.co.nesbit.utils.printHexBinary
 import java.security.PublicKey
 import java.util.*
 
-class DigitalSignatureAndKey(val signatureAlgorithm: String,
-                             val signature: ByteArray,
-                             val publicKey: PublicKey) : AvroConvertible {
+class DigitalSignatureAndKey(
+    val signatureAlgorithm: String,
+    val signature: ByteArray,
+    val publicKey: PublicKey
+) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
-            this(signatureRecord.getTyped("signatureAlgorithm"),
-                    signatureRecord.getTyped("signature"),
-                    signatureRecord.getTyped("publicKey"))
+            this(
+                signatureRecord.getTyped("signatureAlgorithm"),
+                signatureRecord.getTyped("signature"),
+                signatureRecord.getTyped("publicKey")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val digitalSignatureAndKeySchema: Schema = Schema.Parser()
-                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
-                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
+            .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignatureandkey.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignatureAndKey {
             val signatureRecord = digitalSignatureAndKeySchema.deserialize(bytes)

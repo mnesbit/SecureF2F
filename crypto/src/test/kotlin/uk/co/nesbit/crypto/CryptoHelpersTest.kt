@@ -185,9 +185,9 @@ class CryptoHelpersTest {
     }
 
     @Test
-    fun `test Curve25519 PublicKey round trip`() {
-        val keyPair1 = generateCurve25519DHKeyPair()
-        val keyPair2 = generateCurve25519DHKeyPair()
+    fun `test NACL DH PublicKey round trip`() {
+        val keyPair1 = generateNACLDHKeyPair()
+        val keyPair2 = generateNACLDHKeyPair()
         val publicKeyRecord1 = keyPair1.public.toGenericRecord()
         val publicKeyRecord2 = keyPair2.public.toGenericRecord()
         assertEquals(keyPair1.public, PublicKeyHelper.fromGenericRecord(publicKeyRecord1))
@@ -272,22 +272,11 @@ class CryptoHelpersTest {
         val sec4 = getSharedDHSecret(key4, key3.public)
         assertArrayEquals(sec3, sec4)
 
-        val key5 = generateCurve25519DHKeyPair()
-        val key6 = generateCurve25519DHKeyPair()
+        val key5 = generateNACLDHKeyPair()
+        val key6 = generateNACLDHKeyPair()
         val sec5 = getSharedDHSecret(key5, key6.public)
         val sec6 = getSharedDHSecret(key6, key5.public)
         assertArrayEquals(sec5, sec6)
-
-        val key7 = generateNACLDHKeyPair()
-        val key8 = generateNACLDHKeyPair()
-        val sec7 = getSharedDHSecret(key7, key8.public)
-        val sec8 = getSharedDHSecret(key8, key7.public)
-        assertArrayEquals(sec7, sec8)
-
-        //Check interop
-        val sec9 = getSharedDHSecret(key5, Curve25519PublicKey(key7.public.encoded))
-        val sec10 = getSharedDHSecret(key7, NACLCurve25519PublicKey(key5.public.encoded))
-        assertArrayEquals(sec9, sec10)
 
         val bytes = "jhASDJHKSD".toByteArray(Charsets.UTF_8)
         val hash1 = getHMAC(sec1, bytes)
@@ -306,21 +295,12 @@ class CryptoHelpersTest {
             getSharedDHSecret(key3, key1.public)
         }
 
-        assertFails {
-            getSharedDHSecret(key1, key5.public)
-        }
-
-        assertFails {
-            getSharedDHSecret(key3, key5.public)
-        }
         key1.private.safeDestroy()
         key2.private.safeDestroy()
         key3.private.safeDestroy()
         key4.private.safeDestroy()
         key5.private.safeDestroy()
         key6.private.safeDestroy()
-        key7.private.safeDestroy()
-        key8.private.safeDestroy()
     }
 
     @Test

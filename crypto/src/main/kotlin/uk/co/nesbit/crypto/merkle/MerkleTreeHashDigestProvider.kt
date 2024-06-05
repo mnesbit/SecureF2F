@@ -49,6 +49,12 @@ class TweakableHashDigestProvider(
     val nodePrefix: ByteArray
 ) : MerkleTreeHashDigestProvider {
     init {
+        require(leafPrefix.isNotEmpty()) {
+            "leafPrefix must not be empty"
+        }
+        require(nodePrefix.isNotEmpty()) {
+            "nodePrefix must not be empty"
+        }
         require(!leafPrefix.contentEquals(nodePrefix)) {
             "Hash prefix for nodes must be different to that for leaves"
         }
@@ -82,7 +88,7 @@ class NonceHashDigestProvider(val entropy: ByteArray) : MerkleTreeHashDigestProv
             override fun leafNonce(index: Int): ByteArray? = null
 
             override fun leafHash(index: Int, nonce: ByteArray?, bytes: ByteArray): SecureHash {
-                require(nonce == null) { "Nonce must not be null" }
+                require(nonce == null) { "Nonce must be null" }
                 return SecureHash.deserialize(bytes)
             }
 

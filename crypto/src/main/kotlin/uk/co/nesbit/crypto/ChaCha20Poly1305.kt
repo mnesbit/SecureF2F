@@ -88,7 +88,8 @@ object ChaCha20Poly1305 {
             val macKey = initRecordMAC(decryptCipher)
 
             val ciphertext = ciphertextAndTag.copyOf(ciphertextAndTag.size - POLY1305_TAG_SIZE)
-            val receivedMAC = ciphertextAndTag.copyOfRange(ciphertextAndTag.size - POLY1305_TAG_SIZE, ciphertextAndTag.size)
+            val receivedMAC =
+                ciphertextAndTag.copyOfRange(ciphertextAndTag.size - POLY1305_TAG_SIZE, ciphertextAndTag.size)
 
             val calculatedMAC = createPolyMAC(macKey, additionalData, ciphertext)
             if (!Arrays.constantTimeAreEqual(calculatedMAC, receivedMAC)) {

@@ -1,6 +1,6 @@
 package uk.co.nesbit.crypto.sphinx
 
-import djb.Curve25519
+import com.goterl.lazysodium.interfaces.DiffieHellman
 import org.bouncycastle.crypto.digests.SHA256Digest
 import org.bouncycastle.crypto.generators.HKDFBytesGenerator
 import org.bouncycastle.crypto.params.HKDFParameters
@@ -30,7 +30,7 @@ class Sphinx(
         private const val GCM_KEY_SIZE = SECURITY_PARAMETER * 8 // in bytes
         private const val GCM_NONCE_LENGTH = 12 // in bytes
         private const val GCM_TAG_LENGTH = SECURITY_PARAMETER // in bytes
-        private const val BLIND_LENGTH = Curve25519.KEY_SIZE // in bytes
+        private const val BLIND_LENGTH = DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES // in bytes
         private const val ENTRY_SIZE = ID_HASH_SIZE + GCM_TAG_LENGTH
         private val ZERO_PAD = ByteArray(ENTRY_SIZE)
     }
@@ -40,7 +40,7 @@ class Sphinx(
     private val alphaCache = mutableSetOf<SecureHash>()
 
     init {
-        require(Curve25519.KEY_SIZE == 2 * SECURITY_PARAMETER) { "Misconfigured Sphinx parameters" }// Ensure sizes align properly
+        require(DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES == 2 * SECURITY_PARAMETER) { "Misconfigured Sphinx parameters" }// Ensure sizes align properly
         if (Security.getProvider("BC") == null) {
             Security.addProvider(BouncyCastleProvider())
         }
@@ -107,11 +107,11 @@ class Sphinx(
     }
 
     private fun getDHKeyPair(rand: SecureRandom): KeyPair {
-        return if (SphinxIdentityKeyPair.useNACL) generateNACLDHKeyPair(rand) else generateCurve25519DHKeyPair(rand)
+        return generateNACLDHKeyPair(rand)
     }
 
     private fun wrapDH(rawBytes: ByteArray): PublicKey {
-        return if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PublicKey(rawBytes) else Curve25519PublicKey(rawBytes)
+        return NACLCurve25519PublicKey(rawBytes)
     }
 
     internal class DerivedHashes(salt: SecureHash, sharedSecret: PublicKey) {
@@ -134,7 +134,7 @@ class Sphinx(
             rhoKey = SecretKeySpec(splits[0], "AES")
             gcmNonce = splits[1]
             gcmKey = SecretKeySpec(splits[2], "AES")
-            blind = if (SphinxIdentityKeyPair.useNACL) NACLCurve25519PrivateKey(splits[3]) else Curve25519PrivateKey(splits[3])
+            blind = NACLCurve25519PrivateKey(splits[3])
         }
     }
 
@@ -236,7 +236,7 @@ class Sphinx(
 
     fun processMessage(msg: UnpackedSphinxMessage, nodeId: SecureHash, dhFunction: (remotePublicKey: PublicKey) -> ByteArray): MessageProcessingResult {
         require(nodeId.bytes.size == ID_HASH_SIZE) { "ID Hash wrong size length" }// Ensure sizes align properly
-        val alpha = wrapDH(msg.header.copyOfRange(0, Curve25519.KEY_SIZE))
+        val alpha = wrapDH(msg.header.copyOfRange(0, DiffieHellman.SCALARMULT_CURVE25519_BYTES))
         val comparableAlpha = alpha.encoded.secureHash()
         if (comparableAlpha in alphaCache) {
             return MessageProcessingResult(false, null, null, null) // Never allow reuse of Diffie-Hellman points
@@ -248,16 +248,19 @@ class Sphinx(
         if (!dec.valid) {
             return MessageProcessingResult(false, null, null, null) // Discard bad packets
         }
-        val beta = msg.header.copyOfRange(Curve25519.KEY_SIZE, msg.header.size)
+        val beta = msg.header.copyOfRange(DiffieHellman.SCALARMULT_CURVE25519_BYTES, msg.header.size)
         val rho = rho(hashes.rhoKey)
         val decryptedBeta = xorByteArrays(concatByteArrays(beta, ZERO_PAD), rho)
         val nextNode = SecureHash(SphinxPublicIdentity.ID_HASH_ALGORITHM, decryptedBeta.copyOf(ID_HASH_SIZE))
         if (nextNode == nodeId) {
             return MessageProcessingResult(true, null, nextNode, unpadFinalPayload(dec.newPayload))
         }
-        val nextAlpha = Curve25519PublicKey(getSharedDHSecret(hashes.blind, alpha))
+        val nextAlpha = NACLCurve25519PublicKey(getSharedDHSecret(hashes.blind, alpha))
         val nextBeta = decryptedBeta.copyOfRange(ENTRY_SIZE, decryptedBeta.size)
-        val nextTag = decryptedBeta.copyOfRange(Curve25519.KEY_SIZE, Curve25519.KEY_SIZE + GCM_TAG_LENGTH)
+        val nextTag = decryptedBeta.copyOfRange(
+            DiffieHellman.SCALARMULT_CURVE25519_BYTES,
+            DiffieHellman.SCALARMULT_CURVE25519_BYTES + GCM_TAG_LENGTH
+        )
         val forwardMessage = UnpackedSphinxMessage(betaLength, concatByteArrays(nextAlpha.keyBytes, nextBeta), dec.newPayload, nextTag)
         return MessageProcessingResult(true, forwardMessage, nextNode, null)
     }

@@ -55,6 +55,16 @@ class BloomFilter private constructor(
                 BitSet(bitCount)
             )
         }
+
+        fun createBloomFilter(
+            falsePositiveRate: Double,
+            hashSeed: Int,
+            data: List<ByteArray>
+        ): BloomFilter {
+            val filter = createBloomFilter(data.size, falsePositiveRate, hashSeed)
+            data.forEach { filter.add(it) }
+            return filter
+        }
     }
 
     override fun toGenericRecord(): GenericRecord {

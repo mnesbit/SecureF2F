@@ -3,7 +3,6 @@ package uk.co.nesbit.crypto
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
 import com.goterl.lazysodium.interfaces.Sign
-import djb.Curve25519
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.edec.EdECObjectIdentifiers
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
@@ -20,8 +19,16 @@ import java.security.spec.InvalidKeySpecException
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.*
+import kotlin.experimental.and
+import kotlin.experimental.or
 
 class NACLEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
+    companion object {
+        fun fromX509Encoded(x509EncodedBytes: ByteArray): NACLEd25519PublicKey {
+            return NACLEd25519PublicKey(SubjectPublicKeyInfo.getInstance(x509EncodedBytes).publicKeyData.bytes)
+        }
+    }
+
     init {
         require(keyBytes.size == Sign.ED25519_PUBLICKEYBYTES) {
             "Ed25519 keys must be 32 bytes long"
@@ -30,8 +37,7 @@ class NACLEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
 
     fun toBCPublicKey(): PublicKey {
         return ProviderCache.withKeyFactoryInstance<PublicKey>("Ed25519", "BC") {
-            val pubKeyInfo = SubjectPublicKeyInfo(AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519), keyBytes)
-            val x509KeySpec = X509EncodedKeySpec(pubKeyInfo.encoded)
+            val x509KeySpec = X509EncodedKeySpec(encoded)
             generatePublic(x509KeySpec)
         }
     }
@@ -40,9 +46,12 @@ class NACLEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
 
     override fun getAlgorithm(): String = "NACLEd25519"
 
-    override fun getEncoded(): ByteArray = keyBytes
+    override fun getEncoded(): ByteArray {
+        val pubKeyInfo = SubjectPublicKeyInfo(AlgorithmIdentifier(EdECObjectIdentifiers.id_Ed25519), keyBytes)
+        return pubKeyInfo.encoded
+    }
 
-    override fun getFormat(): String = "RAW"
+    override fun getFormat(): String = "X.509"
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -61,11 +70,7 @@ class NACLEd25519PublicKey(val keyBytes: ByteArray) : PublicKey {
 }
 
 fun BCEdDSAPublicKey.toNACLPublicKey(): PublicKey {
-    val key = this
-    return ProviderCache.withKeyFactoryInstance<PublicKey>("Ed25519", "BC") {
-        val rawKeySpec = getKeySpec(key, RawEncodedKeySpec::class.java)
-        NACLEd25519PublicKey(rawKeySpec.encoded)
-    }
+    return NACLEd25519PublicKey.fromX509Encoded(encoded)
 }
 
 class NACLEd25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
@@ -203,7 +208,9 @@ fun BCEdDSAPrivateKey.toNACLPrivateKey(): PrivateKey {
         val pkcs8KeySpec = getKeySpec(key, PKCS8EncodedKeySpec::class.java)
         NACLEd25519PrivateKey(decodePKCS8(pkcs8KeySpec.encoded))
     }
+
 }
+
 
 class NACLCurve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
     init {
@@ -221,8 +228,6 @@ class NACLCurve25519PublicKey(val keyBytes: ByteArray) : PublicKey {
             generatePublic(x509KeySpec)
         }
     }
-
-    fun toCurve25519PublicKey(): PublicKey = Curve25519PublicKey(keyBytes)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -259,7 +264,10 @@ class NACLCurve25519PrivateKey(private val keyBytes: ByteArray) : PrivateKey {
         require(keyBytes.size == SCALARMULT_CURVE25519_SCALARBYTES) {
             "Curve25519 keys must be 32 bytes long"
         }
-        Curve25519.clamp(keyBytes) // ensure it is a valid private key
+        // ensure it is a valid private key
+        keyBytes[31] = keyBytes[31] and 0x7F
+        keyBytes[31] = keyBytes[31] or 0x40
+        keyBytes[0] = keyBytes[0] and 0xF8.toByte()
     }
 
     override fun toString(): String = "PRVNACL25519:${keyBytes.printHexBinary()}"

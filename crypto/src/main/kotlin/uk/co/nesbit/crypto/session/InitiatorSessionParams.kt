@@ -10,7 +10,7 @@ import uk.co.nesbit.avro.getTyped
 import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.PublicKeyHelper
 import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.generateCurve25519DHKeyPair
+import uk.co.nesbit.crypto.generateNACLDHKeyPair
 import uk.co.nesbit.crypto.newSecureRandom
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.NONCE_SIZE
 import uk.co.nesbit.crypto.session.SessionSecretState.Companion.PROTO_VERSION
@@ -35,7 +35,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
         require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE) { "Invalid nonce" }
         require(schemaId == SecureHash("SHA-256", schemaFingerprint)) { "Schema mismatch" }
-        require(initiatorDHPublicKey.algorithm == "Curve25519") { "Only Curve25519 Diffie-Hellman supported" }
+        require(initiatorDHPublicKey.algorithm == "NACLCurve25519") { "Only NACLCurve25519 Diffie-Hellman supported" }
     }
 
     companion object {
@@ -53,7 +53,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
         fun createInitiatorSession(random: SecureRandom = newSecureRandom()): Pair<KeyPair, InitiatorSessionParams> {
             val nonce = ByteArray(NONCE_SIZE)
             random.nextBytes(nonce)
-            val ephemeralDHKeyPair = generateCurve25519DHKeyPair(random)
+            val ephemeralDHKeyPair = generateNACLDHKeyPair(random)
             return Pair(ephemeralDHKeyPair, InitiatorSessionParams(SecureHash("SHA-256", schemaFingerprint), PROTO_VERSION, nonce, ephemeralDHKeyPair.public))
         }
     }
@@ -62,7 +62,7 @@ class InitiatorSessionParams private constructor(private val schemaId: SecureHas
         require(protocolVersion == PROTO_VERSION) { "Incorrect protocol version $protocolVersion should be $PROTO_VERSION" }
         require(initiatorNonce.size == NONCE_SIZE)
         require(schemaId == SecureHash("SHA-256", schemaFingerprint))
-        require(initiatorDHPublicKey.algorithm == "Curve25519")
+        require(initiatorDHPublicKey.algorithm == "NACLCurve25519")
     }
 
     override fun toGenericRecord(): GenericRecord {

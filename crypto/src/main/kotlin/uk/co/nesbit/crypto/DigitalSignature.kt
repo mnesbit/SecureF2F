@@ -7,30 +7,35 @@ import org.apache.avro.generic.GenericDatumReader
 import org.apache.avro.generic.GenericRecord
 import org.apache.avro.io.DecoderFactory
 import org.bouncycastle.jcajce.provider.asymmetric.edec.BCEdDSAPublicKey
-import uk.co.nesbit.avro.AvroConvertible
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getTyped
-import uk.co.nesbit.avro.putTyped
+import uk.co.nesbit.avro.*
 import uk.co.nesbit.utils.printHexBinary
 import java.io.ByteArrayOutputStream
 import java.security.PublicKey
 import java.security.SignatureException
 import java.util.*
 
-class DigitalSignature(val signatureAlgorithm: String,
-                       val signature: ByteArray) : AvroConvertible {
+class DigitalSignature(
+    val signatureAlgorithm: String,
+    val signature: ByteArray
+) : AvroConvertible {
     constructor(signatureRecord: GenericRecord) :
-            this(signatureRecord.getTyped("signatureAlgorithm"),
-                    signatureRecord.getTyped("signature"))
+            this(
+                signatureRecord.getTyped("signatureAlgorithm"),
+                signatureRecord.getTyped("signature")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val digitalSignatureSchema: Schema = Schema.Parser()
-                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/digitalsignature.avsc"))
 
         fun deserialize(bytes: ByteArray): DigitalSignature {
             val signatureRecord = digitalSignatureSchema.deserialize(bytes)
             return DigitalSignature(signatureRecord)
+        }
+
+        fun fromBase64(base64: String): DigitalSignature {
+            return deserialize(Base64.getDecoder().decode(base64))
         }
     }
 
@@ -43,6 +48,10 @@ class DigitalSignature(val signatureAlgorithm: String,
 
     fun toDigitalSignatureAndKey(publicKey: PublicKey): DigitalSignatureAndKey =
         DigitalSignatureAndKey(signatureAlgorithm, signature, publicKey)
+
+    fun toBase64(): String {
+        return Base64.getEncoder().encodeToString(serialize())
+    }
 
     private fun readMultiSig(): GenericArray<GenericRecord> {
         val arraySchema = Schema.createArray(digitalSignatureSchema)
@@ -86,7 +95,13 @@ class DigitalSignature(val signatureAlgorithm: String,
 
     fun verify(publicKey: PublicKey, bytes: ByteArray) {
         when (this.signatureAlgorithm) {
-            "SHA256withECDSA", "SHA256withRSA" -> {
+            "SHA256withECDSA", "SHA256withRSA",
+            "SHA384withECDSA", "SHA384withRSA",
+            "SHA512withECDSA", "SHA512withRSA",
+            "SHA256withRSAandMGF1",
+            "SHA384withRSAandMGF1",
+            "SHA512withRSAandMGF1"
+            -> {
                 ProviderCache.withSignatureInstance(signatureAlgorithm) {
                     initVerify(publicKey)
                     update(bytes)
@@ -94,6 +109,7 @@ class DigitalSignature(val signatureAlgorithm: String,
                         throw SignatureException("Signature did not match")
                 }
             }
+
             "Ed25519" -> {
                 ProviderCache.withSignatureInstance(signatureAlgorithm, "BC") {
                     if (publicKey is BCEdDSAPublicKey) {

@@ -7,3 +7,5 @@ interface AvroConvertible {
 }
 
 fun AvroConvertible.serialize(): ByteArray = this.toGenericRecord().serialize()
+
+fun AvroConvertible.serializeJSON(): String = this.toGenericRecord().serializeJSON()

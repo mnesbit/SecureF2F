@@ -19,6 +19,7 @@ import java.security.PublicKey
 import java.security.spec.X509EncodedKeySpec
 import javax.security.auth.DestroyFailedException
 
+
 object PublicKeyHelper {
     init {
         AvroTypeHelpers.registerHelper(
@@ -39,24 +40,17 @@ object PublicKeyHelper {
         return fromGenericRecord(keyRecord)
     }
 
+    fun deserializeJSON(json: String): PublicKey {
+        val keyRecord = publicKeySchema.deserializeJSON(json)
+        return fromGenericRecord(keyRecord)
+    }
+
     fun fromGenericRecord(genericRecord: GenericRecord): PublicKey {
         val publicKeyBytes = genericRecord.getTyped<ByteArray>("publicKey")
         val keyAlgorithm = genericRecord.getTyped<String>("keyAlgorithm")
         val keyFormat = genericRecord.getTyped<String>("keyFormat")
         val keySpec = X509EncodedKeySpec(publicKeyBytes)
         return when (keyAlgorithm) {
-            "Ed25519" -> {
-                require(keyFormat == "X.509") { "Don't know how to deserialize" }
-                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
-                cacheKey.put(publicKeyBytes)
-                cacheKey.flip()
-                val pk = keyCache.get(cacheKey) {
-                    ProviderCache.withKeyFactoryInstance(keyAlgorithm, "BC") {
-                        generatePublic(keySpec)
-                    }
-                }
-                pk!!
-            }
             "EC", "RSA" -> {
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
@@ -69,28 +63,42 @@ object PublicKeyHelper {
                 }
                 pk!!
             }
+
+            "Ed25519" -> {
+                require(keyFormat == "X.509") { "Don't know how to deserialize" }
+                val cacheKey = ByteBuffer.allocate(publicKeyBytes.size)
+                cacheKey.put(publicKeyBytes)
+                cacheKey.flip()
+                val pk = keyCache.get(cacheKey) {
+                    ProviderCache.withKeyFactoryInstance(keyAlgorithm, "BC") {
+                        generatePublic(keySpec)
+                    }
+                }
+                pk!!
+            }
+
             "DH" -> { // don't cache DH keys as they change a lot
                 require(keyFormat == "X.509") { "Don't know how to deserialize" }
                 ProviderCache.withKeyFactoryInstance(keyAlgorithm) {
                     generatePublic(keySpec)
                 }
             }
-            "Curve25519" -> {// don't cache DH keys as they change a lot
-                require(keyFormat == "RAW") { "Don't know how to deserialize" }
-                Curve25519PublicKey(publicKeyBytes)
-            }
+
             "NACLEd25519" -> {
-                require(keyFormat == "RAW") { "Don't know how to deserialize" }
-                NACLEd25519PublicKey(publicKeyBytes)
+                require(keyFormat == "X.509") { "Don't know how to deserialize" }
+                NACLEd25519PublicKey.fromX509Encoded(publicKeyBytes)
             }
+
             "NACLCurve25519" -> {// don't cache DH keys as they change a lot
                 require(keyFormat == "RAW") { "Don't know how to deserialize" }
                 NACLCurve25519PublicKey(publicKeyBytes)
             }
+
             "ThresholdPublicKey" -> {
                 require(keyFormat == "AVRO") { "Don't know how to deserialize" }
                 ThresholdPublicKey.deserialize(publicKeyBytes)
             }
+
             else -> throw NotImplementedError("Unknown key algorithm $keyAlgorithm")
         }
     }
@@ -108,27 +116,32 @@ object PublicKeyHelper {
                             generatePublic(keySpec)
                         }
                     }
+
                     "1.2.840.10045.2.1" -> {
                         ProviderCache.withKeyFactoryInstance("EC") {
                             generatePublic(keySpec)
                         }
                     }
+
                     "1.2.840.113549.1.1.1" -> {
                         ProviderCache.withKeyFactoryInstance("RSA") {
                             generatePublic(keySpec)
                         }
                     }
+
                     "1.2.840.113549.1.3.1" -> {
                         ProviderCache.withKeyFactoryInstance("DH") {
                             generatePublic(keySpec)
                         }
                     }
+
                     "1.3.101.110" -> {
                         val bcKey = ProviderCache.withKeyFactoryInstance("X25519", "BC") {
                             generatePublic(keySpec)
                         }
-                        (bcKey as BCXDHPublicKey).toCurve25519PublicKey()
+                        (bcKey as BCXDHPublicKey).toNACLCurve25519PublicKey()
                     }
+
                     else -> throw IllegalArgumentException("unknown algorithm OID $algId")
                 }
 
@@ -166,8 +179,6 @@ fun PublicKey.toPEM(): String {
                 if (this.format == "X.509") {
                     pemWriter.writeObject(this)
                 } else if (this is NACLEd25519PublicKey) {
-                    pemWriter.writeObject(this.toBCPublicKey())
-                } else if (this is Curve25519PublicKey) {
                     pemWriter.writeObject(this.toBCPublicKey())
                 } else if (this is NACLCurve25519PublicKey) {
                     pemWriter.writeObject(this.toBCPublicKey())

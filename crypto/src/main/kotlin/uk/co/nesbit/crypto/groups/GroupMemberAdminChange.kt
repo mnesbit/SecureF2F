@@ -3,10 +3,7 @@ package uk.co.nesbit.crypto.groups
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
-import uk.co.nesbit.avro.deserialize
-import uk.co.nesbit.avro.getTyped
-import uk.co.nesbit.avro.putTyped
-import uk.co.nesbit.avro.serialize
+import uk.co.nesbit.avro.*
 import uk.co.nesbit.crypto.DigitalSignature
 import uk.co.nesbit.crypto.DigitalSignatureAndKey
 import uk.co.nesbit.crypto.SecureHash
@@ -20,7 +17,7 @@ class GroupMemberAdminChange private constructor(
 ) : GroupChange {
     constructor(groupMemberAdminChangeRecord: GenericRecord) : this(
         groupMemberAdminChangeRecord.getTyped("memberKeyId"),
-        groupMemberAdminChangeRecord.getTyped("role"),
+        groupMemberAdminChangeRecord.getTypedEnum("role"),
         groupMemberAdminChangeRecord.getTyped<Map<String, String>>("otherInfo").toSortedMap(),
         groupMemberAdminChangeRecord.getTyped("sponsorKeyId"),
         groupMemberAdminChangeRecord.getTyped("sponsorSignature"),

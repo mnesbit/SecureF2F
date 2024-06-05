@@ -14,7 +14,7 @@ import kotlin.test.assertFailsWith
 class RatchetTest {
     @Test
     fun `Serialisation of RatchetHeader`() {
-        val dhKeyPair = generateCurve25519DHKeyPair()
+        val dhKeyPair = generateNACLDHKeyPair()
         val ratchetHeader = RatchetHeader(dhKeyPair.public, 1, 2)
         val serialized = ratchetHeader.serialize()
         val ratchetHeaderDeserialized = RatchetHeader.deserialize(serialized)
@@ -38,46 +38,60 @@ class RatchetTest {
     @Test
     fun `Single message exchange`() {
         val secureRandom = newSecureRandom()
-        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
-        val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
-        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
-        val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
-        val alicePlaintext = "From Alice".toByteArray(Charsets.UTF_8)
-        val aliceFirstMessage = ratchetAlice.encryptMessage(alicePlaintext, null)
-        val decryptedMessage1 = ratchetBob.decryptMessage(aliceFirstMessage, null)
-        assertArrayEquals(alicePlaintext, decryptedMessage1)
-        val bobPlaintext = "From Bob".toByteArray(Charsets.UTF_8)
-        val bobFirstMessage = ratchetBob.encryptMessage(bobPlaintext, null)
-        val decryptedMessage2 = ratchetAlice.decryptMessage(bobFirstMessage, null)
-        assertArrayEquals(bobPlaintext, decryptedMessage2)
+        val keys = listOf(
+            generateNACLDHKeyPair(secureRandom),
+            generateDHKeyPair(secureRandom),
+            generateECDHKeyPair(secureRandom)
+        )
+        for (bobInitialIdentity in keys) {
+            val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
+            val ratchetAlice =
+                RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
+            val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
+            val alicePlaintext = "From Alice".toByteArray(Charsets.UTF_8)
+            val aliceFirstMessage = ratchetAlice.encryptMessage(alicePlaintext, null)
+            val decryptedMessage1 = ratchetBob.decryptMessage(aliceFirstMessage, null)
+            assertArrayEquals(alicePlaintext, decryptedMessage1)
+            val bobPlaintext = "From Bob".toByteArray(Charsets.UTF_8)
+            val bobFirstMessage = ratchetBob.encryptMessage(bobPlaintext, null)
+            val decryptedMessage2 = ratchetAlice.decryptMessage(bobFirstMessage, null)
+            assertArrayEquals(bobPlaintext, decryptedMessage2)
+        }
     }
 
     @Test
     fun `Messages with different strides`() {
         val secureRandom = newSecureRandom()
-        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
-        val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
-        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
-        val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
-        var msgCount = 0
-        for (i in 0 until 100) {
-            val aliceSends = 1 + secureRandom.nextInt(10)
-            for (j in 0 until aliceSends) {
-                val msg = "from alice $msgCount".toByteArray(Charsets.UTF_8)
-                val aad = ByteArray(1) { msgCount.toByte() }
-                ++msgCount
-                val aliceMessage = ratchetAlice.encryptMessage(msg, aad)
-                val bobDecode = ratchetBob.decryptMessage(aliceMessage, aad)
-                assertArrayEquals(msg, bobDecode)
-            }
-            val bobSends = 1 + secureRandom.nextInt(10)
-            for (j in 0 until bobSends) {
-                val msg = "from bob $msgCount".toByteArray(Charsets.UTF_8)
-                val aad = ByteArray(1) { msgCount.toByte() }
-                ++msgCount
-                val bobMessage = ratchetBob.encryptMessage(msg, aad)
-                val aliceDecode = ratchetAlice.decryptMessage(bobMessage, aad)
-                assertArrayEquals(msg, aliceDecode)
+        val keys = listOf(
+            generateNACLDHKeyPair(secureRandom),
+            generateDHKeyPair(secureRandom),
+            generateECDHKeyPair(secureRandom)
+        )
+        for (bobInitialIdentity in keys) {
+            val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
+            val ratchetAlice =
+                RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
+            val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
+            var msgCount = 0
+            for (i in 0 until 100) {
+                val aliceSends = 1 + secureRandom.nextInt(10)
+                for (j in 0 until aliceSends) {
+                    val msg = "from alice $msgCount".toByteArray(Charsets.UTF_8)
+                    val aad = ByteArray(1) { msgCount.toByte() }
+                    ++msgCount
+                    val aliceMessage = ratchetAlice.encryptMessage(msg, aad)
+                    val bobDecode = ratchetBob.decryptMessage(aliceMessage, aad)
+                    assertArrayEquals(msg, bobDecode)
+                }
+                val bobSends = 1 + secureRandom.nextInt(10)
+                for (j in 0 until bobSends) {
+                    val msg = "from bob $msgCount".toByteArray(Charsets.UTF_8)
+                    val aad = ByteArray(1) { msgCount.toByte() }
+                    ++msgCount
+                    val bobMessage = ratchetBob.encryptMessage(msg, aad)
+                    val aliceDecode = ratchetAlice.decryptMessage(bobMessage, aad)
+                    assertArrayEquals(msg, aliceDecode)
+                }
             }
         }
     }
@@ -86,7 +100,7 @@ class RatchetTest {
     @Test
     fun `Corrupted messages are caught`() {
         val secureRandom = newSecureRandom()
-        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+        val bobInitialIdentity = generateNACLDHKeyPair(secureRandom)
         val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
         val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
         val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
@@ -123,7 +137,7 @@ class RatchetTest {
     @Test
     fun `Drop initial messages`() {
         val secureRandom = newSecureRandom()
-        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+        val bobInitialIdentity = generateNACLDHKeyPair(secureRandom)
         val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
         val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom)
         val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
@@ -144,9 +158,10 @@ class RatchetTest {
     @Test
     fun `Scrambled ordering`() {
         val secureRandom = newSecureRandom()
-        val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+        val bobInitialIdentity = generateNACLDHKeyPair(secureRandom)
         val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
-        val ratchetAlice = RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom, 5)
+        val ratchetAlice =
+            RatchetState.ratchetInitAlice(sessionStartingSecret, bobInitialIdentity.public, secureRandom, 5)
         val ratchetBob = RatchetState.ratchetInitBob(sessionStartingSecret, bobInitialIdentity, secureRandom)
         var msgCount = 0
         for (i in 0 until 10) {
@@ -181,7 +196,7 @@ class RatchetTest {
         val sessionStartingSecret = "secret words".toByteArray(Charsets.UTF_8)
         val totalMessages = 10
         for (messagePattern in 0 until (1 shl totalMessages)) {
-            val bobInitialIdentity = generateCurve25519DHKeyPair(secureRandom)
+            val bobInitialIdentity = generateNACLDHKeyPair(secureRandom)
             val ratchetAlice = RatchetState.ratchetInitAlice(
                 sessionStartingSecret,
                 bobInitialIdentity.public,

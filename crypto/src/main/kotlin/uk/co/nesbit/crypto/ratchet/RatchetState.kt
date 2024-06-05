@@ -21,21 +21,23 @@ import javax.security.auth.Destroyable
 
 // Based upon header encrypted Axolotl Ratchet/Double ratchet protocol
 // as described in https://signal.org/docs/specifications/doubleratchet/
-class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
-                                       private var receiverDHKey: PublicKey,
-                                       private var rootKey: ByteArray,
-                                       private var senderChainKey: ByteArray,
-                                       private var senderHeaderKey: MessageKey,
-                                       private var senderNextHeaderKey: MessageKey,
-                                       private var senderSequenceNumber: Int,
-                                       private var receiverChainKey: ByteArray,
-                                       private var receiverHeaderKey: MessageKey,
-                                       private var receiverNextHeaderKey: MessageKey,
-                                       private var receiverSequenceNumber: Int,
-                                       private var previousSenderChainNumber: Int,
-                                       val maxSkip: Int,
-                                       val maxLost: Int,
-                                       private val secureRandom: SecureRandom) {
+class RatchetState private constructor(
+    private var senderDHKeyPair: KeyPair,
+    private var receiverDHKey: PublicKey,
+    private var rootKey: ByteArray,
+    private var senderChainKey: ByteArray,
+    private var senderHeaderKey: MessageKey,
+    private var senderNextHeaderKey: MessageKey,
+    private var senderSequenceNumber: Int,
+    private var receiverChainKey: ByteArray,
+    private var receiverHeaderKey: MessageKey,
+    private var receiverNextHeaderKey: MessageKey,
+    private var receiverSequenceNumber: Int,
+    private var previousSenderChainNumber: Int,
+    val maxSkip: Int,
+    val maxLost: Int,
+    private val secureRandom: SecureRandom
+) {
     private val skippedMessageKeys = mutableMapOf<HeaderKey, MessageKey>()
 
     companion object {
@@ -104,7 +106,11 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
 
         }
 
-        private class RootKeyUpdate(val newRootKey: ByteArray, val chainKeyInput: ByteArray, val nextHeaderKey: MessageKey) {
+        private class RootKeyUpdate(
+            val newRootKey: ByteArray,
+            val chainKeyInput: ByteArray,
+            val nextHeaderKey: MessageKey
+        ) {
             operator fun component1(): ByteArray = newRootKey
             operator fun component2(): ByteArray = chainKeyInput
             operator fun component3(): MessageKey = nextHeaderKey
@@ -131,14 +137,26 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
             return ChainKeyUpdate(newChainKey.bytes, messageKey.bytes, iv.bytes.copyOf(CHACHA_NONCE_SIZE_BYTES))
         }
 
-        fun ratchetInitAlice(startingSessionSecret: ByteArray,
-                             bobDHKey: PublicKey,
-                             secureRandom: SecureRandom = newSecureRandom(),
-                             maxSkip: Int = DEFAULT_MAX_SKIP,
-                             maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
-            val aliceDHKeyPair = when (bobDHKey) {
-                is Curve25519PublicKey -> generateCurve25519DHKeyPair(secureRandom)
-                is NACLCurve25519PublicKey -> generateNACLDHKeyPair(secureRandom)
+        fun ratchetInitAlice(
+            startingSessionSecret: ByteArray,
+            bobDHKey: PublicKey,
+            secureRandom: SecureRandom = newSecureRandom(),
+            maxSkip: Int = DEFAULT_MAX_SKIP,
+            maxLost: Int = DEFAULT_MAX_LOST
+        ): RatchetState {
+            val aliceDHKeyPair = when (bobDHKey.algorithm) {
+                "DH" -> {
+                    generateDHKeyPair(secureRandom)
+                }
+
+                "EC" -> {
+                    generateECDHKeyPair(secureRandom)
+                }
+
+                "NACLCurve25519" -> {
+                    generateNACLDHKeyPair(secureRandom)
+                }
+
                 else -> throw IllegalArgumentException("Unknown key type")
             }
             val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(
@@ -166,40 +184,76 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
             )
         }
 
-        fun ratchetInitBob(startingSessionSecret: ByteArray,
-                           bobDHKeyPair: KeyPair,
-                           secureRandom: SecureRandom = newSecureRandom(),
-                           maxSkip: Int = DEFAULT_MAX_SKIP,
-                           maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
-            val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(startingSessionSecret, bobDHKeyPair.public)
-            return RatchetState(senderDHKeyPair = bobDHKeyPair,
-                    receiverDHKey = Curve25519PublicKey(emptyKey),
-                    rootKey = startingKey,
-                    senderChainKey = emptyKey,
-                    senderHeaderKey = MessageKey(emptyKey, emptyIv),
-                    senderNextHeaderKey = sharedNextHeaderKeyB,
-                    senderSequenceNumber = 0,
-                    receiverChainKey = emptyKey,
-                    receiverHeaderKey = MessageKey(emptyKey, emptyIv),
-                    receiverNextHeaderKey = sharedHeaderKeyA,
-                    receiverSequenceNumber = 0,
-                    previousSenderChainNumber = 0,
-                    maxSkip = maxSkip,
-                    maxLost = maxLost,
-                    secureRandom = secureRandom)
+        fun ratchetInitBob(
+            startingSessionSecret: ByteArray,
+            bobDHKeyPair: KeyPair,
+            secureRandom: SecureRandom = newSecureRandom(),
+            maxSkip: Int = DEFAULT_MAX_SKIP,
+            maxLost: Int = DEFAULT_MAX_LOST
+        ): RatchetState {
+            val (startingKey, sharedHeaderKeyA, sharedNextHeaderKeyB) = sharedKeysFromStartingSecret(
+                startingSessionSecret,
+                bobDHKeyPair.public
+            )
+            val emptyDHKey = when (bobDHKeyPair.public.algorithm) {
+                "DH" -> {
+                    generateDHKeyPair(secureRandom).public
+                }
+
+                "EC" -> {
+                    generateECDHKeyPair(secureRandom).public
+                }
+
+                "NACLCurve25519" -> {
+                    generateNACLDHKeyPair(secureRandom).public
+                }
+
+                else -> throw IllegalArgumentException("Unknown key type")
+            }
+            return RatchetState(
+                senderDHKeyPair = bobDHKeyPair,
+                receiverDHKey = emptyDHKey,
+                rootKey = startingKey,
+                senderChainKey = emptyKey,
+                senderHeaderKey = MessageKey(emptyKey, emptyIv),
+                senderNextHeaderKey = sharedNextHeaderKeyB,
+                senderSequenceNumber = 0,
+                receiverChainKey = emptyKey,
+                receiverHeaderKey = MessageKey(emptyKey, emptyIv),
+                receiverNextHeaderKey = sharedHeaderKeyA,
+                receiverSequenceNumber = 0,
+                previousSenderChainNumber = 0,
+                maxSkip = maxSkip,
+                maxLost = maxLost,
+                secureRandom = secureRandom
+            )
         }
 
-        fun ratchetInitForSession(initiatorInit: InitiatorSessionParams,
-                                  responderInit: ResponderSessionParams,
-                                  dhKeys: KeyPair,
-                                  secureRandom: SecureRandom = newSecureRandom(),
-                                  maxSkip: Int = DEFAULT_MAX_SKIP,
-                                  maxLost: Int = DEFAULT_MAX_LOST): RatchetState {
+        fun ratchetInitForSession(
+            initiatorInit: InitiatorSessionParams,
+            responderInit: ResponderSessionParams,
+            dhKeys: KeyPair,
+            secureRandom: SecureRandom = newSecureRandom(),
+            maxSkip: Int = DEFAULT_MAX_SKIP,
+            maxLost: Int = DEFAULT_MAX_LOST
+        ): RatchetState {
             val sharedSecretState = SessionSecretState(initiatorInit, responderInit, dhKeys)
             return if (dhKeys.public == initiatorInit.initiatorDHPublicKey) {
-                ratchetInitAlice(sharedSecretState.sessionRootKey, responderInit.responderDHPublicKey, secureRandom, maxSkip, maxLost)
+                ratchetInitAlice(
+                    sharedSecretState.sessionRootKey,
+                    responderInit.responderDHPublicKey,
+                    secureRandom,
+                    maxSkip,
+                    maxLost
+                )
             } else {
-                ratchetInitBob(sharedSecretState.sessionRootKey, dhKeys, secureRandom, maxSkip, maxLost)
+                ratchetInitBob(
+                    sharedSecretState.sessionRootKey,
+                    dhKeys,
+                    secureRandom,
+                    maxSkip,
+                    maxLost
+                )
             }
         }
     }
@@ -320,9 +374,19 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         receiverChainKey = receiverUpdate.chainKeyInput
         receiverNextHeaderKey = receiverUpdate.nextHeaderKey
         senderDHKeyPair.private.safeDestroy()
-        senderDHKeyPair = when (receiverDHKey) {
-            is Curve25519PublicKey -> generateCurve25519DHKeyPair(secureRandom)
-            is NACLCurve25519PublicKey -> generateNACLDHKeyPair(secureRandom)
+        senderDHKeyPair = when (receiverDHKey.algorithm) {
+            "DH" -> {
+                generateDHKeyPair(secureRandom)
+            }
+
+            "EC" -> {
+                generateECDHKeyPair(secureRandom)
+            }
+
+            "NACLCurve25519" -> {
+                generateNACLDHKeyPair(secureRandom)
+            }
+
             else -> throw IllegalArgumentException("Unknown key type")
         }
         val senderUpdate = kdfRootKeys(rootKey, getSharedDHSecret(senderDHKeyPair, receiverDHKey))
@@ -391,7 +455,8 @@ class RatchetState private constructor(private var senderDHKeyPair: KeyPair,
         }
         skipMessageKeys(decryptedHeader.sequenceNumber)
         val chainUpdate = kdfChainKey(receiverChainKey)
-        val mergedAad = if (aad == null) ratchetMessage.encryptedHeader else concatByteArrays(ratchetMessage.encryptedHeader, aad)
+        val mergedAad =
+            if (aad == null) ratchetMessage.encryptedHeader else concatByteArrays(ratchetMessage.encryptedHeader, aad)
         val decrypted = try {
             chaChaDecrypt(chainUpdate.messageKey, chainUpdate.iv, ratchetMessage.encryptedPayload, mergedAad)
         } catch (ex: AEADBadTagException) {

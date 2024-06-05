@@ -6,7 +6,10 @@ import com.goterl.lazysodium.interfaces.DiffieHellman
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_BYTES
 import com.goterl.lazysodium.interfaces.DiffieHellman.SCALARMULT_CURVE25519_SCALARBYTES
 import com.goterl.lazysodium.interfaces.Sign
-import djb.Curve25519
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.generators.HKDFBytesGenerator
+import org.bouncycastle.crypto.generators.PKCS5S2ParametersGenerator
+import org.bouncycastle.crypto.params.HKDFParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.jcajce.spec.EdDSAParameterSpec
@@ -16,6 +19,7 @@ import java.security.spec.ECGenParameterSpec
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+
 
 val nacl: Sign.Native = LazySodiumJava(SodiumJava())
 val naclDH: DiffieHellman.Native = LazySodiumJava(SodiumJava())
@@ -33,6 +37,14 @@ fun newSecureRandom(): SecureRandom {
     )
 }
 
+fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
+    return ProviderCache.withKeyPairGeneratorInstance("EC") {
+        val ecSpec = ECGenParameterSpec("secp256r1")
+        initialize(ecSpec, secureRandom)
+        generateKeyPair()
+    }
+}
+
 fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
     return ProviderCache.withKeyPairGeneratorInstance("Ed25519", "BC") {
         val ecSpec = EdDSAParameterSpec(EdDSAParameterSpec.Ed25519)
@@ -40,14 +52,6 @@ fun generateEdDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPai
         generateKeyPair()
     }
 
-}
-
-fun generateECDSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    return ProviderCache.withKeyPairGeneratorInstance("EC") {
-        val ecSpec = ECGenParameterSpec("secp256r1")
-        initialize(ecSpec, secureRandom)
-        generateKeyPair()
-    }
 }
 
 fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -63,7 +67,7 @@ fun generateNACLKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair
 
 fun generateRSAKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
     return ProviderCache.withKeyPairGeneratorInstance("RSA") {
-        initialize(1024, secureRandom)
+        initialize(4096, secureRandom)
         generateKeyPair()
     }
 }
@@ -78,17 +82,9 @@ fun generateECDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair
 
 fun generateDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
     return ProviderCache.withKeyPairGeneratorInstance("DiffieHellman") {
-        initialize(1024, secureRandom)
+        initialize(4096, secureRandom)
         generateKeyPair()
     }
-}
-
-fun generateCurve25519DHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
-    val privateKeyBytes = ByteArray(Curve25519.KEY_SIZE)
-    val publicKeyBytes = ByteArray(Curve25519.KEY_SIZE)
-    secureRandom.nextBytes(privateKeyBytes)
-    Curve25519.keygen(publicKeyBytes, null, privateKeyBytes)
-    return KeyPair(Curve25519PublicKey(publicKeyBytes), Curve25519PrivateKey(privateKeyBytes))
 }
 
 fun generateNACLDHKeyPair(secureRandom: SecureRandom = newSecureRandom()): KeyPair {
@@ -134,6 +130,64 @@ fun KeyPair.sign(bytes: ByteArray): DigitalSignatureAndKey {
             DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
         }
         else -> throw NotImplementedError("Can't handle algorithm ${this.private.algorithm}")
+    }
+    return if (this.public.algorithm != "ThresholdPublicKey") {
+        signature
+    } else {
+        val thresholdPublicKey = public
+        require(thresholdPublicKey is ThresholdPublicKey) {
+            "Algorithm invalid"
+        }
+        thresholdPublicKey.createMultiSig(listOf(signature.toDigitalSignature()))
+    }
+}
+
+
+fun KeyPair.sign(bytes: ByteArray, alg: String): DigitalSignatureAndKey {
+    val signature = when (this.private.algorithm) {
+        "EC" -> {
+            ProviderCache.withSignatureInstance(alg) {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
+        }
+
+        "RSA" -> {
+            ProviderCache.withSignatureInstance(alg) {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
+        }
+
+        "Ed25519" -> {
+            require(alg == "Ed25519") {
+                "Ed25519 key requires matching algorithm type not $alg"
+            }
+            ProviderCache.withSignatureInstance("Ed25519", "BC") {
+                initSign(private)
+                update(bytes)
+                val sig = sign()
+                DigitalSignatureAndKey(algorithm, sig, public)
+            }
+        }
+
+        "NACLEd25519" -> {
+            require(alg == "Ed25519") {
+                "NACLEd25519 key requires Ed25519 algorithm type not $alg"
+            }
+            val naclPublicKey = ByteArray(Sign.PUBLICKEYBYTES)
+            val naclSecretKey = ByteArray(Sign.SECRETKEYBYTES)
+            nacl.cryptoSignSeedKeypair(naclPublicKey, naclSecretKey, private.encoded)
+            val signature = ByteArray(Sign.BYTES)
+            nacl.cryptoSignDetached(signature, bytes, bytes.size.toLong(), naclSecretKey)
+            DigitalSignatureAndKey("NONEwithNACLEd25519", signature, public)
+        }
+
+        else -> throw NotImplementedError("Can't handle key algorithm ${this.private.algorithm}")
     }
     return if (this.public.algorithm != "ThresholdPublicKey") {
         signature
@@ -205,7 +259,8 @@ fun KeyPair.sign(hash: SecureHash): DigitalSignatureAndKey {
     }
 }
 
-fun getSharedDHSecret(localKeys: KeyPair, remotePublicKey: PublicKey): ByteArray = getSharedDHSecret(localKeys.private, remotePublicKey)
+fun getSharedDHSecret(localKeys: KeyPair, remotePublicKey: PublicKey): ByteArray =
+    getSharedDHSecret(localKeys.private, remotePublicKey)
 
 fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): ByteArray {
     require(remotePublicKey.algorithm == localPrivateKey.algorithm) { "Keys must use the same algorithm" }
@@ -217,6 +272,7 @@ fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): 
                 generateSecret()
             }
         }
+
         "DH" -> {
             ProviderCache.withKeyAgreementInstance("DH") {
                 init(localPrivateKey)
@@ -224,16 +280,13 @@ fun getSharedDHSecret(localPrivateKey: PrivateKey, remotePublicKey: PublicKey): 
                 generateSecret()
             }
         }
-        "Curve25519" -> {
-            val secret = ByteArray(Curve25519.KEY_SIZE)
-            Curve25519.curve(secret, localPrivateKey.encoded, remotePublicKey.encoded)
-            return secret
-        }
+
         "NACLCurve25519" -> {
             val secret = ByteArray(SCALARMULT_CURVE25519_BYTES)
             naclDH.cryptoScalarMult(secret, localPrivateKey.encoded, remotePublicKey.encoded)
             return secret
         }
+
         else -> throw NotImplementedError("Can't handle algorithm ${localPrivateKey.algorithm}")
     }
     // Note that this value needs passing into at least a hash, or better a Key Derivation Function along with the context PublicKeys
@@ -390,3 +443,23 @@ fun chaChaDecrypt(
     return decrypter.decodeCiphertext(cipherTextAndTag, aad)
 }
 
+
+fun hkdfGenerateBytes(entropyInput: ByteArray, salt: ByteArray, info: ByteArray, outputLength: Int): ByteArray {
+    val hkdf = HKDFBytesGenerator(SHA256Digest())
+    hkdf.init(
+        HKDFParameters(
+            entropyInput,
+            salt,
+            info
+        )
+    )
+    val hkdfKey = ByteArray(outputLength)
+    hkdf.generateBytes(hkdfKey, 0, hkdfKey.size)
+    return hkdfKey
+}
+
+fun pbkdf2GenerateBytes(passwordInput: ByteArray, salt: ByteArray, iterations: Int, outputLength: Int): ByteArray {
+    val pbkdf2 = PKCS5S2ParametersGenerator(SHA256Digest())
+    pbkdf2.init(passwordInput, salt, iterations)
+    return (pbkdf2.generateDerivedParameters(outputLength * 8) as KeyParameter).key
+}

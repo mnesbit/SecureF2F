@@ -77,10 +77,23 @@ class TestAvroUtils {
                             "precision": 10,
                             "scale": 2
                         }
+                    },
+                    {
+                        "name": "time6",
+                        "type": {
+                            "type":  "long",
+                            "logicalType": "local-timestamp-millis"
+                        }
+                    },
+                    {
+                        "name": "time7",
+                        "type": {
+                            "type":  "long",
+                            "logicalType": "local-timestamp-micros"
+                        }
                     }
                 ]
             }
-    }
 """
 
     @Test
@@ -101,6 +114,8 @@ class TestAvroUtils {
         record.putTyped("time5", time)
         record.putTyped("date", time)
         record.putTyped("amount", amount)
+        record.putTyped("time6", time)
+        record.putTyped("time7", time)
         val ser = record.serialize()
         val deser = testSchema.deserialize(ser)
         checkTimeRecords(deser, time)
@@ -118,6 +133,8 @@ class TestAvroUtils {
         record2.putTyped("time5", localDateTime)
         record2.putTyped("date", localDateTime)
         record2.putTyped("amount", amount)
+        record2.putTyped("time6", localDateTime)
+        record2.putTyped("time7", localDateTime)
         val ser2 = record2.serialize()
         val deser2 = testSchema.deserialize(ser2)
         checkTimeRecords(deser2, time)
@@ -131,9 +148,14 @@ class TestAvroUtils {
         record3.putTyped("time5", localDateTime)
         record3.putTyped("date", date)
         record3.putTyped("amount", amount)
+        record3.putTyped("time6", localDateTime)
+        record3.putTyped("time7", localDateTime)
         val ser3 = record3.serialize()
         val deser3 = testSchema.deserialize(ser3)
         checkTimeRecords2(deser3, localDateTime)
+        val ser4 = record3.serializeJSON()
+        val deser4 = testSchema.deserializeJSON(ser4)
+        kotlin.test.assertEquals(record3, deser4)
     }
 
     private fun checkTimeRecords(deser: GenericRecord, time: Instant) {
@@ -236,6 +258,8 @@ class TestAvroUtils {
         record.putTyped("timeMicroField", nowDateTime.toLocalTime())
         record.putTyped("timestampMilliField", nowDateTime)
         record.putTyped("timestampMicroField", nowDateTime)
+        record.putTyped("localTimestampMilliField", nowDateTime)
+        record.putTyped("localTimestampMicroField", nowDateTime)
         val simpleArrayRecord =
             GenericData.Array<Int>(complicatedSchemaWithNesting.getField("arrayField").schema(), listOf(1, 2, 3, 4))
         record.putTyped("arrayField", simpleArrayRecord)
@@ -553,6 +577,14 @@ class TestAvroUtils {
                 }
             }
 
+            override fun localDateTimeVisitor(
+                value: LocalDateTime,
+                schema: Schema,
+                path: List<PathComponent>,
+                root: GenericRecord
+            ) {
+            }
+
             override fun unknownVisitor(value: Any?, schema: Schema, path: List<PathComponent>, root: GenericRecord) {
             }
 
@@ -588,6 +620,8 @@ class TestAvroUtils {
         record.putTyped("timeMicroField", nowDateTime.toLocalTime())
         record.putTyped("timestampMilliField", nowDateTime)
         record.putTyped("timestampMicroField", nowDateTime)
+        record.putTyped("localTimestampMilliField", nowDateTime)
+        record.putTyped("localTimestampMicroField", nowDateTime)
         val simpleArrayRecord =
             GenericData.Array<Int>(complicatedSchemaWithNesting.getField("arrayField").schema(), listOf(1, 2, 3, 4))
         record.putTyped("arrayField", simpleArrayRecord)

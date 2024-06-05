@@ -1,0 +1,19 @@
+{
+  "namespace": "uk.co.nesbit.crypto",
+  "name": "EciesMessage",
+  "type": "record",
+  "fields": [
+    {
+      "name": "ephemeralKey",
+      "type": "uk.co.nesbit.crypto.PublicKey"
+    },
+    {
+      "name": "nonce",
+      "type": "long"
+    },
+    {
+      "name": "encryptedData",
+      "type": "bytes"
+    }
+  ]
+}

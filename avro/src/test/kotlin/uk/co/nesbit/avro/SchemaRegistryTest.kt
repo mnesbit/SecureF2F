@@ -7,6 +7,7 @@ import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericRecord
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import uk.co.nesbit.avro.SchemaRegistry.Companion.FingerprintHash
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.test.assertFailsWith
@@ -48,16 +49,16 @@ class SchemaRegistryTest {
     fun `register some simple schemas`() {
         val registry = SchemaRegistry()
         val print1 = registry.registerSchema(schema1)
-        assertArrayEquals(SchemaNormalization.parsingFingerprint("SHA-256", schema1), print1)
+        assertArrayEquals(SchemaNormalization.parsingFingerprint(FingerprintHash, schema1), print1)
         val print2 = registry.registerSchema(schema2)
-        assertArrayEquals(SchemaNormalization.parsingFingerprint("SHA-256", schema2), print2)
+        assertArrayEquals(SchemaNormalization.parsingFingerprint(FingerprintHash, schema2), print2)
         val print3 = registry.registerSchema(schema3)
-        assertArrayEquals(SchemaNormalization.parsingFingerprint("SHA-256", schema3), print3)
+        assertArrayEquals(SchemaNormalization.parsingFingerprint(FingerprintHash, schema3), print3)
         val print4 = registry.registerSchema(schema1) // re-registration is safe
         assertTrue(print1 === print4) // returned fingerprints are cached copies
-        assertTrue(print1 === registry.getFingeprint(schema1)) // returned fingerprints are cached copies
-        assertTrue(print2 === registry.getFingeprint(schema2)) // returned fingerprints are cached copies
-        assertTrue(print3 === registry.getFingeprint(schema3)) // returned fingerprints are cached copies
+        assertTrue(print1 === registry.getFingerprint(schema1)) // returned fingerprints are cached copies
+        assertTrue(print2 === registry.getFingerprint(schema2)) // returned fingerprints are cached copies
+        assertTrue(print3 === registry.getFingerprint(schema3)) // returned fingerprints are cached copies
     }
 
     @Test
@@ -88,7 +89,12 @@ class SchemaRegistryTest {
         val deserialized2 = registry.deserialize(print2, serialized2)
         assertEquals(test2, deserialized2)
         assertFailsWith<IllegalArgumentException> { registry.deserialize(ByteArray(1), serialized1) }
-        assertFailsWith<IllegalArgumentException> { registry.deserialize(registry.getFingeprint(schema3), serialized1) }
+        assertFailsWith<IllegalArgumentException> {
+            registry.deserialize(
+                registry.getFingerprint(schema3),
+                serialized1
+            )
+        }
     }
 
     @Test

@@ -10,19 +10,23 @@ import uk.co.nesbit.avro.putTyped
 import uk.co.nesbit.crypto.PublicKeyHelper
 import java.security.PublicKey
 
-class RatchetHeader(val senderDHKey: PublicKey,
-                    val previousChainCount: Int,
-                    val sequenceNumber: Int) : AvroConvertible {
+class RatchetHeader(
+    val senderDHKey: PublicKey,
+    val previousChainCount: Int,
+    val sequenceNumber: Int
+) : AvroConvertible {
     constructor(ratchetHeaderRecord: GenericRecord) :
-            this(ratchetHeaderRecord.getTyped("senderDHKey"),
-                    ratchetHeaderRecord.getTyped("previousChainCount"),
-                    ratchetHeaderRecord.getTyped("sequenceNumber"))
+            this(
+                ratchetHeaderRecord.getTyped("senderDHKey"),
+                ratchetHeaderRecord.getTyped("previousChainCount"),
+                ratchetHeaderRecord.getTyped("sequenceNumber")
+            )
 
     companion object {
         @Suppress("JAVA_CLASS_ON_COMPANION")
         val ratchetHeaderSchema: Schema = Schema.Parser()
-                .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
-                .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
+            .addTypes(mapOf(PublicKeyHelper.publicKeySchema.fullName to PublicKeyHelper.publicKeySchema))
+            .parse(javaClass.enclosingClass.getResourceAsStream("/uk/co/nesbit/crypto/ratchet/ratchetheader.avsc"))
 
         fun deserialize(bytes: ByteArray): RatchetHeader {
             val ratchetHeaderRecord = ratchetHeaderSchema.deserialize(bytes)

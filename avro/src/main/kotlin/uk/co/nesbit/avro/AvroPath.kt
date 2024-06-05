@@ -7,9 +7,7 @@ import org.apache.avro.generic.*
 import org.apache.avro.util.Utf8
 import java.math.BigDecimal
 import java.nio.ByteBuffer
-import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
+import java.time.*
 import java.util.*
 
 enum class ComponentType {
@@ -141,6 +139,7 @@ interface AvroVisitor {
     fun dateVisitor(value: LocalDate, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun timeVisitor(value: LocalTime, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun timestampVisitor(value: Instant, schema: Schema, path: List<PathComponent>, root: GenericRecord)
+    fun localDateTimeVisitor(value: LocalDateTime, schema: Schema, path: List<PathComponent>, root: GenericRecord)
     fun unknownVisitor(value: Any?, schema: Schema, path: List<PathComponent>, root: GenericRecord)
 }
 
@@ -185,13 +184,25 @@ fun convertLogicalTypes(
             val extraNanos = (micros - (1000L * millis)) * 1000L
             Instant.ofEpochMilli(millis).plusNanos(extraNanos)
         }
+        AvroExtendedType.LOCAL_TIMESTAMP_MILLIS -> {
+            val millis = (obj as Long)
+            val instant = Instant.ofEpochMilli(millis)
+            LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
+        }
+
+        AvroExtendedType.LOCAL_TIMESTAMP_MICROS -> {
+            val micros = (obj as Long)
+            val millis = micros / 1000L
+            val extraNanos = (micros - (1000L * millis)) * 1000L
+            val instant = Instant.ofEpochMilli(millis).plusNanos(extraNanos)
+            LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
+        }
         else -> {
             obj
         }
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 fun GenericRecord.visitWithLogicalTypes(body: (obj: Any?, schema: Schema, path: List<PathComponent>, root: GenericRecord) -> Unit) {
     visit { obj, schema, path, root ->
         val objOut = convertLogicalTypes(obj, schema)
@@ -284,6 +295,21 @@ fun GenericRecord.visit(visitor: AvroVisitor) {
                 val instant = Instant.ofEpochMilli(millis).plusNanos(extraNanos)
                 visitor.timestampVisitor(instant, schema, path, root)
             }
+            AvroExtendedType.LOCAL_TIMESTAMP_MILLIS -> {
+                val millis = (obj as Long)
+                val instant = Instant.ofEpochMilli(millis)
+                val localDateTime = LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
+                visitor.localDateTimeVisitor(localDateTime, schema, path, root)
+            }
+
+            AvroExtendedType.LOCAL_TIMESTAMP_MICROS -> {
+                val micros = (obj as Long)
+                val millis = micros / 1000L
+                val extraNanos = (micros - (1000L * millis)) * 1000L
+                val instant = Instant.ofEpochMilli(millis).plusNanos(extraNanos)
+                val localDateTime = LocalDateTime.ofInstant(instant, ZoneOffset.UTC)
+                visitor.localDateTimeVisitor(localDateTime, schema, path, root)
+            }
             AvroExtendedType.UNKNOWN -> {
                 visitor.unknownVisitor(obj, schema, path, root)
             }
@@ -307,12 +333,14 @@ fun splitStringPath(path: String): List<PathComponent> {
             componentStartIndex = componentEndIndex + 1
             componentEndIndex = componentStartIndex
         } else if (ch == '[') {
-            pathComponents.add(
-                PathComponent(
-                    path.substring(componentStartIndex, componentEndIndex),
-                    ComponentType.FIELD
+            if (componentStartIndex < componentEndIndex) {
+                pathComponents.add(
+                    PathComponent(
+                        path.substring(componentStartIndex, componentEndIndex),
+                        ComponentType.FIELD
+                    )
                 )
-            )
+            }
             ++componentEndIndex
             if (path[componentEndIndex] == '"') {
                 componentStartIndex = componentEndIndex + 1
@@ -439,6 +467,56 @@ fun GenericRecord.find(path: List<PathComponent>): Pair<Any?, Schema> {
 
 
 @Suppress("UNCHECKED_CAST")
+fun GenericRecord.set(path: List<PathComponent>, value: Any?) {
+    var current: Any? = this
+    var schema: Schema = this.schema
+    val generic = GenericData()
+    for (componentIndex in path.indices) {
+        val component = path[componentIndex]
+        val lastComponent = (componentIndex == path.size - 1)
+        when (component.type) {
+            ComponentType.FIELD -> {
+                if (schema.type != Schema.Type.RECORD) throw AvroRuntimeException("Not a record type")
+                val record = current as GenericRecord
+                schema = schema.getField(component.part).schema()
+                if (lastComponent) {
+                    record.putTyped(component.part, value, value?.javaClass ?: Any::class.java)
+                    return
+                }
+                current = record.get(component.part)
+            }
+
+            ComponentType.INDEX -> {
+                if (schema.type != Schema.Type.ARRAY) throw AvroRuntimeException("Not an array type")
+                val index = component.part.toInt()
+                val array = current as GenericArray<Any?>
+                schema = schema.elementType
+                if (lastComponent) {
+                    array[index] = value
+                    return
+                }
+                current = array[index]
+            }
+
+            ComponentType.KEY -> {
+                if (schema.type != Schema.Type.MAP) throw AvroRuntimeException("Not a map type")
+                val map = current as MutableMap<CharSequence, Any?>
+                schema = schema.valueType
+                if (lastComponent) {
+                    map[Utf8(component.part)] = value
+                    return
+                }
+                current = map[component.part] ?: map[Utf8(component.part)]
+            }
+        }
+        if (schema.type == Schema.Type.UNION) {
+            val schemaIndexUsed = generic.resolveUnion(schema, current)
+            schema = schema.types[schemaIndexUsed]
+        }
+    }
+}
+
+
 fun GenericRecord.findWithLogicalTypes(path: List<PathComponent>): Pair<Any?, Schema> {
     val (obj, schema) = find(path)
     val outputObj = convertLogicalTypes(obj, schema)
