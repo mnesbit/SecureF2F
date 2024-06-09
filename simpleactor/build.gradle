@@ -1,0 +1,12 @@
+description 'Simple actor library'
+
+dependencies {
+    api "com.typesafe:config:$typesafe_version"
+}
+
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}

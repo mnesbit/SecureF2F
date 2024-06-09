@@ -17,5 +17,6 @@ dependencyResolutionManagement {
 rootProject.name = 'AkkaTest'
 include 'crypto'
 include 'avro'
+include 'simpleactor'
 include 'network'
 
