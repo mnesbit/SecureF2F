@@ -1,9 +1,7 @@
 package uk.co.nesbit.simpleactor.impl
 
 import org.slf4j.Logger
-import uk.co.nesbit.simpleactor.ActorRef
-import uk.co.nesbit.simpleactor.Props
-import uk.co.nesbit.simpleactor.TimerScheduler
+import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.simpleactor.impl.messages.Unwatch
 import uk.co.nesbit.simpleactor.impl.messages.Watch
 import java.util.concurrent.atomic.AtomicLong
@@ -11,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal class ActorContextImpl(
     override val system: ActorSystemInternal,
     override val parent: ActorRef,
-    override val self: ActorRef,
+    val selfLifecycle: ActorLifecycle,
     override val props: Props,
     override val log: Logger,
     override val timers: TimerScheduler
@@ -19,6 +17,9 @@ internal class ActorContextImpl(
     companion object {
         val uid = AtomicLong(0L)
     }
+
+    override val self: ActorRef
+        get() = selfLifecycle.self
 
     var senderInternal: ActorRef? = null
 
@@ -30,8 +31,7 @@ internal class ActorContextImpl(
         get() = senderInternal!!
 
     override val children: List<ActorRef>
-        get() = system.resolve(self).children.map { it.self }
-
+        get() = selfLifecycle.children.map { it.self }
 
     override fun getChild(name: String): ActorRef? {
         val childPath = self.path.child(name)
@@ -55,7 +55,7 @@ internal class ActorContextImpl(
         props: Props
     ): ActorRefImpl {
         val ref = ActorRefImpl.createActorRef(system, self.path.child(name))
-        system.resolve(self).createChild(
+        selfLifecycle.createChild(
             props,
             ref
         )
@@ -66,18 +66,28 @@ internal class ActorContextImpl(
         require(self.path.child(child.path.name) == child.path) {
             "Can only stop child"
         }
-        system.resolve(child).stop()
+        selfLifecycle.children.single { it.self == child }.stop()
     }
 
     override fun watch(other: ActorRef) {
-        if (!system.resolve(self).watchers.contains(other)) {
+        if (!selfLifecycle.watchers.contains(other)) {
             other.tell(Watch(other, self), self)
         }
     }
 
     override fun unwatch(other: ActorRef) {
-        if (system.resolve(self).watchers.contains(other)) {
+        if (selfLifecycle.watchers.contains(other)) {
             other.tell(Unwatch(other, self), self)
+        }
+    }
+
+    override fun actorSelection(path: ActorPath): ActorSelection = actorSelection(path.address)
+
+    override fun actorSelection(path: String): ActorSelection {
+        return if (path.startsWith("/")) {
+            ActorSelectionImpl(system, path)
+        } else {
+            ActorSelectionImpl(system, self.path.address + "/" + path)
         }
     }
 }

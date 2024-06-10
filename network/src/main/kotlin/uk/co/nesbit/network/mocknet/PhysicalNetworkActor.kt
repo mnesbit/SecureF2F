@@ -1,16 +1,12 @@
 package uk.co.nesbit.network.mocknet
 
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.Terminated
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
-import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
-import uk.co.nesbit.network.util.createProps
+import uk.co.nesbit.simpleactor.*
 import java.time.Clock
 import java.util.concurrent.atomic.AtomicInteger
 
-class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : UntypedBaseActorWithLoggingAndTimers() {
+class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(networkConfig: NetworkConfiguration): Props {
@@ -18,7 +14,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
             return createProps(javaClass.enclosingClass, networkConfig)
         }
 
-        const val MAX_BUFFER_SIZE = 100
+        const val MAX_BUFFER_SIZE = 1000
 
         val linkIdCounter = AtomicInteger(0)
     }
@@ -41,7 +37,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
     internal val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end initiator to local
     internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
 
-    private val dnsSelector = context.actorSelection("/user/Dns")
+    private val dnsSelector = context.actorSelection("/Dns")
     private val linkBuffers = mutableMapOf<LinkId, LinkState>()
     private var received: Int = 0
     private var written: Int = 0
@@ -241,7 +237,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Un
         val linkState = linkBuffers.getOrPut(msg.linkId) { LinkState() }
         if (linkState.seqNo - linkState.receiveAckSeqNo > MAX_BUFFER_SIZE) {
             ++dropped
-            log().warning("dropping packet on ${msg.linkId} due to full buffer $dropped $written $received")
+            log().warn("dropping packet on ${msg.linkId} due to full buffer $dropped $written $received")
             return
         }
         val seqNo = linkState.seqNo++

@@ -4,6 +4,10 @@ import uk.co.nesbit.simpleactor.impl.askInternal
 import java.util.concurrent.Future
 
 interface ActorRef {
+    companion object {
+        @JvmStatic
+        fun noSender(): ActorRef = Actor.NoSender
+    }
     val path: ActorPath
     fun tell(msg: Any, sender: ActorRef = currentActorContext()?.self ?: Actor.NoSender)
     fun forward(msg: Any, context: ActorContext = currentActorContext()!!)

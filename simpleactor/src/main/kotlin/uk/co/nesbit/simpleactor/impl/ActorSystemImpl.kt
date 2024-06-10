@@ -3,16 +3,12 @@ package uk.co.nesbit.simpleactor.impl
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
-import uk.co.nesbit.simpleactor.ActorPath
-import uk.co.nesbit.simpleactor.ActorRef
-import uk.co.nesbit.simpleactor.Props
-import uk.co.nesbit.simpleactor.Terminated
+import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.simpleactor.impl.messages.Watch
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import kotlin.math.min
 
 internal class ActorSystemImpl(
     override val name: String,
@@ -55,6 +51,7 @@ internal class ActorSystemImpl(
             rootRef,
             RootActor.getProps()
         )
+        rootActor.start()
         root = rootActor.self
         log.info("System $name starting")
     }
@@ -106,7 +103,7 @@ internal class ActorSystemImpl(
 
     override fun sendToDeadLetter(dead: List<MessageEntry>) {
         if (dead.isNotEmpty()) {
-            log.warn("dumping ${dead.size} messages to dead letter ${dead.joinToString { it.msg.javaClass.name }}")
+            log.warn("dumping ${dead.size} messages to dead letter: ${dead.joinToString { it.msg.javaClass.name }}")
         }
     }
 
@@ -116,11 +113,16 @@ internal class ActorSystemImpl(
         }
         var current = rootActor
         val targetStr = ref.path.address
+        var levelEnd = targetStr.indexOf('/', rootActor.self.path.address.length + 1)
+        if (levelEnd == -1) {
+            levelEnd = targetStr.length
+        }
         while (current.self.path != ref.path) {
             var found = false
+            val levelStr = targetStr.substring(0, levelEnd)
             for (child in current.children) {
                 val childStr = child.self.path.address
-                if (childStr == targetStr.substring(0, min(childStr.length, targetStr.length))) {
+                if (childStr == levelStr) {
                     current = child
                     found = true
                     break
@@ -129,10 +131,61 @@ internal class ActorSystemImpl(
             if (!found) {
                 throw IllegalArgumentException("Unknown actor $ref")
             }
+            levelEnd = targetStr.indexOf('/', levelEnd + 1)
+            if (levelEnd == -1) {
+                levelEnd = targetStr.length
+            }
         }
         if (current.self != ref) {
             throw IllegalArgumentException("Actor instance $ref dead")
         }
         return current
+    }
+
+    override fun resolveAddress(pathFromRoot: String): List<ActorRef> {
+        val search = if (pathFromRoot.contains("SimpleActor://")) {
+            val root = "SimpleActor://$name/"
+            pathFromRoot.substring(root.length)
+        } else {
+            pathFromRoot
+        }
+        val levels = search.split("/").drop(1)
+        var searchList = listOf(rootActor)
+        for (level in levels) {
+            val newSet = mutableSetOf<ActorLifecycle>()
+            if (level == "*") {
+                for (searched in searchList) {
+                    if (!searched.stopped) {
+                        newSet += searched.children
+                    }
+                }
+            } else if (level == "..") {
+                TODO()
+            } else {
+                for (searched in searchList) {
+                    if (!searched.stopped) {
+                        newSet += searched.children.filter { it.self.path.name == level }
+                    }
+                }
+            }
+            searchList = newSet.toList()
+            if (searchList.isEmpty()) break
+        }
+        return searchList.map { it.self }
+    }
+
+    override fun actorSelection(path: ActorPath): ActorSelection = actorSelection(path.address)
+
+    override fun actorSelection(path: String): ActorSelection {
+        return if (path.startsWith("/")) {
+            ActorSelectionImpl(this, path)
+        } else {
+            ActorSelectionImpl(this, "/$path")
+        }
+    }
+
+    override fun createMessageSink(handler: MessageHandler): MessageSink {
+        val sinkActor = actorOf(MessageSinkActor.getProps(handler))
+        return sinkActor.ask<MessageSink>(MessageSinkActor.RequestSink).get()
     }
 }

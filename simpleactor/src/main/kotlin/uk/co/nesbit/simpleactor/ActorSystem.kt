@@ -14,6 +14,11 @@ interface ActorSystem {
     fun actorOf(props: Props, name: String): ActorRef
     fun actorOf(props: Props): ActorRef
 
+    fun actorSelection(path: String): ActorSelection
+    fun actorSelection(path: ActorPath): ActorSelection
+
     fun stop(actor: ActorRef)
     fun stop()
+
+    fun createMessageSink(handler: MessageHandler): MessageSink
 }

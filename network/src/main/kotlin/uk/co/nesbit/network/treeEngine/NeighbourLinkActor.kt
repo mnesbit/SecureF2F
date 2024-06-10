@@ -1,8 +1,5 @@
 package uk.co.nesbit.network.treeEngine
 
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.Terminated
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
@@ -13,9 +10,7 @@ import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.mocknet.WatchRequest
-import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
-import uk.co.nesbit.network.util.createProps
-import uk.co.nesbit.network.util.millis
+import uk.co.nesbit.simpleactor.*
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -31,7 +26,7 @@ class NeighbourLinkActor(
     private val networkConfig: NetworkConfiguration,
     private val physicalNetworkActor: ActorRef
 ) :
-    UntypedBaseActorWithLoggingAndTimers() {
+    AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -109,7 +104,7 @@ class NeighbourLinkActor(
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().warning("Restart NeighbourLinkActor")
+        log().warn("Restart NeighbourLinkActor")
         physicalNetworkActor.tell(CloseAllRequest(), self)
     }
 
@@ -378,7 +373,7 @@ class NeighbourLinkActor(
                 linkRequestPending -= linkInfo.route.to
                 val prevLink = staticLinkStatus[linkInfo.route.to]
                 if (prevLink != null) {
-                    log().warning("close previous static link $prevLink")
+                    log().warn("close previous static link $prevLink")
                     physicalNetworkActor.tell(CloseRequest(prevLink), self)
                 }
                 staticLinkStatus[linkInfo.route.to] = linkId
@@ -455,13 +450,13 @@ class NeighbourLinkActor(
                     ((3L * heartbeatRate) / 2L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
-                    log().warning("drop rate up $localQueueLatency $heartbeatRate")
+                    log().warn("drop rate up $localQueueLatency $heartbeatRate")
                 }
             } else if (localQueueLatency < LATENCY_LOW) {
                 heartbeatRate = (heartbeatRate - 200L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
-                    log().warning("drop rate down $localQueueLatency $heartbeatRate")
+                    log().warn("drop rate down $localQueueLatency $heartbeatRate")
                 }
             }
         }
@@ -470,7 +465,7 @@ class NeighbourLinkActor(
     private fun processHelloMessage(sourceLink: LinkId, hello: Hello) {
         val linkState = linkStates[sourceLink]
         if (linkState == null) {
-            log().warning("LinkId not known $sourceLink")
+            log().warn("LinkId not known $sourceLink")
             return
         }
         try {
@@ -508,7 +503,7 @@ class NeighbourLinkActor(
         //log().info("tree delay ${ChronoUnit.MILLIS.between(tree.path.path.last().timestamp,now)}")
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
-            log().warning("No hello yet received on $sourceLink")
+            log().warn("No hello yet received on $sourceLink")
             return
         }
         val neighbour = tree.treeAddress
@@ -528,7 +523,7 @@ class NeighbourLinkActor(
         linkState.treeState = null
         linkState.verified = false
         if (tree.stale(now)) {
-            log().warning("Discard Stale Tree State")
+            log().warn("Discard Stale Tree State")
             return
         }
         linkState.identity = neighbour.identity
@@ -553,7 +548,7 @@ class NeighbourLinkActor(
         }
         val selfDistance = selfAddress.greedyDist(treeAddress)
         if (selfDistance == Int.MAX_VALUE) {
-            log().warning("Unmatched roots dropping")
+            log().warn("Unmatched roots dropping")
             return null
         }
         val eligible = mutableListOf<LinkState>()
@@ -580,7 +575,7 @@ class NeighbourLinkActor(
         val now = clock.instant()
         val linkState = linkStates[sourceLink]
         if (linkState?.identity == null) {
-            log().warning("No hello yet received on $sourceLink for greedy message")
+            log().warn("No hello yet received on $sourceLink for greedy message")
             return
         }
         val reversePath = try {
@@ -592,7 +587,7 @@ class NeighbourLinkActor(
                 now
             )
         } catch (ex: Exception) {
-            log().warning("Bad GreedyRoutedMessage ${ex.message}")
+            log().warn("Bad GreedyRoutedMessage ${ex.message}")
             return
         }
         if (reversePath.isNotEmpty()) {
@@ -632,12 +627,12 @@ class NeighbourLinkActor(
     private fun onSendGreedyMessage(messageRequest: NeighbourSendGreedyMessage) {
         val nextHop = findGreedyNextHop(messageRequest.networkAddress, SimpleLinkId(-1))
         if (nextHop == null) {
-            log().warning("Unable to route to ${messageRequest.networkAddress}")
+            log().warn("Unable to route to ${messageRequest.networkAddress}")
             return
         }
         val estimatedHops = selfAddress.greedyDist(messageRequest.networkAddress)
         if (estimatedHops == Int.MAX_VALUE) {
-            log().warning("Unable to route to ${messageRequest.networkAddress}")
+            log().warn("Unable to route to ${messageRequest.networkAddress}")
             return
         }
         val hopCountMax = (3 * estimatedHops) / 2
@@ -657,12 +652,12 @@ class NeighbourLinkActor(
     private fun onSendSphinxMessage(messageRequest: NeighbourSendSphinxMessage) {
         val nextHopLink = addresses[messageRequest.nextHop]
         if (nextHopLink == null) {
-            log().warning("Unable to route to neighbour ${messageRequest.nextHop}")
+            log().warn("Unable to route to neighbour ${messageRequest.nextHop}")
             return
         }
         val nextHop = linkStates[nextHopLink]
         if (nextHop == null) {
-            log().warning("Unable to route to neighbour ${messageRequest.nextHop}")
+            log().warn("Unable to route to neighbour ${messageRequest.nextHop}")
             return
         }
         sendMessageToLink(nextHop, messageRequest.message)

@@ -1,6 +1,7 @@
 package uk.co.nesbit.network.api
 
 import uk.co.nesbit.utils.printHexBinary
+import java.net.URI
 import java.net.URL
 import java.security.PublicKey
 import java.util.*
@@ -14,7 +15,8 @@ class NetworkAddress(val id: Int) : Address {
 
     fun toLocalPublicAddress(): PublicAddress = PublicAddress("localhost", id + 10000)
 
-    fun toLocalHTTPAddress(): URLAddress = URLAddress(URL(URLAddress.HTTP_PROTOCOL, "localhost", id + 10000, "/link"))
+    fun toLocalHTTPAddress(): URLAddress =
+        URLAddress(URI(URLAddress.HTTP_PROTOCOL, null, "localhost", id + 10000, "/link", null, null).toURL())
 
     override fun toString(): String = "NetworkAddress[$id]"
 

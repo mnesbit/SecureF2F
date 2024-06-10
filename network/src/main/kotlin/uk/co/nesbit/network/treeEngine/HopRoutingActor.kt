@@ -1,8 +1,5 @@
 package uk.co.nesbit.network.treeEngine
 
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.Terminated
 import com.github.benmanes.caffeine.cache.Caffeine
 import uk.co.nesbit.avro.serialize
 import uk.co.nesbit.crypto.Ecies
@@ -14,9 +11,7 @@ import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.*
 import uk.co.nesbit.network.mocknet.WatchRequest
-import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
-import uk.co.nesbit.network.util.createProps
-import uk.co.nesbit.network.util.millis
+import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
@@ -61,7 +56,7 @@ class HopRoutingActor(
     private val keyService: KeyService,
     private val neighbourLinkActor: ActorRef
 ) :
-    UntypedBaseActorWithLoggingAndTimers() {
+    AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -209,10 +204,11 @@ class HopRoutingActor(
         if (owners.none { it.second == sender }) {
             owners += Pair(message, sender)
             context.watch(sender)
+            val address = networkAddress
             if (message.subscription.contains(MessageWatchTypes.ADDRESS_UPDATE)
-                && networkAddress != null
+                && address != null
             ) {
-                sender.tell(networkAddress, self)
+                sender.tell(address, self)
             }
         }
     }
@@ -702,7 +698,7 @@ class HopRoutingActor(
             }
         }
         if (parent.responses >= parent.probes.size) {
-            log().warning("Client request for ${parent.request.key} expired")
+            log().warn("Client request for ${parent.request.key} expired")
             outstandingClientRequests -= parent
             val success = (parent.request.data != null)
             parent.sender.tell(ClientDhtResponse(parent.request.key, success, parent.request.data), self)
@@ -758,7 +754,7 @@ class HopRoutingActor(
                 neighbourLinkActor.tell(wrapper, self)
             }
         } else {
-            log().warning("Bad message received")
+            log().warn("Bad message received")
         }
     }
 
@@ -775,14 +771,14 @@ class HopRoutingActor(
             data.put(request.key, request.data)
         }
         if (networkAddress == null) {
-            log().warning("Node not ready for client key ${request.key}")
+            log().warn("Node not ready for client key ${request.key}")
             sender.tell(ClientDhtResponse(request.key, false, request.data), self)
             return
         }
         val now = Clock.systemUTC().instant()
         val initialProbes = findNearest(request.key, ALPHA)
         if (initialProbes.isEmpty()) {
-            log().warning("No nearest nodes for client key ${request.key}")
+            log().warn("No nearest nodes for client key ${request.key}")
             sender.tell(ClientDhtResponse(request.key, false, request.data), self)
             return
         }
@@ -796,7 +792,7 @@ class HopRoutingActor(
 
     private fun onClientSendMessage(message: ClientSendMessage) {
         if (networkAddress == null) {
-            log().warning("Node not ready for client data")
+            log().warn("Node not ready for client data")
             sender.tell(ClientSendResult(message.destination, false), self)
             return
         }
@@ -818,7 +814,7 @@ class HopRoutingActor(
                 val bucket = findBucket(message.destination)
                 val destinationAddress = bucket.nodes.firstOrNull { it.identity.id == message.destination }
                 if (destinationAddress == null) {
-                    log().warning("Node not known ${message.destination}")
+                    log().warn("Node not known ${message.destination}")
                     sender.tell(ClientSendResult(message.destination, false), self)
                     return
                 }

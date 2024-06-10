@@ -235,3 +235,20 @@ class TimerTestActor(var count: Int) : AbstractActor() {
         }
     }
 }
+
+class RecursiveActor(val level: Int) : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(level: Int): Props {
+            return createProps(RecursiveActor::class.java, level)
+        }
+    }
+
+    val child: ActorRef? = if (level > 0) {
+        context.actorOf(getProps(level - 1), (level - 1).toString())
+    } else null
+
+    override fun onReceive(message: Any) {
+        sender.tell(self.path.address)
+    }
+}

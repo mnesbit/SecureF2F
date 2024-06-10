@@ -9,5 +9,6 @@ internal interface ActorSystemInternal : ActorSystem {
     val executor: ExecutorService
     val timerService: ScheduledExecutorService
     fun resolve(ref: ActorRef): ActorLifecycle
+    fun resolveAddress(pathFromRoot: String): List<ActorRef>
     fun sendToDeadLetter(dead: List<MessageEntry>)
 }

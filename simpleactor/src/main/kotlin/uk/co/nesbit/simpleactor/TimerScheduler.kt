@@ -16,3 +16,5 @@ interface TimerScheduler {
 
     fun startTimerAtFixedDelay(key: Any, msg: Any, initialDelay: Duration, interval: Duration)
 }
+
+fun Long.millis(): Duration = Duration.ofMillis(this)

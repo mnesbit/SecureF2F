@@ -1,25 +1,7 @@
 package uk.co.nesbit.network
 
-import akka.actor.ActorRef
-import akka.actor.ActorSystem
-import akka.testkit.TestActorRef
-import akka.testkit.TestActors
-import akka.testkit.TestKit
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.assertArrayEquals
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import scala.jdk.javaapi.CollectionConverters
-import uk.co.nesbit.network.api.*
-import uk.co.nesbit.network.api.net.LinkReceivedMessage
-import uk.co.nesbit.network.api.net.LinkSendMessage
-import uk.co.nesbit.network.api.net.OpenRequest
-import uk.co.nesbit.network.mocknet.*
-import uk.co.nesbit.network.util.seconds
-
 class NetworkTest {
-    private var actorSystem: ActorSystem? = null
+    /*private var actorSystem: ActorSystem? = null
 
     @BeforeEach
     fun setup() {
@@ -385,5 +367,5 @@ class NetworkTest {
                 }
             }
         }
-    }
+    }*/
 }

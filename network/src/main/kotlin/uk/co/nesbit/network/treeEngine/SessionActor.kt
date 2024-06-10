@@ -1,17 +1,12 @@
 package uk.co.nesbit.network.treeEngine
 
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.Terminated
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.network.api.LinkStatus
 import uk.co.nesbit.network.api.active
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.api.tree.NetworkAddressInfo
 import uk.co.nesbit.network.mocknet.WatchRequest
-import uk.co.nesbit.network.util.UntypedBaseActorWithLoggingAndTimers
-import uk.co.nesbit.network.util.createProps
-import uk.co.nesbit.network.util.millis
+import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.utils.printHexBinary
 import java.time.Clock
 import java.time.Instant
@@ -56,7 +51,7 @@ class SessionActor(
     private val keyService: KeyService,
     private val routingActor: ActorRef
 ) :
-    UntypedBaseActorWithLoggingAndTimers() {
+    AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(
@@ -131,7 +126,7 @@ class SessionActor(
 
     override fun postRestart(reason: Throwable?) {
         super.postRestart(reason)
-        log().warning("Restart SessionActor")
+        log().warn("Restart SessionActor")
     }
 
     override fun onReceive(message: Any) {
@@ -236,14 +231,14 @@ class SessionActor(
         if (session.state == SessionState.PassiveOpen
             && ChronoUnit.MILLIS.between(session.creationTime, now) >= PASSIVE_OPEN_TIMEOUT
         ) {
-            log().warning("Passive open of session ${session.sessionId} not acknowledged by client")
+            log().warn("Passive open of session ${session.sessionId} not acknowledged by client")
             session.state = SessionState.Closing
         }
         when (session.state) {
             SessionState.Created -> {
                 if (session.destination !in routeRequests) {
                     routeRequests += session.destination
-                    log().warning("probe for destination ${session.destination}")
+                    log().warn("probe for destination ${session.destination}")
                     routingActor.tell(ClientDhtRequest(session.destination, null), self)
                 }
                 session.state = SessionState.Querying
@@ -251,7 +246,7 @@ class SessionActor(
             SessionState.Querying -> { // wait for reply
                 if (session.destination !in routeRequests) {
                     routeRequests += session.destination
-                    log().warning("re-probe for destination ${session.destination}")
+                    log().warn("re-probe for destination ${session.destination}")
                     routingActor.tell(ClientDhtRequest(session.destination, null), self)
                 }
                 session.state = SessionState.Querying
@@ -282,7 +277,7 @@ class SessionActor(
                 if (session.windowProcessor.getMaxRetransmits() >= MAX_RETRIES) {
                     if (session.destination !in routeRequests) {
                         routeRequests += session.destination
-                        log().warning("excessive retries re-probe for destination ${session.destination}")
+                        log().warn("excessive retries re-probe for destination ${session.destination}")
                         routingActor.tell(ClientDhtRequest(session.destination, null), self)
                     }
                     session.state = SessionState.Querying
@@ -365,16 +360,16 @@ class SessionActor(
         val session = if (request.sessionId != null) {
             val sessionById = sessions[request.sessionId]
             if (sessionById == null) {
-                log().warning("Session not found for close")
+                log().warn("Session not found for close")
                 return
             }
             if (request.destination != null) {
                 if (sessionById.destination != request.destination) {
-                    log().warning("destination of session for close does not match expected")
+                    log().warn("destination of session for close does not match expected")
                     return
                 }
                 if (sessionById.clientId != request.clientId) {
-                    log().warning("clientId of session for close does not match expected")
+                    log().warn("clientId of session for close does not match expected")
                     return
                 }
             }
@@ -383,7 +378,7 @@ class SessionActor(
             val sessionByClientIdAndDestination =
                 sessions.values.firstOrNull { it.clientId == request.clientId && it.destination == request.destination }
             if (sessionByClientIdAndDestination == null) {
-                log().warning("No session found by clientId and destination to close")
+                log().warn("No session found by clientId and destination to close")
                 return
             }
             sessionByClientIdAndDestination
@@ -472,12 +467,12 @@ class SessionActor(
             return
         }
         if (session.status?.active != true) {
-            log().warning("Session not open")
+            log().warn("Session not open")
             sender.tell(SendSessionDataAck(message.sessionId, false), self)
             return
         }
         if (!session.windowProcessor.sendPacket(message.payload)) {
-            log().warning("Session buffer full")
+            log().warn("Session buffer full")
             sender.tell(SendSessionDataAck(message.sessionId, false), self)
             return
         }

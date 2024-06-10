@@ -1,5 +1,6 @@
 package uk.co.nesbit.simpleactor
 
+import org.slf4j.Logger
 import uk.co.nesbit.simpleactor.impl.currentActorContextInternal
 
 abstract class AbstractActor : Actor {
@@ -14,6 +15,10 @@ abstract class AbstractActor : Actor {
 
     final override val timers: TimerScheduler
         get() = context.timers
+
+    final override fun log(): Logger {
+        return context.log
+    }
 
     override fun preStart() {
 
@@ -31,7 +36,7 @@ abstract class AbstractActor : Actor {
         postStop()
     }
 
-    override fun postRestart(reason: Throwable) {
+    override fun postRestart(reason: Throwable?) {
         preStart()
     }
 

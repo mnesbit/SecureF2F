@@ -4,42 +4,32 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.simpleactor.impl.messages.*
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.atomic.AtomicReference
 
 internal class ActorLifecycle(
-    private val actorSystem: ActorSystemInternal,
+    private val system: ActorSystemInternal,
     private val parent: ActorRefImpl,
     val self: ActorRefImpl,
     private val props: Props
 ) : Teller {
-    private data class ActorInstance(val actor: Actor, val timers: TimerScheduler)
+    private data class ActorInstance(val actor: Actor, val timers: TimerScheduler, val context: ActorContextInternal)
 
     private val actorInstance = AtomicReference<ActorInstance?>(null)
 
     private val log: Logger = LoggerFactory.getLogger(self.toString())
-    private val mailbox = MailboxImpl(actorSystem.executor, ::onReceive)
-    private val childStats = mutableMapOf<String, Int>()
+    private val mailbox = MailboxImpl(system.executor, ::onReceive)
     private var stopping = false
 
     val watchers = mutableSetOf<ActorRef>()
-    val children = mutableListOf<ActorLifecycle>()
+    private val childStats = ConcurrentHashMap<String, Int>()
+    val children = ConcurrentLinkedDeque<ActorLifecycle>()
     var stopped = false
 
-    init {
+    fun start() {
         tellPriority(InitActor, Actor.NoSender)
         mailbox.resume()
-    }
-
-    private fun <R> withActorScope(instance: ActorInstance, block: () -> R): R {
-        val context = ActorContextImpl(
-            actorSystem,
-            parent,
-            self,
-            props,
-            log,
-            instance.timers
-        )
-        return context.actorScope(block)
     }
 
     fun createChild(props: Props, ref: ActorRefImpl) {
@@ -50,12 +40,13 @@ internal class ActorLifecycle(
             "Cannot re-use actor name whilst child exists"
         }
         val child = ActorLifecycle(
-            actorSystem,
+            system,
             self,
             ref,
             props
         )
         children += child
+        child.start()
     }
 
     fun stop() {
@@ -72,17 +63,14 @@ internal class ActorLifecycle(
         log.warn("Stopping $self")
         mailbox.pause()
         val oldActorInstance = actorInstance.getAndSet(null)
+        oldActorInstance?.context?.actorScope {
+            oldActorInstance?.actor?.postStop()
+        }
         oldActorInstance?.timers?.cancelAll()
-        withActorScope(oldActorInstance!!) {
-            oldActorInstance.actor.postStop()
-        }
-        val parentLifecycle = actorSystem.resolve(parent)
-        parentLifecycle.tellPriority(ChildStopped(self.path, self.uid), Actor.NoSender)
-        for (watcher in watchers) {
-            watcher.tell(Terminated(self), Actor.NoSender)
-        }
-        watchers.clear()
-        actorSystem.sendToDeadLetter(mailbox.clear())
+        val parentLifecycle = system.resolve(parent)
+        parentLifecycle.tellPriority(ChildStopped(self.path, self.uid, watchers.toMutableList()), Actor.NoSender)
+        watchers.clear() //responsibility passed to parent
+        system.sendToDeadLetter(mailbox.clear())
         stopped = true
         log.warn("stopped $self")
     }
@@ -90,19 +78,29 @@ internal class ActorLifecycle(
     private fun restartInternal(reason: Throwable, message: Any) {
         log.warn("restarting $self")
         val newActor = createActorInstance(props.clazz, props.args)
-        val newTimers = TimerSchedulerImpl(actorSystem.timerService, self)
-        val oldActorInstance = actorInstance.getAndSet(ActorInstance(newActor, newTimers))
-        oldActorInstance?.timers?.cancelAll()
-        withActorScope(oldActorInstance!!) {
+        val newTimers = TimerSchedulerImpl(system.timerService, self)
+        val newContext = ActorContextImpl(
+            system,
+            parent,
+            this,
+            props,
+            log,
+            newTimers
+        )
+        val oldActorInstance = actorInstance.getAndSet(ActorInstance(newActor, newTimers, newContext))
+        oldActorInstance?.context?.actorScope {
             oldActorInstance.actor.preRestart(reason, message)
+        }
+        newContext.actorScope {
             newActor.postRestart(reason)
         }
+        oldActorInstance?.timers?.cancelAll()
         log.warn("restarted $self")
     }
 
     override fun tell(msg: Any, sender: ActorRef) {
         if (stopped) {
-            actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+            system.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
             return
         }
         mailbox.tell(msg, sender)
@@ -110,7 +108,7 @@ internal class ActorLifecycle(
 
     private fun tellPriority(msg: Any, sender: ActorRef) {
         if (stopped) {
-            actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+            system.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
             return
         }
         mailbox.tellPriority(msg, sender)
@@ -121,80 +119,92 @@ internal class ActorLifecycle(
             var instance = actorInstance.get()
             if (instance == null && msg === InitActor) {
                 log.info("Starting actor $self")
-                val newActor = createActorInstance(props.clazz, props.args)
-                val newTimers = TimerSchedulerImpl(actorSystem.timerService, self)
-                val newInstance = ActorInstance(newActor, newTimers)
+                val newTimers = TimerSchedulerImpl(system.timerService, self)
+                val newContext = ActorContextImpl(
+                    system,
+                    parent,
+                    this,
+                    props,
+                    log,
+                    newTimers
+                )
+                val newActor = newContext.actorScope {
+                    createActorInstance(props.clazz, props.args)
+                }
+                val newInstance = ActorInstance(newActor, newTimers, newContext)
                 val oldActorInstance = actorInstance.getAndSet(newInstance)
                 oldActorInstance?.timers?.cancelAll()
                 instance = newInstance
             }
-            if (instance != null) {
-                withActorScope<Unit>(instance) {
-                    when (msg) {
-                        InitActor -> {
-                            instance.actor.preStart()
-                        }
+            instance?.context?.actorScope {
+                when (msg) {
+                    InitActor -> {
+                        instance.actor.preStart()
+                    }
 
-                        is PoisonPill -> {
-                            stopping = true
-                            if (children.isEmpty()) {
-                                tellPriority(Stopped(self.path, self.uid), Actor.NoSender)
-                            } else {
-                                for (child in children) {
-                                    child.tellPriority(PoisonPill, self) //async version
-                                }
+                    is PoisonPill -> {
+                        stopping = true
+                        if (children.isEmpty()) {
+                            tellPriority(Stopped(self.path, self.uid), Actor.NoSender)
+                        } else {
+                            for (child in children) {
+                                child.tellPriority(PoisonPill, self) //async version
                             }
                         }
+                    }
 
-                        is Stopped -> {
-                            stopInternal()
+                    is Stopped -> {
+                        stopInternal()
+                    }
+
+                    is ChildStopped -> {
+                        log.warn("Child stopped ${msg.oldPath}:${msg.oldUid}")
+                        children.removeIf { it.self.path == msg.oldPath && it.self.uid == msg.oldUid }
+                        // On behalf of child signal their watcher after concrete child removal to avoid race on recreate
+                        for (watcher in msg.watchList) {
+                            watcher.tell(Terminated(self), Actor.NoSender)
                         }
-
-                        is ChildStopped -> {
-                            log.warn("Child stopped ${msg.oldPath}:${msg.oldUid}")
-                            children.removeIf { it.self.path == msg.oldPath && it.self.uid == msg.oldUid }
-                            if (stopping && children.isEmpty()) {
-                                tellPriority(Stopped(self.path, self.uid), Actor.NoSender)
-                            }
+                        if (stopping && children.isEmpty()) {
+                            tellPriority(Stopped(self.path, self.uid), Actor.NoSender)
                         }
+                    }
 
-                        is Restart -> {
-                            restartInternal(msg.reason, msg.message)
+                    is Restart -> {
+                        restartInternal(msg.reason, msg.message)
+                    }
+
+                    is EscalateException -> {
+                        throw msg.ex
+                    }
+
+                    is Kill -> {
+                        throw ActorKilledException("Actor $self killed by $sender")
+                    }
+
+                    is Watch -> {
+                        if (msg.watchee != self) {
+                            system.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+                            return@actorScope
                         }
+                        watchers += msg.watcher
+                    }
 
-                        is EscalateException -> {
-                            throw msg.ex
+                    is Unwatch -> {
+                        if (msg.watchee != self) {
+                            system.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+                            return@actorScope
                         }
+                        watchers -= msg.watcher
+                    }
 
-                        is Kill -> {
-                            throw ActorKilledException("Actor $self killed by $sender")
-                        }
-
-                        is Watch -> {
-                            if (msg.watchee != self) {
-                                actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
-                                return@withActorScope
-                            }
-                            watchers += msg.watcher
-                        }
-
-                        is Unwatch -> {
-                            if (msg.watchee != self) {
-                                actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
-                                return@withActorScope
-                            }
-                            watchers -= msg.watcher
-                        }
-
-                        else -> {
-                            instance.actor.apply {
-                                val contextInternal = context as ActorContextInternal
-                                try {
-                                    contextInternal.setSender(sender)
-                                    onReceive(msg)
-                                } finally {
-                                    contextInternal.setSender(null)
-                                }
+                    else -> {
+                        instance.actor.apply {
+                            val contextInternal = context as ActorContextInternal
+                            try {
+                                contextInternal.setSender(sender)
+                                onReceive(msg)
+                            } finally {
+                                contextInternal.setSender(null)
                             }
                         }
                     }
@@ -209,15 +219,15 @@ internal class ActorLifecycle(
     }
 
     private fun handleError(ex: Throwable) {
-        val parentLifecycle = actorSystem.resolve(parent)
+        val parentLifecycle = system.resolve(parent)
         val parentInstance = parentLifecycle.actorInstance.get()
         if (parentInstance == null) {
             log.error("Unable to locate parent")
         } else {
             val parentContext = ActorContextImpl(
-                actorSystem,
+                system,
                 parentLifecycle.parent,
-                parentLifecycle.self,
+                parentLifecycle,
                 parentLifecycle.props,
                 parentLifecycle.log,
                 parentInstance.timers
@@ -248,4 +258,6 @@ internal class ActorLifecycle(
             }
         }
     }
+
+    override fun toString(): String = "ActorLifeCycle[${self.path}]"
 }

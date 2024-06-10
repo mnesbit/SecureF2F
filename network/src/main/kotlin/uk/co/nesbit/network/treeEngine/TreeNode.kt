@@ -1,10 +1,10 @@
 package uk.co.nesbit.network.treeEngine
 
-import akka.actor.ActorRef
-import akka.actor.ActorSystem
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.services.KeyServiceImpl
+import uk.co.nesbit.simpleactor.ActorRef
+import uk.co.nesbit.simpleactor.ActorSystem
 
 class TreeNode(private val actorSystem: ActorSystem, networkConfig: NetworkConfiguration) {
     val name: String = networkConfig.networkId.actorName

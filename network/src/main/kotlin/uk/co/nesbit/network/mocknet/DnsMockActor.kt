@@ -1,19 +1,14 @@
 package uk.co.nesbit.network.mocknet
 
-import akka.actor.AbstractLoggingActor
-import akka.actor.ActorRef
-import akka.actor.Props
-import akka.actor.Terminated
-import akka.japi.pf.ReceiveBuilder
 import uk.co.nesbit.network.api.LinkId
 import uk.co.nesbit.network.api.NetworkAddress
-import uk.co.nesbit.network.util.createProps
+import uk.co.nesbit.simpleactor.*
 
 data class DnsRegistration(val networkId: NetworkAddress)
 data class DnsLookup(val networkId: NetworkAddress, val linkId: LinkId)
 data class DnsResponse(val linkId: LinkId, val actorRef: ActorRef?)
 
-class DnsMockActor : AbstractLoggingActor() {
+class DnsMockActor : AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(): Props {
@@ -40,12 +35,14 @@ class DnsMockActor : AbstractLoggingActor() {
         //log().info("Restart DnsMockActor")
     }
 
-    override fun createReceive(): Receive =
-            ReceiveBuilder()
-                    .match(DnsRegistration::class.java, ::onRegistration)
-                    .match(Terminated::class.java, ::onDeath)
-                    .match(DnsLookup::class.java, ::onLookup)
-                    .build()
+    override fun onReceive(message: Any) {
+        when (message) {
+            is DnsRegistration -> onRegistration(message)
+            is Terminated -> onDeath(message)
+            is DnsLookup -> onLookup(message)
+            else -> throw UnhandledMessage("Not handled message type ${message.javaClass.name}")
+        }
+    }
 
     private fun onRegistration(registration: DnsRegistration) {
         //log().info("Received DNS registration $registration")

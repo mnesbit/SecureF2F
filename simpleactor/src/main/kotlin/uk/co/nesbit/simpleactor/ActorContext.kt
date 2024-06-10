@@ -23,6 +23,9 @@ interface ActorContext {
     fun stop(child: ActorRef)
     fun watch(other: ActorRef)
     fun unwatch(other: ActorRef)
+
+    fun actorSelection(path: String): ActorSelection
+    fun actorSelection(path: ActorPath): ActorSelection
 }
 
 fun currentActorContext(): ActorContext? {

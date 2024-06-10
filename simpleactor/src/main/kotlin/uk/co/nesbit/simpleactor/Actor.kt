@@ -1,5 +1,7 @@
 package uk.co.nesbit.simpleactor
 
+import org.slf4j.Logger
+
 interface Actor {
     companion object {
         val NoSender: ActorRef = object : ActorRef {
@@ -23,10 +25,12 @@ interface Actor {
     val sender: ActorRef
     val timers: TimerScheduler
 
+    fun log(): Logger
+
     fun preStart()
     fun postStop()
     fun preRestart(reason: Throwable, message: Any)
-    fun postRestart(reason: Throwable)
+    fun postRestart(reason: Throwable?)
     fun supervisorStrategy(
         context: ActorContext,
         child: ActorRef,

@@ -98,10 +98,12 @@ class ActorTests {
         val system = ActorSystem.create("Test", conf)
         val ref1 = system.actorOf(MinimumTestActorInt.getProps(1), "Int")
         assertEquals("SimpleActor://Test/Int", ref1.path.address)
-        val ref2 = system.actorOf(PollingActor.getProps(10000, ref1), "Test1")
+        val ref2 = system.actorOf(PollingActor.getProps(1000, ref1), "Test1")
         while (ref2.ask<Boolean>("Running").get()) {
             Thread.sleep(100L)
         }
+        system.stop(ref1)
+        system.stop(ref2)
         system.stop()
     }
 
@@ -155,6 +157,34 @@ class ActorTests {
             Thread.sleep(100L)
         }
         system.stop(ref1)
+        system.stop()
+    }
+
+    @Test
+    fun `create child actor inside construction`() {
+        val conf = ConfigFactory.parseString(
+            """
+                SimpleActor {
+                }
+        """
+        )
+        val system = ActorSystem.create("Test", conf)
+        for (i in 0 until 100) {
+            system.actorOf(RecursiveActor.getProps(10), "Recursive_$i")
+        }
+        for (i in 0 until 100) {
+            var path = "/Recursive_$i"
+            val ref = system.actorSelection(path).resolve().single()
+            println("test $path")
+            assertEquals("SimpleActor://Test$path", ref.ask<String>("Test$i").get())
+            for (level in 9 downTo 0) {
+                path += "/$level"
+                val ref2 = system.actorSelection(path).resolve().single()
+                println("test $path")
+                assertEquals("SimpleActor://Test$path", ref2.ask<String>("Test$i.level.$level").get())
+            }
+
+        }
         system.stop()
     }
 }

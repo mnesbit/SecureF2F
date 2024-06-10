@@ -1,27 +1,21 @@
 package uk.co.nesbit
 
-import akka.actor.ActorRef
-import akka.actor.ActorSystem
-import akka.pattern.Patterns.ask
-import akka.stream.OverflowStrategy
-import akka.stream.javadsl.Sink
-import akka.stream.javadsl.Source
-import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import scala.concurrent.Await
 import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.toByteArray
-import uk.co.nesbit.network.api.Address
-import uk.co.nesbit.network.api.NetworkAddress
-import uk.co.nesbit.network.api.NetworkConfiguration
-import uk.co.nesbit.network.api.active
+import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.mocknet.DnsMockActor
 import uk.co.nesbit.network.mocknet.WatchRequest
 import uk.co.nesbit.network.treeEngine.*
+import uk.co.nesbit.simpleactor.ActorRef
+import uk.co.nesbit.simpleactor.ActorSystem
+import uk.co.nesbit.simpleactor.ask
 import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 
@@ -30,7 +24,8 @@ fun main() {
     //while(true) {
     val degree = 3
     val N = 1000
-    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
+    val simNetwork = makeRandomNetwork(degree, N)
+    //val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
@@ -45,7 +40,7 @@ fun main() {
     }
     //pollDht(simNodes, actorSystem)
     createStream(simNodes, actorSystem)
-    //actorSystem.terminate().value()
+    actorSystem.stop()
 }
 
 private fun createStream(
@@ -53,7 +48,7 @@ private fun createStream(
     actorSystem: ActorSystem
 ) {
     val random = Random()
-    val timeout = Timeout.create(Duration.ofSeconds(120L))
+    val timeout = Duration.ofSeconds(120L)
     var sourceName: String
     var sourceAddress: SecureHash? = null
     var destName: String
@@ -61,21 +56,29 @@ private fun createStream(
     while (true) {
         Thread.sleep(1000L)
         sourceName = simNodes[random.nextInt(simNodes.size)].name
-        val randomSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
-        val sourceFut = ask(randomSourceNode, SelfAddressRequest(), timeout)
+        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session").resolve()
+        if (randomSourceNodes.isEmpty()) {
+            continue
+        }
+        destName = simNodes[random.nextInt(simNodes.size)].name
+        val randomDestNodes = actorSystem.actorSelection("SimpleActor://Akka/$destName/session").resolve()
+        if (randomDestNodes.isEmpty()) {
+            continue
+        }
+        val randomSourceNode = randomSourceNodes.single()
+        val sourceFut = randomSourceNode.ask<SelfAddressResponse>(SelfAddressRequest())
         try {
-            val sourceResult = Await.result(sourceFut, timeout.duration()) as SelfAddressResponse
+            val sourceResult = sourceFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             sourceAddress = sourceResult.address
         } catch (ex: TimeoutException) {
         }
         if (sourceAddress == null) {
             continue
         }
-        destName = simNodes[random.nextInt(simNodes.size)].name
-        val randomDestNode = actorSystem.actorSelection("akka://Akka/user/$destName/session")
-        val destFut = ask(randomDestNode, SelfAddressRequest(), timeout)
+        val randomDestNode = randomDestNodes.single()
+        val destFut = randomDestNode.ask<SelfAddressResponse>(SelfAddressRequest())
         try {
-            val destResult = Await.result(destFut, timeout.duration()) as SelfAddressResponse
+            val destResult = destFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             destAddress = destResult.address
         } catch (ex: TimeoutException) {
         }
@@ -85,35 +88,32 @@ private fun createStream(
         break
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
-    val destSourcePair = Source.actorRef<Any>(
-        { _ -> Optional.empty() },
-        { _ -> Optional.empty() },
-        10,
-        OverflowStrategy.dropHead()
-    ).preMaterialize(actorSystem)
-    val printerRef = destSourcePair.first()
-    val destSource = destSourcePair.second()
-    val destNodeSel = actorSystem.actorSelection("akka://Akka/user/$destName/session")
-    destSource.to(Sink.foreach { msg ->
+    val destNodeSel = actorSystem.actorSelection("SimpleActor://Akka/$destName/session").resolve().single()
+    val closeFut = CompletableFuture<Boolean>()
+    val sink = actorSystem.createMessageSink { self, msg, sender ->
         if (msg is SessionStatusInfo) {
             println("New session $msg")
-            destNodeSel.tell(RemoteConnectionAcknowledge(msg.sessionId, 999, true), printerRef)
+            sender.tell(RemoteConnectionAcknowledge(msg.sessionId, 999, true), self)
+            if (msg.status == LinkStatus.LINK_DOWN) {
+                closeFut.complete(true)
+            }
         } else if (msg is ReceiveSessionData) {
             println("Received ${msg.payload.toString(Charsets.UTF_8)} from ${msg.sessionId}")
         } else {
             println("unknown message type $msg")
         }
-    }).run(actorSystem)
-    destNodeSel.tell(WatchRequest(), printerRef)
+    }
+    destNodeSel.tell(WatchRequest(), sink)
     var queryNo = 0
     var sessionId: Long
     while (true) {
         Thread.sleep(1000L)
-        val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session")
         println("Send open query")
-        val openFut = ask(sessionSourceNode, OpenSessionRequest(queryNo++, destAddress!!), timeout)
+        val openFut =
+            sessionSourceNode.resolve().single().ask<SessionStatusInfo>(OpenSessionRequest(queryNo++, destAddress!!))
         try {
-            val destResult = Await.result(openFut, timeout.duration()) as SessionStatusInfo
+            val destResult = openFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             println("result $destResult ${destResult.sessionId}")
             if (destResult.status.active) {
                 sessionId = destResult.sessionId
@@ -126,15 +126,13 @@ private fun createStream(
 
     var packetNo = 0
     while (packetNo < 2000) {
-        val sessionSourceNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session").resolve().single()
         println("Send data query $packetNo")
-        val sendFut = ask(
-            sessionSourceNode,
-            SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8)),
-            timeout
+        val sendFut = sessionSourceNode.ask<SendSessionDataAck>(
+            SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8))
         )
         try {
-            val destResult = Await.result(sendFut, timeout.duration()) as SendSessionDataAck
+            val destResult = sendFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             println("result $destResult ${destResult.sessionId} ${destResult.success}")
             if (destResult.success) {
                 packetNo++
@@ -144,11 +142,10 @@ private fun createStream(
         } catch (ex: TimeoutException) {
         }
     }
-    val sessionNode = actorSystem.actorSelection("akka://Akka/user/$sourceName/session")
+    val sessionNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session")
     sessionNode.tell(CloseSessionRequest(null, sessionId, null), ActorRef.noSender())
-    while (true) {
-        Thread.sleep(1000L)
-    }
+    closeFut.get()
+    sink.close()
 }
 
 private fun pollDht(
@@ -157,20 +154,20 @@ private fun pollDht(
 ) {
     val random = Random()
     var round = 0
-    val timeout = Timeout.create(Duration.ofSeconds(120L))
+    val timeout = Duration.ofSeconds(120L)
     while (true) {
         Thread.sleep(5000L)
         ++round
         val putTarget = simNodes[random.nextInt(simNodes.size)].name
-        val randomPutNode = actorSystem.actorSelection("akka://Akka/user/$putTarget/route")
+        val randomPutNode = actorSystem.actorSelection("SimpleActor://Akka/$putTarget/route").resolve().single()
         val data = round.toByteArray()
         val key = SecureHash.secureHash(data)
         val putRequest = ClientDhtRequest(key, data)
-        println("send put $round $key to ${randomPutNode.pathString()}")
+        println("send put $round $key to ${randomPutNode.path}")
         val startPut = System.nanoTime()
-        val putFut = ask(randomPutNode, putRequest, timeout)
+        val putFut = randomPutNode.ask<ClientDhtResponse>(putRequest)
         try {
-            val putResult = Await.result(putFut, timeout.duration()) as ClientDhtResponse
+            val putResult = putFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             val diff = ((System.nanoTime() - startPut) / 1000L).toDouble() / 1000.0
             println("put result $putResult in $diff ms")
         } catch (ex: TimeoutException) {
@@ -178,13 +175,13 @@ private fun pollDht(
         }
 
         val getTarget = simNodes[random.nextInt(simNodes.size)].name
-        val randomGetNode = actorSystem.actorSelection("akka://Akka/user/$getTarget/route")
+        val randomGetNode = actorSystem.actorSelection("SimpleActor://Akka/$getTarget/route").resolve().single()
         val getRequest = ClientDhtRequest(key, null)
-        println("send get $round $key to ${randomGetNode.pathString()}")
+        println("send get $round $key to ${randomGetNode.path}")
         val startGet = System.nanoTime()
-        val getFut = ask(randomGetNode, getRequest, timeout)
+        val getFut = randomGetNode.ask<ClientDhtResponse>(getRequest)
         try {
-            val getResult = Await.result(getFut, timeout.duration()) as ClientDhtResponse
+            val getResult = getFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             val diff = ((System.nanoTime() - startGet) / 1000L).toDouble() / 1000.0
             println("get result $getResult in $diff ms")
         } catch (ex: TimeoutException) {
