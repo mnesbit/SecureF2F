@@ -236,7 +236,7 @@ class TimerTestActor(var count: Int) : AbstractActor() {
     }
 }
 
-class RecursiveActor(val level: Int) : AbstractActor() {
+class RecursiveActor(level: Int) : AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(level: Int): Props {
@@ -248,7 +248,118 @@ class RecursiveActor(val level: Int) : AbstractActor() {
         context.actorOf(getProps(level - 1), (level - 1).toString())
     } else null
 
+    val child2: ActorRef? = if (level > 0) {
+        context.actorOf(getProps(0), "sibling")
+    } else null
+
     override fun onReceive(message: Any) {
+        if (message is String && message.startsWith("Select:")) {
+            sender.tell(context.actorSelection(message.substring("Select:".length)))
+            return
+        }
         sender.tell(self.path.address)
+    }
+}
+
+class StopMe : RuntimeException()
+class IgnoreThis : RuntimeException()
+class RestartMe : RuntimeException()
+class Escalate : RuntimeException()
+class Escalate2 : RuntimeException()
+
+class GrandSupervisorActor : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(): Props {
+            return createProps(GrandSupervisorActor::class.java)
+        }
+    }
+
+    private var count = 0
+
+    override fun onReceive(message: Any) {
+        when (message) {
+            "Ping" -> sender.tell("Pong_${count++}", self)
+            "CreateChild" -> {
+                val newChild = context.actorOf(SupervisorActor.getProps())
+                sender.tell(newChild)
+            }
+
+            "GetChildren" -> sender.tell(context.children, self)
+            else -> throw RuntimeException("Unhandled")
+        }
+    }
+
+    override fun supervisorStrategy(
+        context: ActorContext,
+        child: ActorRef,
+        cause: Throwable,
+        retryCounts: Map<String, Int>
+    ): SupervisorResponse {
+        if (cause is Escalate2) {
+            return SupervisorResponse.Escalate
+        }
+        return SupervisorResponse.StopChild
+    }
+}
+
+class SupervisorActor : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(): Props {
+            return createProps(SupervisorActor::class.java)
+        }
+    }
+
+    private var count = 0
+
+    override fun onReceive(message: Any) {
+        when (message) {
+            "Ping" -> sender.tell("Pong_${count++}", self)
+            "CreateChild" -> {
+                val newChild = context.actorOf(ChildActor.getProps())
+                sender.tell(newChild)
+            }
+
+            "GetChildren" -> sender.tell(context.children, self)
+            else -> throw RuntimeException("Unhandled")
+        }
+    }
+
+    override fun supervisorStrategy(
+        context: ActorContext,
+        child: ActorRef,
+        cause: Throwable,
+        retryCounts: Map<String, Int>
+    ): SupervisorResponse {
+        return when (cause) {
+            is StopMe -> SupervisorResponse.StopChild
+            is IgnoreThis -> SupervisorResponse.Ignore
+            is RestartMe -> SupervisorResponse.RestartChild
+            else -> SupervisorResponse.Escalate
+        }
+    }
+}
+
+class ChildActor : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(): Props {
+            return createProps(ChildActor::class.java)
+        }
+    }
+
+    private var count = 0
+
+    override fun onReceive(message: Any) {
+        when (message) {
+            "Ping" -> sender.tell("Pong_${count++}", self)
+            "Stop" -> throw StopMe()
+            "Ignore" -> throw IgnoreThis()
+            "Restart" -> throw RestartMe()
+            "Escalate" -> throw Escalate()
+            "Escalate2" -> throw Escalate2()
+            else -> throw RuntimeException("Unhandled")
+        }
     }
 }

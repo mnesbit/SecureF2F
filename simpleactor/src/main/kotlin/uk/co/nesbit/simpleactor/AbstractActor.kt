@@ -28,7 +28,7 @@ abstract class AbstractActor : Actor {
 
     }
 
-    override fun preRestart(reason: Throwable, message: Any) {
+    override fun preRestart(reason: Throwable, message: Any?) {
         context.children.forEach { child ->
             context.unwatch(child)
             context.stop(child)

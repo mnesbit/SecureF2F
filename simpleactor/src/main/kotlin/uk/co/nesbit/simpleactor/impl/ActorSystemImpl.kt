@@ -47,10 +47,11 @@ internal class ActorSystemImpl(
         )
         rootActor = ActorLifecycle(
             this,
-            rootRef,
+            null,
             rootRef,
             RootActor.getProps()
         )
+        rootActor.parentLifecycle = rootActor
         rootActor.start()
         root = rootActor.self
         log.info("System $name starting")
@@ -107,6 +108,18 @@ internal class ActorSystemImpl(
         }
     }
 
+    override val deadLetters: ActorRef = object : ActorRef {
+        override val path: ActorPath = ActorPath("${root.path.address}/\$dead")
+
+        override fun tell(msg: Any, sender: ActorRef) {
+            sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+        }
+
+        override fun forward(msg: Any, context: ActorContext) {
+            sendToDeadLetter(listOf(MessageEntry(msg, context.sender)))
+        }
+    }
+
     override fun resolve(ref: ActorRef): ActorLifecycle {
         require(ref.path.address.startsWith(root.path.address)) {
             "Cannot resolve $ref for different system"
@@ -120,7 +133,8 @@ internal class ActorSystemImpl(
         while (current.self.path != ref.path) {
             var found = false
             val levelStr = targetStr.substring(0, levelEnd)
-            for (child in current.children) {
+            val children = current.getChildSnapshot()
+            for (child in children) {
                 val childStr = child.self.path.address
                 if (childStr == levelStr) {
                     current = child
@@ -145,7 +159,7 @@ internal class ActorSystemImpl(
     override fun resolveAddress(pathFromRoot: String): List<ActorRef> {
         val search = if (pathFromRoot.contains("SimpleActor://")) {
             val root = "SimpleActor://$name/"
-            pathFromRoot.substring(root.length)
+            pathFromRoot.substring(root.length - 1)
         } else {
             pathFromRoot
         }
@@ -153,18 +167,33 @@ internal class ActorSystemImpl(
         var searchList = listOf(rootActor)
         for (level in levels) {
             val newSet = mutableSetOf<ActorLifecycle>()
-            if (level == "*") {
+            if (level.contains('*') || level.contains('?')) {
+                val globAsRegex = buildString {
+                    append("^")
+                    append(
+                        level.replace(".", "\\.")
+                            .replace("*", ".*")
+                            .replace("?", ".")
+                    )
+                    append("$")
+                }
+                val levelRegex = Regex(globAsRegex)
                 for (searched in searchList) {
                     if (!searched.stopped) {
-                        newSet += searched.children
+                        val children = searched.getChildSnapshot().filter {
+                            it.self.path.name.matches(levelRegex)
+                        }
+                        newSet += children
                     }
                 }
             } else if (level == "..") {
-                TODO()
+                for (searched in searchList) {
+                    newSet += searched.parentLifecycle!!
+                }
             } else {
                 for (searched in searchList) {
                     if (!searched.stopped) {
-                        newSet += searched.children.filter { it.self.path.name == level }
+                        newSet += searched.getChildSnapshot().filter { it.self.path.name == level }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 package uk.co.nesbit.simpleactor
 
-class Terminated(val actor: ActorRef)
+data class Terminated(val actor: ActorRef)
 
 object PoisonPill
 

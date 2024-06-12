@@ -21,7 +21,7 @@ internal class ActorContextImpl(
     override val self: ActorRef
         get() = selfLifecycle.self
 
-    var senderInternal: ActorRef? = null
+    private var senderInternal: ActorRef? = null
 
     override fun setSender(sender: ActorRef?) {
         senderInternal = sender
@@ -31,7 +31,7 @@ internal class ActorContextImpl(
         get() = senderInternal!!
 
     override val children: List<ActorRef>
-        get() = selfLifecycle.children.map { it.self }
+        get() = selfLifecycle.getChildSnapshot().map { it.self }
 
     override fun getChild(name: String): ActorRef? {
         val childPath = self.path.child(name)
@@ -66,17 +66,17 @@ internal class ActorContextImpl(
         require(self.path.child(child.path.name) == child.path) {
             "Can only stop child"
         }
-        selfLifecycle.children.single { it.self == child }.stop()
+        selfLifecycle.getChildSnapshot().single { it.self == child }.stop()
     }
 
     override fun watch(other: ActorRef) {
-        if (!selfLifecycle.watchers.contains(other)) {
+        if (!selfLifecycle.getWatcherSnapshot().contains(other)) {
             other.tell(Watch(other, self), self)
         }
     }
 
     override fun unwatch(other: ActorRef) {
-        if (selfLifecycle.watchers.contains(other)) {
+        if (selfLifecycle.getWatcherSnapshot().contains(other)) {
             other.tell(Unwatch(other, self), self)
         }
     }

@@ -28,7 +28,7 @@ internal class ActorRefImpl(
 
     override fun tell(msg: Any, sender: ActorRef) {
         if (!valid) {
-            actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+            actorSystem.deadLetters.tell(msg, sender)
             return
         }
         var sendTo = target
@@ -37,7 +37,7 @@ internal class ActorRefImpl(
                 actorSystem.resolve(this)
             } catch (ex: Exception) {
                 valid = false
-                actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+                actorSystem.deadLetters.tell(msg, sender)
                 return
             }
             sendTo = actor
@@ -45,7 +45,7 @@ internal class ActorRefImpl(
         }
         if (sendTo.stopped) {
             valid = false
-            actorSystem.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
+            actorSystem.deadLetters.tell(msg, sender)
             return
         }
         sendTo.tell(msg, sender)

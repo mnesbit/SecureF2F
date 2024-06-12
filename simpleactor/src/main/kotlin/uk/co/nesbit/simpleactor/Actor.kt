@@ -11,9 +11,11 @@ interface Actor {
                 }
 
             override fun tell(msg: Any, sender: ActorRef) {
+                currentActorContext()?.system?.deadLetters?.tell(msg, sender)
             }
 
             override fun forward(msg: Any, context: ActorContext) {
+                currentActorContext()?.system?.deadLetters?.forward(msg, context)
             }
 
             override fun toString(): String = "NoSender"
@@ -29,7 +31,7 @@ interface Actor {
 
     fun preStart()
     fun postStop()
-    fun preRestart(reason: Throwable, message: Any)
+    fun preRestart(reason: Throwable, message: Any?)
     fun postRestart(reason: Throwable?)
     fun supervisorStrategy(
         context: ActorContext,

@@ -31,7 +31,7 @@ fun main() {
     //println("Network diameter: ${diameter(simNetwork)}")
     val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
-    val actorSystem = ActorSystem.create("Akka", conf)
+    val actorSystem = ActorSystem.create("p2p", conf)
     actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
     for (networkAddress in simNetwork.keys) {
         val links = simNetwork[networkAddress]!!
@@ -41,6 +41,7 @@ fun main() {
     //pollDht(simNodes, actorSystem)
     createStream(simNodes, actorSystem)
     actorSystem.stop()
+    println("bye")
 }
 
 private fun createStream(
@@ -56,12 +57,12 @@ private fun createStream(
     while (true) {
         Thread.sleep(1000L)
         sourceName = simNodes[random.nextInt(simNodes.size)].name
-        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session").resolve()
+        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session").resolve()
         if (randomSourceNodes.isEmpty()) {
             continue
         }
         destName = simNodes[random.nextInt(simNodes.size)].name
-        val randomDestNodes = actorSystem.actorSelection("SimpleActor://Akka/$destName/session").resolve()
+        val randomDestNodes = actorSystem.actorSelection("SimpleActor://p2p/$destName/session").resolve()
         if (randomDestNodes.isEmpty()) {
             continue
         }
@@ -88,7 +89,7 @@ private fun createStream(
         break
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
-    val destNodeSel = actorSystem.actorSelection("SimpleActor://Akka/$destName/session").resolve().single()
+    val destNodeSel = actorSystem.actorSelection("SimpleActor://p2p/$destName/session").resolve().single()
     val closeFut = CompletableFuture<Boolean>()
     val sink = actorSystem.createMessageSink { self, msg, sender ->
         if (msg is SessionStatusInfo) {
@@ -108,7 +109,7 @@ private fun createStream(
     var sessionId: Long
     while (true) {
         Thread.sleep(1000L)
-        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session")
+        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
         println("Send open query")
         val openFut =
             sessionSourceNode.resolve().single().ask<SessionStatusInfo>(OpenSessionRequest(queryNo++, destAddress!!))
@@ -126,7 +127,7 @@ private fun createStream(
 
     var packetNo = 0
     while (packetNo < 2000) {
-        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session").resolve().single()
+        val sessionSourceNode = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session").resolve().single()
         println("Send data query $packetNo")
         val sendFut = sessionSourceNode.ask<SendSessionDataAck>(
             SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8))
@@ -142,7 +143,7 @@ private fun createStream(
         } catch (ex: TimeoutException) {
         }
     }
-    val sessionNode = actorSystem.actorSelection("SimpleActor://Akka/$sourceName/session")
+    val sessionNode = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
     sessionNode.tell(CloseSessionRequest(null, sessionId, null), ActorRef.noSender())
     closeFut.get()
     sink.close()
@@ -159,7 +160,7 @@ private fun pollDht(
         Thread.sleep(5000L)
         ++round
         val putTarget = simNodes[random.nextInt(simNodes.size)].name
-        val randomPutNode = actorSystem.actorSelection("SimpleActor://Akka/$putTarget/route").resolve().single()
+        val randomPutNode = actorSystem.actorSelection("SimpleActor://p2p/$putTarget/route").resolve().single()
         val data = round.toByteArray()
         val key = SecureHash.secureHash(data)
         val putRequest = ClientDhtRequest(key, data)
@@ -175,7 +176,7 @@ private fun pollDht(
         }
 
         val getTarget = simNodes[random.nextInt(simNodes.size)].name
-        val randomGetNode = actorSystem.actorSelection("SimpleActor://Akka/$getTarget/route").resolve().single()
+        val randomGetNode = actorSystem.actorSelection("SimpleActor://p2p/$getTarget/route").resolve().single()
         val getRequest = ClientDhtRequest(key, null)
         println("send get $round $key to ${randomGetNode.path}")
         val startGet = System.nanoTime()

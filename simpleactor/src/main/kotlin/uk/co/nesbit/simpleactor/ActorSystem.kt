@@ -11,6 +11,8 @@ interface ActorSystem {
     val name: String
     val config: Config
 
+    val deadLetters: ActorRef
+
     fun actorOf(props: Props, name: String): ActorRef
     fun actorOf(props: Props): ActorRef
 

@@ -17,11 +17,11 @@ internal class MessageSinkActor(handler: MessageHandler) : AbstractActor() {
             get() = parent.path
 
         override fun tell(msg: Any, sender: ActorRef) {
-            parent.tell(msg, sender)
+            handler.onMessage(parent, msg, sender)
         }
 
         override fun forward(msg: Any, context: ActorContext) {
-            parent.forward(msg, currentActorContext()!!)
+            handler.onMessage(parent, msg, context.sender)
         }
 
         override fun close() {

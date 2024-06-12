@@ -17,8 +17,8 @@ internal data class MessageEntry(
 
 internal interface MailBox : Teller {
     fun tellPriority(msg: Any, sender: ActorRef)
+    fun <R> runExclusive(block: () -> R): R
     fun pause()
     fun resume()
     fun clear(): List<MessageEntry>
-    fun inHandler(): Boolean
 }

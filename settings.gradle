@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'AkkaTest'
+rootProject.name = 'SecureP2P'
 include 'crypto'
 include 'avro'
 include 'simpleactor'
