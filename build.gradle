@@ -14,20 +14,20 @@ subprojects {
 
 allprojects {
     group 'uk.co.nesbit'
-    version akkanet_version
+    version securep2p_version
 
     repositories {
         mavenCentral()
     }
 
-    tasks.withType(JavaCompile) {
+    tasks.withType(JavaCompile).configureEach {
         sourceCompatibility = VERSION_21
         targetCompatibility = VERSION_21
         options.encoding = 'UTF-8'
         options.compilerArgs += '-XDenableSunApiLintControl'
     }
 
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         kotlinOptions {
             languageVersion = '2.0'
             apiVersion = '2.0'
@@ -37,11 +37,11 @@ allprojects {
         }
     }
 
-    tasks.withType(Test) {
+    tasks.withType(Test).configureEach {
         useJUnitPlatform()
 
         // Prevent the project from creating temporary files outside of the build directory.
-        systemProperty 'java.io.tmpdir', buildDir.absolutePath
+        systemProperty 'java.io.tmpdir', layout.buildDirectory.asFile.get().absolutePath
         maxHeapSize = '4096m'
     }
 
@@ -63,7 +63,7 @@ allprojects {
 }
 
 wrapper {
-    gradleVersion = "8.7"
+    gradleVersion = "8.8"
     distributionType = Wrapper.DistributionType.ALL
 }
 

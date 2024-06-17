@@ -62,7 +62,7 @@ class GroupMemberKeyRotate private constructor(
                 "Key cannot be rotated to existing key"
             }
             val truncatedNow = now.truncatedTo(ChronoUnit.MILLIS) // round to prevent round trip problems
-            require(truncatedNow.isAfter(memberInfo.keyIssued)) {
+            require(truncatedNow >= memberInfo.keyIssued) {
                 "Rotation time $truncatedNow not after old issue time ${memberInfo.keyIssued}"
             }
             val oldKey = if (rotateMemberKey) memberInfo.memberKey else memberInfo.groupDhKey
@@ -139,7 +139,7 @@ class GroupMemberKeyRotate private constructor(
         }) {
             "Key cannot be rotated to existing key"
         }
-        require(keyIssueTime.isAfter(oldInfo.keyIssued)) {
+        require(keyIssueTime >= oldInfo.keyIssued) {
             "Rotation time $keyIssueTime not after old issue time ${oldInfo.keyIssued}"
         }
     }

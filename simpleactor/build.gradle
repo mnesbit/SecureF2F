@@ -2,6 +2,8 @@ description 'Simple actor library'
 
 dependencies {
     api "com.typesafe:config:$typesafe_version"
+    //Use jctools for fast mailbox queues
+    implementation "org.jctools:jctools-core:$jctools_version"
 }
 
 idea {

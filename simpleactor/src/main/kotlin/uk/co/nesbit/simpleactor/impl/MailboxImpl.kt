@@ -1,5 +1,6 @@
 package uk.co.nesbit.simpleactor.impl
 
+import org.jctools.queues.MpscLinkedQueue
 import uk.co.nesbit.simpleactor.ActorRef
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
@@ -14,8 +15,8 @@ internal class MailboxImpl(
 
     @Volatile
     private var paused = true
-    private val priorityQueue = MPSCQueue<MessageEntry>()
-    private val queue = MPSCQueue<MessageEntry>()
+    private val priorityQueue = MpscLinkedQueue<MessageEntry>()
+    private val queue = MpscLinkedQueue<MessageEntry>()
     private val pending = AtomicBoolean(false)
 
     @Volatile
