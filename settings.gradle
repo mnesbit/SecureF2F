@@ -1,7 +1,6 @@
 pluginManagement {
     plugins {
         id 'org.jetbrains.kotlin.jvm' version kotlin_version
-        id 'com.google.devtools.ksp' version ksp_version apply false
     }
     repositories {
         gradlePluginPortal()

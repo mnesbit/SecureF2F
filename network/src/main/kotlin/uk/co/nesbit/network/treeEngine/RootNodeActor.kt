@@ -1,8 +1,10 @@
 package uk.co.nesbit.network.treeEngine
 
 import uk.co.nesbit.network.api.NetworkConfiguration
+import uk.co.nesbit.network.api.PublicAddress
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
+import uk.co.nesbit.network.tcpnet.TcpNetworkActor
 import uk.co.nesbit.simpleactor.*
 
 class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractActor() {
@@ -24,13 +26,13 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     }
 
     private val physicalNetworkActor: ActorRef = when (networkConfig.networkId) {
-        /*        is PublicAddress -> {
-                    context.actorOf(
-                        TcpNetworkActor.getProps(networkConfig).withDispatcher("akka.fixed-dispatcher"),
-                        "net"
-                    )
-                }
-                is URLAddress -> {
+        is PublicAddress -> {
+            context.actorOf(
+                TcpNetworkActor.getProps(networkConfig),
+                "net"
+            )
+        }
+        /*        is URLAddress -> {
                     context.actorOf(
                         URLNetworkActor.getProps(networkConfig, keyService).withDispatcher("akka.fixed-dispatcher"),
                         "net"
@@ -61,6 +63,7 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
             ), "route"
         )
 
+    @Suppress("UNUSED")
     private val sessionActor: ActorRef =
         context.actorOf(
             SessionActor.getProps(

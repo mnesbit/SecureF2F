@@ -13,10 +13,10 @@ interface Address {
 class NetworkAddress(val id: Int) : Address {
     override val actorName: String get() = id.toString()
 
-    fun toLocalPublicAddress(): PublicAddress = PublicAddress("localhost", id + 10000)
+    fun toLocalPublicAddress(): PublicAddress = PublicAddress("localhost", id + 20000)
 
     fun toLocalHTTPAddress(): URLAddress =
-        URLAddress(URI(URLAddress.HTTP_PROTOCOL, null, "localhost", id + 10000, "/link", null, null).toURL())
+        URLAddress(URI(URLAddress.HTTP_PROTOCOL, null, "localhost", id + 20000, "/link", null, null).toURL())
 
     override fun toString(): String = "NetworkAddress[$id]"
 

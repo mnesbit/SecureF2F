@@ -20,7 +20,7 @@ interface ActorContext {
     fun actorOf(props: Props, name: String): ActorRef
     fun actorOf(props: Props): ActorRef
 
-    fun stop(child: ActorRef)
+    fun stop(other: ActorRef)
     fun watch(other: ActorRef)
     fun unwatch(other: ActorRef)
 

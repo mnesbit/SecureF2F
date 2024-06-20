@@ -62,11 +62,12 @@ internal class ActorContextImpl(
         return ref
     }
 
-    override fun stop(child: ActorRef) {
-        require(self.path.child(child.path.name) == child.path) {
-            "Can only stop child"
+    override fun stop(other: ActorRef) {
+        if (other == self) {
+            selfLifecycle.stop()
+        } else {
+            other.tell(PoisonPill, self)
         }
-        selfLifecycle.getChildSnapshot().single { it.self == child }.stop()
     }
 
     override fun watch(other: ActorRef) {

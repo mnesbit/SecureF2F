@@ -24,8 +24,9 @@ fun main() {
     //while(true) {
     val degree = 3
     val N = 1000
-    val simNetwork = makeRandomNetwork(degree, N)
-    //val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
+    //val simNetwork = makeRandomNetwork(degree, N)
+    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
+    //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")

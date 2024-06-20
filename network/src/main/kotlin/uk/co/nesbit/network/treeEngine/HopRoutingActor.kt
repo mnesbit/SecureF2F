@@ -17,8 +17,6 @@ import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.experimental.xor
 import kotlin.random.Random
 
@@ -67,21 +65,14 @@ class HopRoutingActor(
             return createProps(javaClass.enclosingClass, keyService, neighbourLinkActor)
         }
 
-        const val SHOW_GAP = true
         const val ROUTE_CHECK_INTERVAL_MS = 5000L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
         const val REQUEST_TIMEOUT_INCREMENT_MS = 200L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
-        const val GAP_CALC_STABLE = 2
         const val ALPHA = 3
         const val K = 10
         const val TOKEN_RATE = 4.0
-
-        val bestDist = ConcurrentHashMap<SecureHash, Int>()
-        val gapZero = AtomicInteger(0)
-        val gapStart: Instant = Clock.systemUTC().instant()
-
 
         @JvmStatic
         fun xorPrefix(x: SecureHash, y: SecureHash): Int {
@@ -143,9 +134,6 @@ class HopRoutingActor(
     private var tokens: Double = 0.0
     private var tokenRate: Double = TOKEN_RATE
     private var phase: Int = 0
-    private var gapNEstimate: Int = 0
-    private var gapCalcStable: Int = 0
-    private var gapZeroDone = false
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private val outstandingClientRequests = mutableListOf<ClientRequestState>()
     private var lastSent: Instant = Instant.ofEpochMilli(0L)
@@ -226,7 +214,6 @@ class HopRoutingActor(
         if (networkAddress == null) {
             return
         }
-        val distMin = if (SHOW_GAP) calcNearestNodeGap() else 0
         val now = Clock.systemUTC().instant()
         expireRequests(now)
         for (neighbour in neighbours.values) {
@@ -240,9 +227,6 @@ class HopRoutingActor(
         ) {
             val nearest = findNearest(networkAddress!!.identity.id, ALPHA)
             ++round
-            if (SHOW_GAP) {
-                logNearestNodeGap(nearest, distMin)
-            }
             tokens = 0.0
             if (nearest.isNotEmpty()) {
                 if (phase < nearest.size) {
@@ -356,50 +340,6 @@ class HopRoutingActor(
             log().info("Send client DhtRequest to ${destination.identity.id} for $key")
         }
         sendGreedyMessage(destination, request)
-    }
-
-    private fun logNearestNodeGap(
-        nearest: List<NetworkAddressInfo>,
-        distMin: Int
-    ) {
-        if ((gapCalcStable >= GAP_CALC_STABLE) && nearest.isNotEmpty()) {
-            val gap = nearest.map { xorDistance(it.identity.id, networkAddress!!.identity.id) }.minOrNull()!! - distMin
-            if (gap == 0 && !gapZeroDone) {
-                gapZero.incrementAndGet()
-                gapZeroDone = true
-            } else if (gap != 0 && gapZeroDone) {
-                gapZero.decrementAndGet()
-                gapZeroDone = false
-            }
-            val time = ChronoUnit.MILLIS.between(gapStart, Clock.systemUTC().instant())
-            val gapCount = gapZero.get()
-            val rate = ((gapCount * 1000L) / time)
-            log().info("gap $gap $round ${(100 * gapCount) / gapNEstimate} $rate per/sec ${kbuckets.sumOf { it.nodes.size }} ${kbuckets.size}")
-        }
-    }
-
-    private fun calcNearestNodeGap(): Int {
-        var distMin = 258
-        if (gapCalcStable < GAP_CALC_STABLE) {
-            gapCalcStable++
-            for (key in bestDist.keys()) {
-                val dist = xorDistance(networkAddress!!.identity.id, key)
-                if (dist != 0) {
-                    distMin = kotlin.math.min(dist, distMin)
-                }
-            }
-            if (!bestDist.containsKey(networkAddress!!.identity.id)
-                || gapNEstimate != bestDist.size
-                || bestDist[networkAddress!!.identity.id] != distMin
-            ) {
-                bestDist[networkAddress!!.identity.id] = distMin
-                gapCalcStable = 0
-                gapNEstimate = bestDist.size
-            }
-        } else {
-            distMin = bestDist[networkAddress!!.identity.id]!!
-        }
-        return distMin
     }
 
     private fun sendGreedyMessage(

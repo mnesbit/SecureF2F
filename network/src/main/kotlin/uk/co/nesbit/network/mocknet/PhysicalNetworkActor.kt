@@ -32,10 +32,10 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
     private val networkId: NetworkAddress get() = networkConfig.networkId as NetworkAddress
     private val owners = mutableSetOf<ActorRef>()
 
-    internal val links = mutableMapOf<LinkId, LinkInfo>()
-    internal val targets = mutableMapOf<LinkId, ActorRef>()
-    internal val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end initiator to local
-    internal val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
+    private val links = mutableMapOf<LinkId, LinkInfo>()
+    private val targets = mutableMapOf<LinkId, ActorRef>()
+    private val foreignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end initiator to local
+    private val reverseForeignLinks = mutableMapOf<LinkId, LinkId>() // only on passive end local to initiator
 
     private val dnsSelector = context.actorSelection("/Dns")
     private val linkBuffers = mutableMapOf<LinkId, LinkState>()

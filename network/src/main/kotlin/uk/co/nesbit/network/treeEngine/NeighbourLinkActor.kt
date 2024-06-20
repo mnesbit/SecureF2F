@@ -5,6 +5,7 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
+import uk.co.nesbit.crypto.trace
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.api.net.*
 import uk.co.nesbit.network.api.services.KeyService
@@ -49,7 +50,7 @@ class NeighbourLinkActor(
         const val LATENCY_LOW = 25L
     }
 
-    private class CheckStaticLinks(val first: Boolean)
+    private class CheckStaticLinks
     private class LinkState(val linkId: LinkId, val receiveSecureId: ByteArray, val created: Instant) {
         var identity: VersionedIdentity? = null
         var sendSecureId: ByteArray? = null
@@ -92,7 +93,7 @@ class NeighbourLinkActor(
         physicalNetworkActor.tell(WatchRequest(), self)
         timers.startSingleTimer(
             "staticLinkStartup",
-            CheckStaticLinks(true),
+            CheckStaticLinks(),
             localRand.nextInt(HEARTBEAT_INTERVAL_MS.toInt()).toLong().millis()
         )
     }
@@ -137,7 +138,7 @@ class NeighbourLinkActor(
     private fun onCheckStaticLinks() {
         timers.startSingleTimer(
             "staticLinkPoller",
-            CheckStaticLinks(false),
+            CheckStaticLinks(),
             (heartbeatRate + localRand.nextInt(JITTER_MS) - (JITTER_MS / 2)).millis()
         )
         openStaticLinks()
@@ -360,7 +361,7 @@ class NeighbourLinkActor(
         for (neighbour in linkStates.values) {
             sendTreeForLink(now, neighbour.linkId)
         }
-        log().info("tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}")
+        log().trace { "tree ${keyService.getVersion(networkId).currentVersion.version} ${selfAddress.paths.map { "${it.size}:${it.first()}" }}" }
     }
 
     private fun onLinkStatusChange(linkInfo: LinkInfo) {

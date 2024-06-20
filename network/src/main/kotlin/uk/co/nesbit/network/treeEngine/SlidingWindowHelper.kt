@@ -10,6 +10,7 @@ import uk.co.nesbit.network.util.SequenceNumber
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
+import kotlin.math.max
 
 data class DataPacket(
     val sessionId: Long,
@@ -80,6 +81,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         const val START_WINDOW = 8
         const val MAX_WINDOW = 128
         const val START_RTT = 2000L
+        const val RTT_GRANULARITY = (15L shl 1)
         const val OPEN_TIMEOUT = 15000L
         const val CLOSE_TIMEOUT = 15000L
     }
@@ -121,7 +123,7 @@ class SlidingWindowHelper(val sessionId: Long) {
     private var closeReceived: Boolean = false
 
     private fun rttTimeout(): Long {
-        return ((rttScaled shr 2) + rttVarScaled) shr 1
+        return ((rttScaled shr 2) + max(rttVarScaled, RTT_GRANULARITY)) shr 1
     }
 
     private fun updateRtt(sentTime: Instant, ackTime: Instant) {
@@ -404,7 +406,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         }
         val selectiveAck = calculateSelectiveAck()
         var resend = false
-        for (packet in sendBuffer) {
+        for (packet in sendBuffer.sortedBy { it.lastSent }) {
             val age = ChronoUnit.MILLIS.between(packet.lastSent, now)
             val backoff = 1L shl packet.retransmitCount
             if (age >= timeout * backoff || fastResend) {
@@ -418,13 +420,16 @@ class SlidingWindowHelper(val sessionId: Long) {
                     if (!packet.isClose) availableReceiveWindowSize else CLOSE_MARKER,
                     packet.payload
                 )
+                log.info("SENDING ${packet.seqNo} $now retries ${packet.retransmitCount}")
                 resend = true
+                if (sendList.size >= sendWindowsSize) break
             }
         }
         if (resend) {
             sendWindowsSize = (sendWindowsSize / 2).coerceAtLeast(START_WINDOW)
         }
         while (unsent.isNotEmpty()
+            && sendList.size < sendWindowsSize
             && sendBuffer.size < sendWindowsSize
             && sendBuffer.size < receiveWindowSize
         ) {
