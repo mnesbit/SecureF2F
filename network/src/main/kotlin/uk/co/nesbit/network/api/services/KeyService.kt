@@ -8,6 +8,8 @@ import java.security.SecureRandom
 
 interface KeyService {
     val random: SecureRandom
+    val maxVersion: Int
+    val minVersion: Int
     fun generateNetworkID(publicAddress: String? = null): SecureHash
     fun generateSigningKey(): SecureHash
     fun generateDhKey(): SecureHash

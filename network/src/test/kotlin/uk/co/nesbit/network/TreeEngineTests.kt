@@ -49,11 +49,11 @@ class TreeEngineTests {
         val keyService = KeyServiceImpl(maxVersion = 64)
         val id = keyService.generateNetworkID("1")
         val hello = Hello.createHello(id, keyService)
-        hello.verify()
+        hello.verify(keyService)
         val serialized = hello.serialize()
         val deserialized = Hello.deserialize(serialized)
         assertEquals(hello, deserialized)
-        deserialized.verify()
+        deserialized.verify(keyService)
     }
 
     @Test

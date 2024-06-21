@@ -43,7 +43,6 @@ class NeighbourLinkActor(
         const val HELLO_TIMEOUT_MS = 120000L
         const val JITTER_MS = 1000
         const val HEARTBEAT_INTERVAL_MS = 5000L
-        const val ROOT_STALE_MS = 120000L
         const val DEAD_LINK_MS = 120000L
         const val FREEZE_TIME = 10000L
         const val LATENCY_HIGH = 500L
@@ -77,7 +76,7 @@ class NeighbourLinkActor(
     private val linkRequestPending = mutableSetOf<Address>()
     private val addresses = mutableMapOf<SecureHash, LinkId>()
     private val linkStates = mutableMapOf<LinkId, LinkState>()
-    private val rootExpiryCache = mutableMapOf<SecureHash, Pair<Instant, Instant>>()
+    private val rootExpiryCache = mutableMapOf<SecureHash, Pair<Int, Instant>>()
 
     private var parents: List<ParentInfo> = listOf(ParentInfo(), ParentInfo(), ParentInfo())
     private var selfAddress: NetworkAddressInfo =
@@ -224,8 +223,13 @@ class NeighbourLinkActor(
             .filter { entry -> entry.treeState!!.shortPaths[index].none { it.id == networkId } }
             .filter { entry2 ->
                 val root = entry2.treeState!!.paths[index].path.first()
-                val age = rootExpiryCache[root.identity.id]!!.second
-                ChronoUnit.MILLIS.between(age, now) < ROOT_STALE_MS
+                val cached = rootExpiryCache[root.identity.id]!!
+                if (cached.first + entry2.treeState!!.depths[index] - 1 > keyService.maxVersion) {
+                    // we can't expect stale roots to propagate so further out we are more version headroom needed
+                    return@filter false
+                }
+                val age = cached.second
+                ChronoUnit.MILLIS.between(age, now) < (1 + entry2.treeState!!.depths[index]) * HEARTBEAT_INTERVAL_MS
             }
         if (valid.isEmpty()) {
             currentParent.startPoint = 0
@@ -300,8 +304,8 @@ class NeighbourLinkActor(
                     for (path in tree.paths) {
                         val root = path.path.first()
                         val prevTimes = rootExpiryCache[root.identity.id]
-                        if (prevTimes == null || prevTimes.first < root.timestamp) {
-                            rootExpiryCache[root.identity.id] = Pair(root.timestamp, now)
+                        if (prevTimes == null || prevTimes.first < root.identity.currentVersion.version) {
+                            rootExpiryCache[root.identity.id] = Pair(root.identity.currentVersion.version, now)
                         }
                     }
                 } catch (ex: Exception) {
@@ -317,11 +321,28 @@ class NeighbourLinkActor(
         calcParent(2, now)
         val oldSelfAddress = selfAddress
         calcSelfAddress()
-        if (oldSelfAddress != selfAddress) {
-            keyService.incrementAndGetVersion(networkId)
-            calcSelfAddress()
-            neighbourChanged = true
+        if (parents.count { it.parent == null } == 1) { // rotate stable root keys
+            incrementVersion()
+        } else if (oldSelfAddress.treeAddress1 != selfAddress.treeAddress1
+            || oldSelfAddress.treeAddress2 != selfAddress.treeAddress2
+            || oldSelfAddress.treeAddress3 != selfAddress.treeAddress3
+            || oldSelfAddress.identity.identity != selfAddress.identity.identity
+        ) {
+            incrementVersion()
         }
+    }
+
+    private fun incrementVersion() {
+        keyService.incrementAndGetVersion(networkId)
+        val version = keyService.getVersion(networkId)
+        log().info("Version incremented to ${version.currentVersion.version}")
+        if (version.currentVersion.version >= keyService.maxVersion) {
+            log().warn("NetworkId Key exhausted rotating identity")
+            self.tell(Kill, self)
+            return
+        }
+        calcSelfAddress()
+        neighbourChanged = true
     }
 
     private fun sendMessageToLink(
@@ -470,7 +491,7 @@ class NeighbourLinkActor(
             return
         }
         try {
-            hello.verify()
+            hello.verify(keyService)
         } catch (ex: Exception) {
             log().error("Bad Hello message")
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)

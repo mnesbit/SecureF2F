@@ -193,6 +193,12 @@ class GreedyRoutedMessage private constructor(
                 } else {
                     selfIdentity
                 }
+                require(
+                    next.currentVersion.minVersion >= keyService.minVersion
+                            && next.currentVersion.maxVersion <= keyService.maxVersion
+                ) {
+                    "Version ranges less strict than locally required"
+                }
                 require(timeDiff >= -BaseTimeError) {
                     "Time too far in future $timeDiff ms"
                 }

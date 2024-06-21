@@ -11,8 +11,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 class KeyServiceImpl(
         override val random: SecureRandom = newSecureRandom(),
-        val maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
-        val minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
+        override val maxVersion: Int = HashChainPublic.MAX_CHAIN_LENGTH,
+        override val minVersion: Int = HashChainPublic.MIN_CHAIN_LENGTH
 ) : KeyService {
     private val networkKeys = ConcurrentHashMap<SecureHash, SphinxIdentityKeyPair>()
     private val signingKeys = ConcurrentHashMap<SecureHash, KeyPair>()

@@ -107,7 +107,14 @@ class EncryptedSecurePathItem private constructor(private val encryptedItem: Byt
         val decrypted = Ecies.decryptMessage(encryptedItem, null, finalAddress.identity.diffieHellmanPublicKey) { x ->
             keyService.getSharedDHSecret(finalNodeId, x)
         }
-        return SecurePathItem.deserialize(decrypted)
+        val item = SecurePathItem.deserialize(decrypted)
+        require(
+            item.identity.currentVersion.minVersion >= keyService.minVersion
+                    && item.identity.currentVersion.maxVersion <= keyService.maxVersion
+        ) {
+            "Versioned identity constraints aren't as strict as locally configured"
+        }
+        return item
     }
 
     override fun equals(other: Any?): Boolean {

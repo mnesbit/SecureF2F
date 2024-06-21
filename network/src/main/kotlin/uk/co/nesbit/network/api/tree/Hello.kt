@@ -14,6 +14,7 @@ import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.Message
 import uk.co.nesbit.network.api.services.KeyService
+import java.security.SignatureException
 
 class Hello(
         val secureLinkId: ByteArray,
@@ -69,9 +70,14 @@ class Hello(
         return helloRecord
     }
 
-    fun verify() {
+    fun verify(keyService: KeyService) {
         val bytesToVerify = concatByteArrays(schemaFingerprint, secureLinkId, sourceId.serialize())
         signature.verify(sourceId.identity.signingPublicKey, bytesToVerify)
+        if (sourceId.currentVersion.minVersion < keyService.minVersion
+            || sourceId.currentVersion.maxVersion > keyService.maxVersion
+        ) {
+            throw SignatureException("Peer versioned identity constraint weaker than local")
+        }
     }
 
     override fun equals(other: Any?): Boolean {
