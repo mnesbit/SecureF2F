@@ -293,8 +293,11 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Abstrac
             closeLink(request.linkId)
         }
         if (link != null && link.status == LinkStatus.LINK_UP_PASSIVE) {
-            val remoteAddress = link.route.from as PublicAddress
-            tcpServer?.closeLink(InetSocketAddress(remoteAddress.host, remoteAddress.port))
+            val remoteAddress = remoteMapping.firstNotNullOfOrNull { if (it.value == request.linkId) it.key else null }
+            if (remoteAddress != null) {
+                remoteAddress as PublicAddress
+                tcpServer?.closeLink(InetSocketAddress(remoteAddress.host, remoteAddress.port))
+            }
             closeLink(request.linkId)
         }
     }
