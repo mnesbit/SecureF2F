@@ -266,7 +266,7 @@ class HopRoutingActor(
             }
         }
         for (expired in expiredRequests) {
-            expireClientRequest(expired, now)
+            expireClientRequest(expired)
         }
         val clientRequestItr = outstandingClientRequests.iterator()
         while (clientRequestItr.hasNext()) {
@@ -285,7 +285,7 @@ class HopRoutingActor(
         }
     }
 
-    private fun expireClientRequest(request: RequestTracker, now: Instant) {
+    private fun expireClientRequest(request: RequestTracker) {
         val parent = request.parent
         if (parent == null
             || !outstandingClientRequests.contains(parent)
@@ -293,8 +293,13 @@ class HopRoutingActor(
             return
         }
         parent.failed += 1
-        log().info("Retry expired client request to  ${request.target} for ${parent.request.key}")
-        sendDhtRequest(parent, request.target, parent.request.key, parent.request.data, now)
+        log().info("Expired client request to ${request.target} for ${parent.request.key}")
+        if (parent.responses + parent.failed >= parent.probes.size) {
+            log().warn("Client request for ${parent.request.key} expired")
+            outstandingClientRequests -= parent
+            val success = (parent.request.data != null)
+            parent.sender.tell(ClientDhtResponse(parent.request.key, success, parent.request.data), self)
+        }
     }
 
     private fun pollRandomNode(now: Instant) {
@@ -618,26 +623,15 @@ class HopRoutingActor(
         possibleProbes.removeIf {
             it.identity.id in parent.probes
         }
-        log().info("Client request for ${parent.request.key} returned ${possibleProbes.size} new targets")
+        log().info("Client request for ${parent.request.key} returned ${possibleProbes.size} new targets after ${parent.probes.size} tried")
         if (possibleProbes.isNotEmpty()) {
             for (probe in possibleProbes) {
                 parent.probes += probe.identity.id
                 sendDhtRequest(parent, probe, parent.request.key, parent.request.data, now)
             }
             return
-        } else {
-            val bucket = findBucket(parent.request.key)
-            val alternates = bucket.nodes.toMutableList()
-            alternates.removeIf {
-                it.identity.id in parent.probes
-            }
-            if (alternates.isNotEmpty()) {
-                val randProbe = alternates[localRand.nextInt(alternates.size)]
-                sendDhtRequest(parent, randProbe, parent.request.key, parent.request.data, now)
-                return
-            }
         }
-        if (parent.responses >= parent.probes.size) {
+        if (parent.responses + parent.failed >= parent.probes.size) {
             log().warn("Client request for ${parent.request.key} expired")
             outstandingClientRequests -= parent
             val success = (parent.request.data != null)
