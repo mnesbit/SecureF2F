@@ -500,8 +500,8 @@ class NeighbourLinkActor(
         //log().info("process hello message from $sourceLink")
         val prevAddress = addresses[hello.sourceId.id]
         if (prevAddress != null && prevAddress != sourceLink) {
-            val prevLink = linkStates[prevAddress]!!
-            if (networkId < hello.sourceId.id) {
+            val prevLink = linkStates[prevAddress]
+            if (prevLink != null && networkId < hello.sourceId.id) {
                 val staticTarget = staticLinkReverseStatus[sourceLink]
                 if (staticTarget != null) {
                     log().info("map preferred remote link equivalent $staticTarget via ${prevLink.linkId}")
