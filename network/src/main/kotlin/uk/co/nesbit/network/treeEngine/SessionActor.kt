@@ -490,6 +490,7 @@ class SessionActor(
         if (!sessions.containsKey(message.sessionMessage.sessionId)) {
             when (message.sessionMessage.packetType) {
                 DataPacket.DataPacketType.NORMAL, DataPacket.DataPacketType.ACK -> {
+                    log().warn("Unknown session ${message.sessionMessage.sessionId} send RESET")
                     // Don't bother making a session just to send a reset
                     val resetMessage = DataPacket(
                         message.sessionMessage.sessionId,

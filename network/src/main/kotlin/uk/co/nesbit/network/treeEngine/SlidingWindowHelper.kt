@@ -408,8 +408,8 @@ class SlidingWindowHelper(val sessionId: Long) {
         var resend = false
         for (packet in sendBuffer.sortedBy { it.lastSent }) {
             val age = ChronoUnit.MILLIS.between(packet.lastSent, now)
-            val backoff = 1L shl packet.retransmitCount
-            if (age >= timeout * backoff || fastResend) {
+            val backoff = (1L shl packet.retransmitCount)
+            if (age >= timeout * backoff || (fastResend && packet.retransmitCount == 0)) {
                 ++packet.retransmitCount
                 packet.lastSent = now
                 sendList += DataPacket(
@@ -500,6 +500,7 @@ class SlidingWindowHelper(val sessionId: Long) {
         for (item in receiveBuffer) {
             if (item.seqNo == receiveAckSeqNo) {
                 receiveAckSeqNo = SequenceNumber.increment16(receiveAckSeqNo)
+                needAck = true
             }
         }
     }
@@ -606,6 +607,7 @@ class SlidingWindowHelper(val sessionId: Long) {
             return
         }
         if (distance < 0) {
+            needAck = true
             return
         }
         if (packetType == DataPacket.DataPacketType.CLOSE) {
