@@ -44,7 +44,7 @@ data class SessionStatusInfo(
 data class RemoteConnectionAcknowledge(val sessionId: Long, val clientId: Int, val accept: Boolean)
 
 class SendSessionData(val sessionId: Long, val payload: ByteArray)
-data class SendSessionDataAck(val sessionId: Long, val success: Boolean)
+data class SendSessionDataAck(val sessionId: Long, val success: Boolean, val busy: Boolean)
 class ReceiveSessionData(val sessionId: Long, val payload: ByteArray)
 
 class SessionActor(
@@ -463,17 +463,17 @@ class SessionActor(
         val session = sessions[message.sessionId]
         if (session == null) {
             log().error("Session not found")
-            sender.tell(SendSessionDataAck(message.sessionId, false), self)
+            sender.tell(SendSessionDataAck(message.sessionId, success = false, busy = false), self)
             return
         }
         if (session.status?.active != true) {
             log().warn("Session not open")
-            sender.tell(SendSessionDataAck(message.sessionId, false), self)
+            sender.tell(SendSessionDataAck(message.sessionId, success = false, busy = false), sender = self)
             return
         }
         if (!session.windowProcessor.sendPacket(message.payload)) {
             log().warn("Session buffer full")
-            sender.tell(SendSessionDataAck(message.sessionId, false), self)
+            sender.tell(SendSessionDataAck(message.sessionId, success = true, busy = true), self)
             return
         }
         val now = clock.instant()
@@ -481,7 +481,7 @@ class SessionActor(
             sessions.remove(session.sessionId)
         }
         setSessionTimer()
-        sender.tell(SendSessionDataAck(message.sessionId, true), self)
+        sender.tell(SendSessionDataAck(message.sessionId, success = true, busy = false), self)
     }
 
     private fun onSessionDataReceived(message: ClientReceivedMessage) {

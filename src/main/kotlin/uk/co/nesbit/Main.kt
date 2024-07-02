@@ -26,6 +26,7 @@ fun main() {
     val N = 1000
     //val simNetwork = makeRandomNetwork(degree, N)
     val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
+    //val simNetwork = convertToTcpNetwork(makeBarabasiAlbertNetwork(degree, N))
     //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
     //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
     //val simNetwork = makeASNetwork()
@@ -39,7 +40,7 @@ fun main() {
         val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
         simNodes += TreeNode(actorSystem, config)
     }
-    //pollDht(simNodes, actorSystem)
+    pollDht(simNodes, actorSystem)
     createStream(simNodes, actorSystem)
     actorSystem.stop()
     println("bye")
@@ -51,23 +52,22 @@ private fun createStream(
 ) {
     val random = Random()
     val timeout = Duration.ofSeconds(120L)
-    var sourceName: String
     var sourceAddress: SecureHash? = null
-    var destName: String
     var destAddress: SecureHash? = null
+    val sourceName: String = simNodes[random.nextInt(simNodes.size)].name
+    val randomSourceNodes = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
+    while (randomSourceNodes.resolve().isEmpty()) {
+        Thread.sleep(100L)
+    }
+    val destName: String = simNodes[random.nextInt(simNodes.size)].name
+    val randomDestNodes = actorSystem.actorSelection("SimpleActor://p2p/$destName/session")
+    while (randomDestNodes.resolve().isEmpty()) {
+        Thread.sleep(100L)
+    }
+    val randomSourceNode = randomSourceNodes.resolve().single()
+    val randomDestNode = randomDestNodes.resolve().single()
     while (true) {
         Thread.sleep(1000L)
-        sourceName = simNodes[random.nextInt(simNodes.size)].name
-        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session").resolve()
-        if (randomSourceNodes.isEmpty()) {
-            continue
-        }
-        destName = simNodes[random.nextInt(simNodes.size)].name
-        val randomDestNodes = actorSystem.actorSelection("SimpleActor://p2p/$destName/session").resolve()
-        if (randomDestNodes.isEmpty()) {
-            continue
-        }
-        val randomSourceNode = randomSourceNodes.single()
         val sourceFut = randomSourceNode.ask<SelfAddressResponse>(SelfAddressRequest())
         try {
             val sourceResult = sourceFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
@@ -77,7 +77,6 @@ private fun createStream(
         if (sourceAddress == null) {
             continue
         }
-        val randomDestNode = randomDestNodes.single()
         val destFut = randomDestNode.ask<SelfAddressResponse>(SelfAddressRequest())
         try {
             val destResult = destFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
@@ -90,7 +89,6 @@ private fun createStream(
         break
     }
     println("using $sourceName $sourceAddress -> $destName $destAddress")
-    val destNodeSel = actorSystem.actorSelection("SimpleActor://p2p/$destName/session").resolve().single()
     val closeFut = CompletableFuture<Boolean>()
     val sink = actorSystem.createMessageSink { self, msg, sender ->
         if (msg is SessionStatusInfo) {
@@ -105,7 +103,7 @@ private fun createStream(
             println("unknown message type $msg")
         }
     }
-    destNodeSel.tell(WatchRequest(), sink)
+    randomDestNode.tell(WatchRequest(), sink)
     var queryNo = 0
     var sessionId: Long
     while (true) {
@@ -135,8 +133,12 @@ private fun createStream(
         )
         try {
             val destResult = sendFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
-            println("result $destResult ${destResult.sessionId} ${destResult.success}")
-            if (destResult.success) {
+            println("result $destResult ${destResult.sessionId} success ${destResult.success} busy ${destResult.busy}")
+            if (!destResult.success) {
+                println("Session closed terminating early")
+                break
+            }
+            if (!destResult.busy) {
                 packetNo++
             } else {
                 Thread.sleep(100L)
@@ -157,9 +159,12 @@ private fun pollDht(
     val random = Random()
     var round = 0
     val timeout = Duration.ofSeconds(120L)
-    while (true) {
+    var sinceFailure = 0
+    val stored = mutableListOf<Pair<SecureHash, ByteArray>>()
+    while (sinceFailure < 10) {
         Thread.sleep(5000L)
         ++round
+        var failed = false
         val putTarget = simNodes[random.nextInt(simNodes.size)].name
         val randomPutNode = actorSystem.actorSelection("SimpleActor://p2p/$putTarget/route").resolve().single()
         val data = round.toByteArray()
@@ -171,24 +176,47 @@ private fun pollDht(
         try {
             val putResult = putFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             val diff = ((System.nanoTime() - startPut) / 1000L).toDouble() / 1000.0
-            println("put result $putResult in $diff ms")
+            println("put result $putResult in $diff ms ${if (putResult.success) "OK" else "FAIL"}")
+            if (!putResult.success) failed = true
+            if (putResult.success) {
+                stored += Pair(key, data)
+            }
         } catch (ex: TimeoutException) {
-            println("put query $round timed out")
+            println("put query $round timed out FAIL")
+            failed = true
         }
 
         val getTarget = simNodes[random.nextInt(simNodes.size)].name
         val randomGetNode = actorSystem.actorSelection("SimpleActor://p2p/$getTarget/route").resolve().single()
-        val getRequest = ClientDhtRequest(key, null)
-        println("send get $round $key to ${randomGetNode.path}")
+        val (readKey, readData) = if (stored.isEmpty()) {
+            Pair(key, data)
+        } else {
+            stored[random.nextInt(stored.size)]
+        }
+        val getRequest = ClientDhtRequest(readKey, null)
+        println("send get $round $readKey to ${randomGetNode.path}")
         val startGet = System.nanoTime()
         val getFut = randomGetNode.ask<ClientDhtResponse>(getRequest)
         try {
             val getResult = getFut.get(timeout.toMillis(), TimeUnit.MILLISECONDS)
             val diff = ((System.nanoTime() - startGet) / 1000L).toDouble() / 1000.0
-            println("get result $getResult in $diff ms")
+            println("get result $getResult in $diff ms ${if (getResult.success && readData.contentEquals(getResult.data)) "OK" else "FAIL"}")
+            if (!getResult.success || !readData.contentEquals(getResult.data)) {
+                failed = true
+                stored.removeIf { it.first == readKey }
+            } else if (stored.size > 5) {
+                stored.removeIf { it.first == readKey }
+            }
         } catch (ex: TimeoutException) {
-            println("get query $round timed out")
+            println("get query $round timed out FAIL")
+            failed = true
         }
+        if (failed) {
+            sinceFailure = 0
+        } else {
+            ++sinceFailure
+        }
+        println("$sinceFailure rounds since DHT failure")
     }
 }
 
@@ -265,6 +293,39 @@ private fun makeLinearNetwork(N: Int): MutableMap<Address, Set<Address>> {
     return simNetwork
 }
 
+private fun makeBarabasiAlbertNetwork(minDegree: Int, N: Int): Map<Address, Set<Address>> {
+    val rand = Random()
+    val simNetwork = mutableMapOf<Address, MutableSet<Address>>()
+    val allEdges = mutableListOf<Pair<Address, Address>>()
+    for (nodeAddress in (1 until minDegree)) {
+        val currentNode = NetworkAddress(nodeAddress)
+        val currentLinks = simNetwork.getOrPut(currentNode) { mutableSetOf() }
+        for (otherAddress in (nodeAddress + 1..minDegree)) {
+            val otherNode = NetworkAddress(otherAddress)
+            val otherLinks = simNetwork.getOrPut(otherNode) { mutableSetOf() }
+            currentLinks += otherNode
+            otherLinks += currentNode
+            allEdges += Pair(currentNode, otherNode)
+        }
+    }
+    for (nodeAddress in (minDegree + 1..N)) {
+        val currentNode = NetworkAddress(nodeAddress)
+        val currentLinks = simNetwork.getOrPut(currentNode) { mutableSetOf() }
+        while (currentLinks.size < minDegree) {
+            val randEdge = allEdges[rand.nextInt(allEdges.size)]
+            val otherNode = if (rand.nextBoolean()) randEdge.first else randEdge.second
+            if (otherNode in currentLinks) continue
+            val otherLinks = simNetwork.getOrPut(otherNode) { mutableSetOf() }
+            currentLinks += otherNode
+            otherLinks += currentNode
+        }
+        for (otherNode in currentLinks) {
+            allEdges += Pair(currentNode, otherNode)
+        }
+    }
+    return simNetwork
+}
+
 private fun makeRandomNetwork(minDegree: Int, N: Int): Map<Address, Set<Address>> {
     // Note this won't be uniform over regular graphs, but that code gets messy
     val rand = Random()
@@ -289,7 +350,7 @@ private fun makeRandomNetwork(minDegree: Int, N: Int): Map<Address, Set<Address>
 private fun makeASNetwork(): Map<Address, Set<Address>> {
     val classLoader = ClassLoader.getSystemClassLoader()
     //From https://snap.stanford.edu/data/as-733.html
-    val networkInfoFile = resourceAsString("./as20000102.txt", classLoader)!!
+    val networkInfoFile = resourceAsString("as20000102.txt", classLoader)!!
     val lines = networkInfoFile.lines()
     val network = mutableMapOf<Address, MutableSet<Address>>()
     for (line in lines) {
