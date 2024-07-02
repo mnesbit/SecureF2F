@@ -8,6 +8,7 @@ import uk.co.nesbit.crypto.SecureHash
 import uk.co.nesbit.crypto.concatByteArrays
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.crypto.toByteArray
+import kotlin.math.min
 
 class NetworkAddressInfo(
         val identity: VersionedIdentity,
@@ -101,7 +102,21 @@ class NetworkAddressInfo(
         ) {
             ++prefixLength
         }
-        return self.size + other.size - 2 * prefixLength
+        val calc1 = self.size + other.size - 2 * prefixLength
+        // under tree re-arrangement searched for stale address
+        // might be through this node, but now parent relations have switched
+        // so search for a possible join
+        var calc2 = Int.MAX_VALUE
+        val ind1 = other.indexOf(self.last())
+        if (ind1 != -1) { //
+            calc2 = other.size - ind1 - 1
+        }
+        var calc3 = Int.MAX_VALUE
+        val ind2 = self.indexOf(other.last())
+        if (ind2 != -1) { //
+            calc3 = self.size - ind2 - 1
+        }
+        return min(min(calc1, calc2), calc3)
     }
 
     override fun toString(): String {
