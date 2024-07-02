@@ -159,6 +159,14 @@ class TcpNetworkActor(private val networkConfig: NetworkConfiguration) : Abstrac
                 private val selfRef: ActorRef = self
 
                 override fun onConnected(localAddress: InetSocketAddress, remoteAddress: InetSocketAddress) {
+                    if (networkConfig.denyListedSources.any {
+                            (it as PublicAddress).host == remoteAddress.hostString
+                                    || it.host == remoteAddress.hostName
+                        }) {
+                        log().warn("Close connection from denyListed peer $remoteAddress")
+                        tcpServer?.closeLink(remoteAddress)
+                        return
+                    }
                     val local = PublicAddress(localAddress.hostString, localAddress.port)
                     val remote = PublicAddress(remoteAddress.hostString, remoteAddress.port)
                     selfRef.tell(ConnectionChange(true, local, remote, true))

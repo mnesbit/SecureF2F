@@ -6,6 +6,6 @@ data class NetworkConfiguration(
         val bindAddress: Address,
         val allowDynamicRouting: Boolean,
         val staticRoutes: Set<Address>,
-        val blackListedSources: Set<Address>
+        val denyListedSources: Set<Address>
 )
 

@@ -497,6 +497,16 @@ class NeighbourLinkActor(
             physicalNetworkActor.tell(CloseRequest(sourceLink), self)
             return
         }
+        if (networkConfig.denyListedSources.any { it.toString() == hello.sourceId.identity.publicAddress }) {
+            log().error("deny listed peer id")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
+        }
+        if (!networkConfig.allowDynamicRouting && networkConfig.staticRoutes.none { it.toString() == hello.sourceId.identity.publicAddress }) {
+            log().error("no dynamic links from non-static peers allowed")
+            physicalNetworkActor.tell(CloseRequest(sourceLink), self)
+            return
+        }
         //log().info("process hello message from $sourceLink")
         val prevAddress = addresses[hello.sourceId.id]
         if (prevAddress != null && prevAddress != sourceLink) {

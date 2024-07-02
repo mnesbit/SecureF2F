@@ -172,7 +172,7 @@ class PhysicalNetworkActor(private val networkConfig: NetworkConfiguration) : Ab
 
     private fun onConnectRequest(request: ConnectRequest) {
         //log().info("got ConnectRequest $request")
-        if (request.sourceNetworkId in networkConfig.blackListedSources) {
+        if (request.sourceNetworkId in networkConfig.denyListedSources) {
             sender.tell(ConnectResult(request.linkId, false), ActorRef.noSender())
         } else {
             sender.tell(ConnectResult(request.linkId, true), ActorRef.noSender())
