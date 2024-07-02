@@ -21,6 +21,9 @@ internal class ActorSystemImpl(
                     executor {
                         type = ForkJoin
                     }
+                    mailbox {
+                        batchMaxUS = 1000
+                    }
                 }
             """
         )
@@ -29,13 +32,16 @@ internal class ActorSystemImpl(
     private val log = LoggerFactory.getLogger("System:$name")
     private val rootActor: ActorLifecycle
     private val root: ActorRef
-    override val executor: ExecutorService
+    private val executor: ExecutorService
     override val timerService: ScheduledExecutorService
 
     init {
-        when (config.withFallback(defaultConfig).getString("SimpleActor.executor.type")) {
-            "ForkJoin" -> executor = Executors.newWorkStealingPool()
-            "Single" -> executor = Executors.newSingleThreadExecutor()
+        executor = when (config.withFallback(defaultConfig).getString("SimpleActor.executor.type")) {
+            "ForkJoin" -> Executors.newWorkStealingPool()
+            "Single" -> Executors.newSingleThreadExecutor()
+            "Fixed" -> Executors.newFixedThreadPool(
+                config.withFallback(defaultConfig).getInt("SimpleActor.executor.threads")
+            )
             else -> throw IllegalArgumentException("Unrecognized executor type")
         }
         timerService = Executors.newSingleThreadScheduledExecutor()
@@ -55,6 +61,14 @@ internal class ActorSystemImpl(
         rootActor.start()
         root = rootActor.self
         log.info("System $name starting")
+    }
+
+    override fun createMailBox(handler: MailHandler): MailBox {
+        return MailboxImpl(
+            executor,
+            config.withFallback(defaultConfig).getLong("SimpleActor.mailbox.batchMaxUS"),
+            handler
+        )
     }
 
     override fun actorOf(props: Props, name: String): ActorRef {

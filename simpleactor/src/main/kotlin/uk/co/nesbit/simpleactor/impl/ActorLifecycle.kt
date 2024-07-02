@@ -17,7 +17,7 @@ internal class ActorLifecycle(
     private val actorInstance = AtomicReference<ActorInstance?>(null)
 
     private val log: Logger = LoggerFactory.getLogger(self.toString())
-    private val mailbox = MailboxImpl(system.executor, ::onReceive)
+    private val mailbox = system.createMailBox(::onReceive)
     private var stopping = false
 
     private val parent: ActorRef

@@ -7,12 +7,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal class MailboxImpl(
     private val executor: ExecutorService,
+    private val batchSizeUS: Long,
     private val handler: MailHandler
 ) : MailBox {
-    companion object {
-        const val BATCH_SIZE_US = 1000L
-    }
-
     @Volatile
     private var paused = true
     private val priorityQueue = MpscLinkedQueue<MessageEntry>()
@@ -106,7 +103,7 @@ internal class MailboxImpl(
                     val messageEntry = queue.poll() ?: break
                     handler.onReceive(messageEntry.msg, messageEntry.sender)
                 }
-            } while ((System.nanoTime() - startTime) / 1000L < BATCH_SIZE_US)
+            } while ((System.nanoTime() - startTime) / 1000L < batchSizeUS)
         } finally {
             mailThread = -1L
             pending.set(false)

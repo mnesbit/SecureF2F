@@ -111,6 +111,33 @@ class ActorTests {
     }
 
     @Test
+    fun `pump messages 3`() {
+        val conf = ConfigFactory.parseString(
+            """
+                SimpleActor {
+                    executor {
+                        type = Fixed
+                        threads = 10
+                    }
+                    mailbox {
+                        batchMaxUS = 100
+                    }
+                }
+        """
+        )
+        val system = ActorSystem.create("Test", conf)
+        val ref1 = system.actorOf(MinimumTestActorInt.getProps(1), "Int")
+        assertEquals("SimpleActor://Test/Int", ref1.path.address)
+        val ref2 = system.actorOf(PollingActor.getProps(1000, ref1), "Test1")
+        while (ref2.ask<Boolean>("Running").get()) {
+            Thread.sleep(100L)
+        }
+        system.stop(ref1)
+        system.stop(ref2)
+        system.stop()
+    }
+
+    @Test
     fun `stop test`() {
         val conf = ConfigFactory.parseString(
             """
