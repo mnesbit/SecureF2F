@@ -483,7 +483,7 @@ class NeighbourLinkActor(
             val oldRate = heartbeatRate
             if (localQueueLatency > LATENCY_HIGH) {
                 heartbeatRate =
-                    ((3L * heartbeatRate) / 2L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
+                    (2L * heartbeatRate).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
                     log().warn("drop rate up $localQueueLatency $heartbeatRate")

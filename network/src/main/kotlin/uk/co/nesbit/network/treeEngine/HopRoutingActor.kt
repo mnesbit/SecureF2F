@@ -72,7 +72,8 @@ class HopRoutingActor(
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val ALPHA = 3
         const val K = 10
-        const val TOKEN_RATE = 4.0
+        const val TOKEN_RATE_MAX = 4.0
+        const val TOKEN_RATE_MIN = 0.2
 
         @JvmStatic
         fun xorPrefix(x: SecureHash, y: SecureHash): Int {
@@ -132,7 +133,7 @@ class HopRoutingActor(
     private var bucketRefresh: Int = 0
     private var round: Int = 0
     private var tokens: Double = 0.0
-    private var tokenRate: Double = TOKEN_RATE
+    private var tokenRate: Double = TOKEN_RATE_MIN
     private var phase: Int = 0
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private val outstandingClientRequests = mutableListOf<ClientRequestState>()
@@ -473,15 +474,18 @@ class HopRoutingActor(
         }
         //log().info("neighbour update with root ${networkAddress!!.roots}")
         for (bucket in kbuckets) {
-            bucket.nodes.removeIf {
-                networkAddress!!.roots
-                    .zip(it.roots)
-                    .count { x -> x.first == x.second } < 2
+            val bucketItr = bucket.nodes.iterator()
+            while (bucketItr.hasNext()) {
+                val node = bucketItr.next()
+                if (networkAddress!!.roots.zip(node.roots).count { x -> x.first == x.second } < 2) {
+                    bucketItr.remove()
+                    clientCache.invalidate(node.identity.id)
+                    routeCache.invalidate(node.identity.id)
+                }
             }
         }
         tokens = 0.0
-        tokenRate = TOKEN_RATE
-        clientCache.invalidateAll()
+        tokenRate = TOKEN_RATE_MIN
         var index = 1
         while (index < kbuckets.size) {
             val bucket = kbuckets[index]
@@ -539,7 +543,7 @@ class HopRoutingActor(
         for (pushItem in request.push) {
             addToKBuckets(pushItem)
         }
-        val response = DhtResponse(request.requestId, nearest, data.getIfPresent(request.key))
+        val response = DhtResponse(request.requestId, nearest + networkAddress!!, data.getIfPresent(request.key))
         if (request.data != null) {
             data.put(request.key, request.data)
         }
@@ -570,13 +574,11 @@ class HopRoutingActor(
     private fun processDhtResponse(response: DhtResponse) {
         //log().info("got DhtResponse")
         val originalRequest = outstandingRequests.remove(response.requestId)
-        if (originalRequest != null) {
-            addToKBuckets(originalRequest.target)
-        }
         for (node in response.nearestPaths) {
             addToKBuckets(node)
         }
         if (originalRequest != null) {
+            tokenRate = (tokenRate + TOKEN_RATE_MIN).coerceIn(TOKEN_RATE_MIN, TOKEN_RATE_MAX)
             routeCache.getIfPresent(originalRequest.target.identity.id)
             updateTimeoutEstimate(originalRequest)
             if (response.data != null) {
@@ -584,6 +586,7 @@ class HopRoutingActor(
             }
             processResponseForClient(originalRequest, response)
         } else {
+            tokenRate = (0.75 * tokenRate).coerceIn(TOKEN_RATE_MIN, TOKEN_RATE_MAX)
             requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
         }
     }

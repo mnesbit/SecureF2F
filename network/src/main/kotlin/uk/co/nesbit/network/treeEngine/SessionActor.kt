@@ -485,7 +485,7 @@ class SessionActor(
     }
 
     private fun onSessionDataReceived(message: ClientReceivedMessage) {
-        log().info("packet from ${message.source}")
+        log().info("packet from ${message.source} ${message.sessionMessage.packetType} ${message.sessionMessage.seqNo}")
         val now = clock.instant()
         if (!sessions.containsKey(message.sessionMessage.sessionId)) {
             when (message.sessionMessage.packetType) {
