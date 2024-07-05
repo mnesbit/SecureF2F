@@ -104,7 +104,7 @@ internal class ActorLifecycle(
     }
 
     override fun tell(msg: Any, sender: ActorRef) {
-        if (stopped) {
+        if (stopping || stopped) {
             system.sendToDeadLetter(listOf(MessageEntry(msg, sender)))
             return
         }
@@ -112,10 +112,16 @@ internal class ActorLifecycle(
     }
 
     fun getChildSnapshot(): List<ActorLifecycle> {
+        if (stopping || stopped) {
+            return emptyList()
+        }
         return mailbox.runExclusive { children.toMutableList() }
     }
 
     fun getWatcherSnapshot(): List<ActorRef> {
+        if (stopping || stopped) {
+            return emptyList()
+        }
         return mailbox.runExclusive { watchers.toMutableList() }
     }
 
