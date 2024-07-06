@@ -248,7 +248,7 @@ class NeighbourLinkActor(
             return
         }
         val withBestRoot = valid.filter { it.treeState!!.roots[index] == minRoot }
-        val minDepth = withBestRoot.map { it.treeState!!.depths[index] }.minOrNull()!!
+        val minDepth = withBestRoot.minOf { it.treeState!!.depths[index] }
         currentParent.startPoint = currentParent.startPoint.rem(allStates.size)
         var parentSeen = false
         for (i in allStates.indices) {
@@ -466,8 +466,7 @@ class NeighbourLinkActor(
             return
         }
         linksState.lastMessage = Clock.systemUTC().instant()
-        val payloadMessage = oneHopMessage.payloadMessage
-        when (payloadMessage) {
+        when (val payloadMessage = oneHopMessage.payloadMessage) {
             is Hello -> processHelloMessage(message.linkId, payloadMessage)
             is TreeState -> processTreeStateMessage(message.linkId, payloadMessage)
             is GreedyRoutedMessage -> processGreedyRoutedMessage(message.linkId, payloadMessage)
@@ -486,13 +485,13 @@ class NeighbourLinkActor(
                     (2L * heartbeatRate).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
-                    log().warn("drop rate up $localQueueLatency $heartbeatRate")
+                    log().warn("heartbeat frequency down queue delay: $localQueueLatency timer interval: $heartbeatRate")
                 }
             } else if (localQueueLatency < LATENCY_LOW) {
                 heartbeatRate = (heartbeatRate - 200L).coerceIn(HEARTBEAT_INTERVAL_MS, TreeState.TimeErrorPerHop / 2L)
                 pChangeTime = now
                 if (oldRate != heartbeatRate) {
-                    log().warn("drop rate down $localQueueLatency $heartbeatRate")
+                    log().warn("heartbeat frequency up queue delay: $localQueueLatency timer interval: $heartbeatRate")
                 }
             }
         }

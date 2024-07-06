@@ -73,8 +73,8 @@ data class SecureHash(val algorithm: String, val bytes: ByteArray) : AvroConvert
                 if (xb[i] == yb[i]) {
                     dist -= 8
                 } else {
-                    val xorx = Integer.numberOfLeadingZeros(java.lang.Byte.toUnsignedInt(xb[i] xor yb[i]))
-                    return dist - xorx + 24
+                    val xorx = (xb[i] xor yb[i]).countLeadingZeroBits()
+                    return dist - xorx
                 }
             }
             return dist
