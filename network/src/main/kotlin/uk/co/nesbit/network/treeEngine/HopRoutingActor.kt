@@ -68,13 +68,9 @@ class HopRoutingActor(
         const val ROUTE_CHECK_INTERVAL_MS = 5000L
         const val JITTER_MS = ROUTE_CHECK_INTERVAL_MS.toInt() / 2
         const val REQUEST_TIMEOUT_START_MS = 500L
-        const val REQUEST_TIMEOUT_INCREMENT_MS = 200L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val ALPHA = 3
         const val K = 10
-        const val TOKEN_RATE_MAX = 4.0
-        const val TOKEN_RATE_MIN = 0.2
-        const val TOKEN_RATE_INC = 0.25
 
         @JvmStatic
         fun xorPrefix(x: SecureHash, y: SecureHash): Int {
@@ -115,7 +111,9 @@ class HopRoutingActor(
         val expire: Instant,
         val target: NetworkAddressInfo,
         val parent: ClientRequestState?
-    )
+    ) {
+        var active: Boolean = true
+    }
 
     private class ClientRequestState(
         val sendTime: Instant,
@@ -133,14 +131,14 @@ class HopRoutingActor(
     private val kbuckets = mutableListOf(KBucket(0, 257))
     private var round: Int = 0
     private var tokens: Double = 0.0
-    private var tokenRate: Double = TOKEN_RATE_MIN
+    private var tokenRate: Double = 1.0
     private var lastPing: NetworkAddressInfo? = null
     private var nextPing: NetworkAddressInfo? = null
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private val outstandingClientRequests = mutableListOf<ClientRequestState>()
-    private var lastSent: Instant = Instant.ofEpochMilli(0L)
-    private var requestTimeoutScaled: Long = 8L * REQUEST_TIMEOUT_START_MS
-    private var requestTimeoutVarScaled: Long = 0L
+    private var lastTokenRefresh: Instant = Clock.systemUTC().instant()
+    private var greedyRTT = TimeoutEstimator(REQUEST_TIMEOUT_START_MS)
+    private var sphinxRTT = TimeoutEstimator(REQUEST_TIMEOUT_START_MS)
     private val localRand = Random(keyService.random.nextLong())
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
@@ -222,9 +220,9 @@ class HopRoutingActor(
             neighbours[neighbour.identity.id] = neighbour
             addToKBuckets(neighbour)
         }
-        tokens += tokenRate
+        refreshTokens(now)
         if (neighbours.isNotEmpty()
-            && outstandingRequests.size < (ALPHA + 1)
+            && outstandingRequests.count { it.value.active } < (ALPHA + 1)
             && tokens >= 0
         ) {
             ++round
@@ -242,8 +240,16 @@ class HopRoutingActor(
                 val neighboursList = neighbours.values.toList()
                 pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
             }
-            lastSent = now
         }
+    }
+
+    private fun refreshTokens(now: Instant) {
+        val interval = ChronoUnit.MILLIS.between(lastTokenRefresh, now)
+        val timeout = getTimeoutEstimate(true)
+        val tokenRateEstimate = (interval / timeout).toDouble() / (ALPHA + 1).toDouble()
+        tokenRate = 0.9 * tokenRate + 0.1 * tokenRateEstimate
+        tokens += tokenRate
+        lastTokenRefresh = now
     }
 
     private fun expireRequests(now: Instant) {
@@ -251,10 +257,12 @@ class HopRoutingActor(
         val requestItr = outstandingRequests.iterator()
         while (requestItr.hasNext()) {
             val request = requestItr.next()
-            if (request.value.expire < now) {
+            if (!request.value.active) {
+                requestItr.remove()
+            } else if (request.value.expire < now) {
+                request.value.active = false // leave record longer in case we can improve RTT
                 expiredRequests += request.value
                 //log().info("stale request")
-                requestItr.remove()
                 val bucket = findBucket(request.value.request.key)
                 if (bucket.nodes.remove(request.value.target)) { // move to end
                     if (request.value.target.roots == networkAddress!!.roots) { // unless possibly stale
@@ -263,8 +271,6 @@ class HopRoutingActor(
                 }
                 clientCache.invalidate(request.value.target.identity.id)
                 routeCache.invalidate(request.value.target.identity.id) // don't trust sphinx route
-                requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
-                tokenRate = (0.5 * tokenRate).coerceIn(TOKEN_RATE_MIN, TOKEN_RATE_MAX)
             }
         }
         for (expired in expiredRequests) {
@@ -275,7 +281,7 @@ class HopRoutingActor(
             val clientRequest = clientRequestItr.next()
             if (ChronoUnit.MILLIS.between(clientRequest.sendTime, now) > CLIENT_REQUEST_TIMEOUT_MS) {
                 clientRequestItr.remove()
-                log().info("Timeout expired client request to ${clientRequest.request.key}")
+                log().info("Timeout expired Client request for ${clientRequest.request.key} replies ${clientRequest.responses} failed ${clientRequest.failed} sent ${clientRequest.probes.size}")
                 clientRequest.sender.tell(
                     ClientDhtResponse(
                         clientRequest.request.key,
@@ -297,7 +303,7 @@ class HopRoutingActor(
         parent.failed += 1
         log().info("Expired client request to ${request.target} for ${parent.request.key}")
         if (parent.responses + parent.failed >= parent.probes.size) {
-            log().warn("Client request for ${parent.request.key} expired")
+            log().info("Client request for ${parent.request.key} expired replies ${parent.responses} failed ${parent.failed} sent ${parent.probes.size}")
             outstandingClientRequests -= parent
             val success = (parent.request.data != null)
             parent.sender.tell(ClientDhtResponse(parent.request.key, success, parent.request.data), self)
@@ -329,7 +335,7 @@ class HopRoutingActor(
         )
         val hops = estimateMessageHops(destination)
         tokens -= 2.0 * hops
-        val requestTimeout = ((requestTimeoutScaled shr 2) + requestTimeoutVarScaled) shr 1
+        val requestTimeout = getTimeoutEstimate(routeCache.getIfPresent(destination.identity.id) == null)
         val expiryInterval = requestTimeout * hops
         val expiry = now.plusMillis(expiryInterval)
         outstandingRequests[request.requestId] = RequestTracker(request, now, expiry, destination, parent)
@@ -345,6 +351,7 @@ class HopRoutingActor(
     ) {
         val cachedPrivateRoute = routeCache.getIfPresent(destination.identity.id)
         if (cachedPrivateRoute != null) {
+            routeCache.put(destination.identity.id, cachedPrivateRoute)
             sendSphinxMessage(cachedPrivateRoute, message)
             return
         }
@@ -528,7 +535,7 @@ class HopRoutingActor(
         }
         when (payload.javaClass) {
             DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
-            DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
+            DhtResponse::class.java -> processDhtResponse(payload as DhtResponse, true)
             ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
             else -> log().error("Unknown message type ${payload.javaClass.name}")
         }
@@ -599,7 +606,7 @@ class HopRoutingActor(
         }
     }
 
-    private fun processDhtResponse(response: DhtResponse) {
+    private fun processDhtResponse(response: DhtResponse, greedyRoute: Boolean) {
         //log().info("got DhtResponse")
         val originalRequest = outstandingRequests.remove(response.requestId)
         if (originalRequest != null && originalRequest.target == lastPing) {
@@ -608,16 +615,19 @@ class HopRoutingActor(
         for (node in response.nearestPaths) {
             addToKBuckets(node)
         }
-        tokenRate = (tokenRate + TOKEN_RATE_MIN).coerceIn(TOKEN_RATE_INC, TOKEN_RATE_MAX)
         if (originalRequest != null) {
-            routeCache.getIfPresent(originalRequest.target.identity.id)
-            updateTimeoutEstimate(originalRequest)
+            val route = routeCache.getIfPresent(originalRequest.target.identity.id)
+            if (route != null) {
+                routeCache.put(originalRequest.target.identity.id, route)
+            }
+            updateTimeoutEstimate(originalRequest, greedyRoute)
             if (response.data != null) {
                 data.put(originalRequest.request.key, response.data)
             }
             processResponseForClient(originalRequest, response)
         } else {
-            requestTimeoutScaled += REQUEST_TIMEOUT_INCREMENT_MS shl 3
+            log().info("DHTResponse, but original request timed out")
+            if (greedyRoute) greedyRTT.updateLostPacket() else sphinxRTT.updateLostPacket()
         }
     }
 
@@ -688,29 +698,30 @@ class HopRoutingActor(
             return
         }
         if (parent.responses + parent.failed >= parent.probes.size) {
-            log().warn("Client request for ${parent.request.key} expired")
+            log().info("Client request for ${parent.request.key} expired replies ${parent.responses} failed ${parent.failed} sent ${parent.probes.size}")
             outstandingClientRequests -= parent
             val success = (parent.request.data != null)
             parent.sender.tell(ClientDhtResponse(parent.request.key, success, parent.request.data), self)
         }
     }
 
-    private fun updateTimeoutEstimate(originalRequest: RequestTracker) {
-        val hops = originalRequest.target.greedyDist(networkAddress!!)
-        val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, Clock.systemUTC().instant())
+    private fun updateTimeoutEstimate(originalRequest: RequestTracker, greedyRoute: Boolean) {
+        val now = Clock.systemUTC().instant()
+        val replyTime = ChronoUnit.MILLIS.between(originalRequest.sent, now)
+        val hops = estimateMessageHops(originalRequest.target)
         val replyTimePerHop = replyTime / hops
-        // Van Jacobson Algorithm for RTT
-        if (requestTimeoutVarScaled == 0L) {
-            requestTimeoutScaled = replyTimePerHop shl 3
-            requestTimeoutVarScaled = replyTimePerHop shl 1
+        if (greedyRoute) {
+            greedyRTT.updateRtt(replyTimePerHop)
         } else {
-            var replyTimeError = replyTimePerHop - (requestTimeoutScaled shr 3)
-            requestTimeoutScaled += replyTimeError
-            if (replyTimeError < 0) {
-                replyTimeError = -replyTimeError
-            }
-            replyTimeError -= (requestTimeoutVarScaled shr 2)
-            requestTimeoutVarScaled += replyTimeError
+            sphinxRTT.updateRtt(replyTimePerHop)
+        }
+    }
+
+    private fun getTimeoutEstimate(greedyRoute: Boolean): Long {
+        return if (greedyRoute) {
+            greedyRTT.rttTimeout()
+        } else {
+            sphinxRTT.rttTimeout()
         }
     }
 
@@ -734,7 +745,7 @@ class HopRoutingActor(
                 }
                 when (payload.javaClass) {
                     DhtRequest::class.java -> processDhtRequest(payload as DhtRequest)
-                    DhtResponse::class.java -> processDhtResponse(payload as DhtResponse)
+                    DhtResponse::class.java -> processDhtResponse(payload as DhtResponse, false)
                     ClientDataMessage::class.java -> processClientDataMessage(payload as ClientDataMessage)
                     else -> log().error("Unknown message type ${payload.javaClass.name}")
                 }
@@ -811,6 +822,7 @@ class HopRoutingActor(
                 sendGreedyMessage(destinationAddress, clientDataMessage)
             }
         } else {
+            routeCache.put(message.destination, knownPath)
             sendSphinxMessage(knownPath, clientDataMessage)
         }
         sender.tell(ClientSendResult(message.destination, true), self)

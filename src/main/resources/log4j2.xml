@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="info" name="AkkaTest" packages="">
+<Configuration status="info" name="SecureP2P">
     <Appenders>
         <File name="FileLogger" fileName="logs/app.log" append="false">
             <PatternLayout>

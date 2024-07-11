@@ -10,7 +10,6 @@ import uk.co.nesbit.network.util.SequenceNumber
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
-import kotlin.math.max
 
 data class DataPacket(
     val sessionId: Long,
@@ -80,8 +79,6 @@ class SlidingWindowHelper(val sessionId: Long) {
         const val MAX_RECEIVE_BUFFER = 100
         const val START_WINDOW = 8
         const val MAX_WINDOW = 128
-        const val START_RTT = 2000L
-        const val RTT_GRANULARITY = (15L shl 1)
         const val OPEN_TIMEOUT = 15000L
         const val CLOSE_TIMEOUT = 15000L
     }
@@ -107,8 +104,7 @@ class SlidingWindowHelper(val sessionId: Long) {
     private val unsent = LinkedList<ByteArray>()
     private val sendBuffer = LinkedList<BufferedPacket>()
     private val receiveBuffer = LinkedList<DataPacket>()
-    private var rttScaled: Long = START_RTT shl 3
-    private var rttVarScaled: Long = 0L
+    private var rtt = TimeoutEstimator(TimeoutEstimator.START_RTT)
     private var sendSeqNo: Int = 0
     private var sendAckSeqNo: Int = 0
     private var dupAckCount: Int = 0
@@ -122,26 +118,9 @@ class SlidingWindowHelper(val sessionId: Long) {
     private var closeAcked: Boolean = false
     private var closeReceived: Boolean = false
 
-    private fun rttTimeout(): Long {
-        return ((rttScaled shr 2) + max(rttVarScaled, RTT_GRANULARITY)) shr 1
-    }
+    private fun rttTimeout(): Long = rtt.rttTimeout()
 
-    private fun updateRtt(sentTime: Instant, ackTime: Instant) {
-        val replyTime = ChronoUnit.MILLIS.between(sentTime, ackTime).coerceAtLeast(1L)
-        // Van Jacobson Algorithm for RTT
-        if (rttVarScaled == 0L) {
-            rttScaled = replyTime shl 3
-            rttVarScaled = replyTime shl 1
-        } else {
-            var replyTimeError = replyTime - (rttScaled shr 3)
-            rttScaled += replyTimeError
-            if (replyTimeError < 0) {
-                replyTimeError = -replyTimeError
-            }
-            replyTimeError -= (rttVarScaled shr 2)
-            rttVarScaled += replyTimeError
-        }
-    }
+    private fun updateRtt(sentTime: Instant, ackTime: Instant) = rtt.updateRtt(sentTime, ackTime)
 
     private fun calculateSelectiveAck(): Int {
         var selectiveAck = 0xFFFF
