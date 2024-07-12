@@ -2,9 +2,7 @@ package uk.co.nesbit.network.treeEngine
 
 import com.github.benmanes.caffeine.cache.Caffeine
 import uk.co.nesbit.avro.serialize
-import uk.co.nesbit.crypto.Ecies
-import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.SecureHash.Companion.xorDistance
+import uk.co.nesbit.crypto.*
 import uk.co.nesbit.crypto.sphinx.Sphinx
 import uk.co.nesbit.crypto.sphinx.VersionedIdentity
 import uk.co.nesbit.network.api.Message
@@ -17,7 +15,6 @@ import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.*
-import kotlin.experimental.xor
 import kotlin.random.Random
 
 enum class MessageWatchTypes {
@@ -70,40 +67,10 @@ class HopRoutingActor(
         const val REQUEST_TIMEOUT_START_MS = 500L
         const val CLIENT_REQUEST_TIMEOUT_MS = 60000L
         const val ALPHA = 3
-        const val K = 10
-
-        @JvmStatic
-        fun xorPrefix(x: SecureHash, y: SecureHash): Int {
-            require(x.algorithm == y.algorithm) { "Hashes must be of same type" }
-            val xb = x.bytes
-            val yb = y.bytes
-            for (i in xb.indices) {
-                if (xb[i] != yb[i]) {
-                    val diff = java.lang.Byte.toUnsignedInt(xb[i] xor yb[i])
-                    val diff2 = if (i < xb.size - 1) {
-                        java.lang.Byte.toUnsignedInt(xb[i + 1] xor yb[i + 1])
-                    } else {
-                        0
-                    }
-                    val prefix16 = (diff shl 8) or diff2
-                    val xorx = prefix16.countLeadingZeroBits()
-                    val shift = 32 - xorx - 3 // shift leading 1 bit right to leave 3 bits
-                    return (prefix16 ushr shift)
-                }
-            }
-            return 0
-        }
-
+        const val MAX_PEERS = 256
     }
 
     private class CheckRoutes
-
-    private class KBucket(
-        val xorDistanceMin: Int, // inclusive
-        val xorDistanceMax: Int // exclusive
-    ) {
-        val nodes: MutableList<NetworkAddressInfo> = mutableListOf()
-    }
 
     private class RequestTracker(
         val request: DhtRequest,
@@ -124,16 +91,32 @@ class HopRoutingActor(
         var responses: Int = 0
     )
 
+    private class RingAddress(
+        val address: NetworkAddressInfo,
+        ring: Int
+    ) {
+        companion object {
+            fun ringHash(id: SecureHash, ring: Int): SecureHash {
+                return SecureHash.secureHash(concatByteArrays(id.serialize(), ring.toByteArray()))
+            }
+        }
+
+        val hash: SecureHash by lazy {
+            ringHash(address.identity.id, ring)
+        }
+    }
+
     private val owners = mutableListOf<Pair<MessageWatchRequest, ActorRef>>()
     private var networkAddress: NetworkAddressInfo? = null
     private val neighbours = mutableMapOf<SecureHash, NetworkAddressInfo>()
     private val sphinxEncoder = Sphinx(keyService.random, 15, 1024)
-    private val kbuckets = mutableListOf(KBucket(0, 257))
+    private val peers = LinkedHashMap<SecureHash, NetworkAddressInfo>()
     private var round: Int = 0
+    private var phase: Int = 0
+    private var prevPhase: Int = 0
+    private var refresh: Int = 0
     private var tokens: Double = 0.0
     private var tokenRate: Double = 1.0
-    private var lastPing: NetworkAddressInfo? = null
-    private var nextPing: NetworkAddressInfo? = null
     private val outstandingRequests = mutableMapOf<Long, RequestTracker>()
     private val outstandingClientRequests = mutableListOf<ClientRequestState>()
     private var lastTokenRefresh: Instant = Clock.systemUTC().instant()
@@ -143,6 +126,7 @@ class HopRoutingActor(
     private val routeCache = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, List<VersionedIdentity>>()
     private val data = Caffeine.newBuilder().maximumSize(100L).build<SecureHash, ByteArray>()
     private val clientCache = Caffeine.newBuilder().maximumSize(20L).build<SecureHash, NetworkAddressInfo>()
+    private val rings = Array<List<RingAddress>?>(ALPHA) { null }
 
     override fun preStart() {
         super.preStart()
@@ -218,7 +202,7 @@ class HopRoutingActor(
         expireRequests(now)
         for (neighbour in neighbours.values) {
             neighbours[neighbour.identity.id] = neighbour
-            addToKBuckets(neighbour)
+            updatePeers(neighbour)
         }
         refreshTokens(now)
         if (neighbours.isNotEmpty()
@@ -227,18 +211,25 @@ class HopRoutingActor(
         ) {
             ++round
             tokens = 0.0
-            val allNodes = kbuckets.flatMap { it.nodes }
-            if (allNodes.size >= ALPHA) {
-                var target = nextPing
-                nextPing = null
-                if (target == null) {
-                    target = allNodes[localRand.nextInt(allNodes.size)]
-                }
-                lastPing = target
+            log().debug { "round $round ${peers.size}" }
+            val next = nextPeers(networkAddress!!.identity.id, ALPHA).toList()
+            if (phase < next.size) {
+                val target = next[phase]
                 pollChosenNode(target, now)
+                ++phase
             } else {
-                val neighboursList = neighbours.values.toList()
-                pollChosenNode(neighboursList[localRand.nextInt(neighbours.size)], now)
+                val prev = prevPeer(networkAddress!!.identity.id, prevPhase)
+                if (prev != null) {
+                    pollChosenNode(prev, now)
+                    prevPhase = (prevPhase + 1).rem(ALPHA)
+                } else {
+                    val neighbourList = neighbours.values.toList()
+                    refresh = refresh.rem(neighbourList.size)
+                    val target = neighbourList[refresh]
+                    refresh = (refresh + 1).rem(neighbourList.size)
+                    pollChosenNode(target, now)
+                }
+                phase = 0
             }
         }
     }
@@ -263,11 +254,9 @@ class HopRoutingActor(
                 request.value.active = false // leave record longer in case we can improve RTT
                 expiredRequests += request.value
                 //log().info("stale request")
-                val bucket = findBucket(request.value.request.key)
-                if (bucket.nodes.remove(request.value.target)) { // move to end
-                    if (request.value.target.roots == networkAddress!!.roots) { // unless possibly stale
-                        bucket.nodes.add(request.value.target)
-                    }
+                if (request.value.target.roots == networkAddress!!.roots) { // unless possibly stale
+                    peers.remove(request.value.target.identity.id)
+                    rings.fill(null)
                 }
                 clientCache.invalidate(request.value.target.identity.id)
                 routeCache.invalidate(request.value.target.identity.id) // don't trust sphinx route
@@ -321,7 +310,8 @@ class HopRoutingActor(
         data: ByteArray?,
         now: Instant
     ) {
-        val nearestTo = findNearest(destination.identity.id, K)
+        val next = nextPeers(destination.identity.id, 3 * ALPHA)
+        val nearest = findNearest(destination.identity.id, 2 * ALPHA)
         var requestId = keyService.random.nextLong()
         if (requestId < 0L) {
             requestId = -requestId
@@ -330,7 +320,7 @@ class HopRoutingActor(
             requestId,
             key,
             networkAddress!!,
-            nearestTo,
+            (next + nearest).toList(),
             data
         )
         val hops = estimateMessageHops(destination)
@@ -381,19 +371,69 @@ class HopRoutingActor(
         neighbourLinkActor.tell(neighbourSend, self)
     }
 
-    private fun findBucket(id: SecureHash): KBucket {
-        val dist = xorDistance(networkAddress!!.identity.id, id)
-        return kbuckets.first { it.xorDistanceMin <= dist && dist < it.xorDistanceMax }
+    private fun shuffledPeerList(ring: Int): List<RingAddress> {
+        val cached = rings[ring]
+        if (cached != null) {
+            return cached
+        }
+        val peerList = peers.values.map { RingAddress(it, ring) }.toMutableList()
+        peerList += RingAddress(networkAddress!!, ring)
+        peerList.sortBy { it.hash }
+        rings[ring] = peerList
+        return peerList
     }
 
-    private fun addToKBuckets(node: NetworkAddressInfo) {
-        val bucket = findBucket(node.identity.id)
+    private fun nextPeers(node: SecureHash, count: Int): Set<NetworkAddressInfo> {
+        if (peers.size <= count) {
+            return peers.values.toSet()
+        }
+        val nearest = mutableSetOf<NetworkAddressInfo>()
+        val rings = mutableListOf<List<RingAddress>>()
+        val ringIndices = IntArray(ALPHA)
+        for (ring in 0 until ALPHA) {
+            val peers = shuffledPeerList(ring)
+            rings += peers
+            val target = RingAddress.ringHash(node, ring)
+            val next = peers.indexOfFirst { address ->
+                target < address.hash
+            }
+            val index = if (next > 0) next else 0
+            nearest += peers[index].address
+            ringIndices[ring] = index
+        }
+        var ring = 0
+        while (nearest.size < count) {
+            val peers = rings[ring]
+            val index = if (ringIndices[ring] < peers.size - 1) ringIndices[ring] + 1 else 0
+            nearest += peers[index].address
+            ringIndices[ring] = index
+            ring = (ring + 1).rem(ALPHA)
+        }
+        nearest -= networkAddress!!
+        return nearest
+    }
+
+    private fun prevPeer(node: SecureHash, ring: Int): NetworkAddressInfo? {
+        if (peers.isEmpty()) {
+            return null
+        }
+        val peers = shuffledPeerList(ring)
+        val target = RingAddress.ringHash(node, ring)
+        val next = peers.indexOfFirst { address ->
+            target <= address.hash
+        }
+        val index = if (next > 0) next - 1 else peers.size - 1
+        return peers[index].address
+    }
+
+    private fun updatePeers(node: NetworkAddressInfo) {
         if (networkAddress!!.roots
                 .zip(node.roots)
                 .count { x -> x.first == x.second } < 2
         ) {
             clientCache.invalidate(node.identity.id)
-            bucket.nodes.removeIf { it.identity.id == node.identity.id }
+            peers.remove(node.identity.id)
+            rings.fill(null)
             return
         }
         if (node.identity.id == networkAddress?.identity?.id) {
@@ -405,68 +445,64 @@ class HopRoutingActor(
         ) {
             clientCache.put(node.identity.id, node)
         }
-        val current = bucket.nodes.firstOrNull { it.identity.id == node.identity.id }
+        val current = peers[node.identity.id]
         if (current != null
             && current.identity.currentVersion.version > node.identity.currentVersion.version
         ) {
             return
         }
-        bucket.nodes.removeIf { it.identity.id == node.identity.id }
-        val prefix = xorPrefix(node.identity.id, networkAddress!!.identity.id)
-        val subBucket = bucket.nodes
-            .filter { xorPrefix(it.identity.id, networkAddress!!.identity.id) == prefix }
-        if (subBucket.size >= K) { // we store 'sub-buckets' like KAD to enhance hop gain per query
-            bucket.nodes.add(0, node)
-            if (bucket.xorDistanceMax - bucket.xorDistanceMin > 1) {
-                val sorted = bucket.nodes.sortedBy {
-                    xorDistance(networkAddress!!.identity.id, it.identity.id)
-                }
-                val mid = sorted[(sorted.size - 1) / 2]
-                val midDist = xorDistance(networkAddress!!.identity.id, mid.identity.id) + 1
-                val (left, right) = bucket.nodes.partition {
-                    xorDistance(
-                        networkAddress!!.identity.id,
-                        it.identity.id
-                    ) < midDist
-                }
-                if (left.isNotEmpty() && right.isNotEmpty()) {
-                    kbuckets.remove(bucket)
-                    val leftBucket = KBucket(bucket.xorDistanceMin, midDist)
-                    leftBucket.nodes.addAll(left)
-                    kbuckets.add(leftBucket)
-                    val rightBucket = KBucket(midDist, bucket.xorDistanceMax)
-                    rightBucket.nodes.addAll(right)
-                    kbuckets.add(rightBucket)
-                    kbuckets.sortBy { it.xorDistanceMin }
-                } else {
-                    dropNode(bucket, subBucket)
-                }
-            } else {
-                dropNode(bucket, subBucket)
+        peers.remove(node.identity.id)
+        if (peers.size >= MAX_PEERS) {
+            rings.fill(null)
+            // LRU didn't work when setting intentionally small sizes.
+            // Removing one of the nearest predecessors seems to preserve network function adequately
+            val next = findNearest(node.identity.id, ALPHA).toList()
+            if (next.isNotEmpty()) {
+                peers.remove(next[localRand.nextInt(next.size)].identity.id)
             }
-        } else {
-            bucket.nodes.add(0, node)
         }
+        peers[node.identity.id] = node
+        rings.fill(null)
     }
 
-    private fun dropNode(bucket: KBucket, subBucket: List<NetworkAddressInfo>) {
-        val lastUncached = subBucket.findLast { routeCache.getIfPresent(it.identity.id) == null }
-        if (lastUncached != null) {
-            bucket.nodes.remove(lastUncached)
-        } else {
-            bucket.nodes.remove(subBucket.last())
+    private fun findNearest(node: SecureHash, count: Int): Set<NetworkAddressInfo> {
+        if (peers.size <= count) {
+            return peers.values.toSet()
         }
-    }
-
-    private fun findNearest(id: SecureHash, number: Int): List<NetworkAddressInfo> {
-        val nodes = kbuckets.flatMap { it.nodes }
-        val sorted = nodes.sortedBy { xorDistance(id, it.identity.id) }
-        return sorted.take(number)
+        val nearest = mutableSetOf<NetworkAddressInfo>()
+        val rings = mutableListOf<List<RingAddress>>()
+        val ringIndices = IntArray(3)
+        for (ring in 0 until ALPHA) {
+            val peers = shuffledPeerList(ring)
+            rings += peers
+            val match = peers.indexOfFirst { it.address.identity.id == node }
+            if (match == -1) {
+                val target = RingAddress.ringHash(node, ring)
+                val next = peers.indexOfFirst { address ->
+                    target < address.hash
+                }
+                val index = if (next > 0) next - 1 else peers.size - 1
+                nearest += peers[index].address
+                ringIndices[ring] = index
+            } else {
+                nearest += peers[match].address
+                ringIndices[ring] = match
+            }
+        }
+        var ring = 0
+        while (nearest.size < count) {
+            val peers = rings[ring]
+            val index = if (ringIndices[ring] > 0) ringIndices[ring] - 1 else peers.size - 1
+            nearest += peers[index].address
+            ringIndices[ring] = index
+            ring = (ring + 1).rem(ALPHA)
+        }
+        nearest -= networkAddress!!
+        return nearest
     }
 
     private fun findExact(id: SecureHash): NetworkAddressInfo? {
-        val bucket = findBucket(id)
-        return bucket.nodes.firstOrNull { it.identity.id == id }
+        return peers[id]
     }
 
     private fun onNeighbourUpdate(neighbourUpdate: NeighbourUpdate) {
@@ -474,34 +510,19 @@ class HopRoutingActor(
         neighbours.clear()
         for (neighbour in neighbourUpdate.addresses) {
             neighbours[neighbour.identity.id] = neighbour
-            addToKBuckets(neighbour)
+            updatePeers(neighbour)
+        }
+        val peerItr = peers.iterator()
+        while (peerItr.hasNext()) {
+            val peer = peerItr.next().value
+            if (peer.roots.zip(networkAddress!!.roots).count { it.first == it.second } < 1) {
+                peerItr.remove()
+                rings.fill(null)
+                clientCache.invalidate(peer.identity.id)
+                routeCache.invalidate(peer.identity.id)
+            }
         }
         //log().info("neighbour update with root ${networkAddress!!.roots}")
-        for (bucket in kbuckets) {
-            val bucketItr = bucket.nodes.iterator()
-            while (bucketItr.hasNext()) {
-                val node = bucketItr.next()
-                if (networkAddress!!.roots.zip(node.roots).count { x -> x.first == x.second } < 2) {
-                    bucketItr.remove()
-                    clientCache.invalidate(node.identity.id)
-                    routeCache.invalidate(node.identity.id)
-                }
-            }
-        }
-        var index = 1
-        while (index < kbuckets.size) {
-            val prevBucket = kbuckets[index - 1]
-            val bucket = kbuckets[index]
-            if (prevBucket.nodes.size + bucket.nodes.size <= K) {
-                val mergedBucket = KBucket(prevBucket.xorDistanceMin, bucket.xorDistanceMax)
-                mergedBucket.nodes.addAll(prevBucket.nodes)
-                mergedBucket.nodes.addAll(bucket.nodes)
-                kbuckets[index - 1] = mergedBucket
-                kbuckets.removeAt(index)
-            } else {
-                ++index
-            }
-        }
         sendToOwners(neighbourUpdate.localId, MessageWatchTypes.ADDRESS_UPDATE)
     }
 
@@ -529,7 +550,6 @@ class HopRoutingActor(
             return
         }
         val replyRoute = payloadMessage.replyPath
-        pathSnoopForNeighbours(replyRoute)
         if (replyRoute.size <= sphinxEncoder.maxRouteLength) {
             routeCache.put(replyRoute.last().id, replyRoute)
         }
@@ -541,44 +561,15 @@ class HopRoutingActor(
         }
     }
 
-    private fun pathSnoopForNeighbours(replyRoute: List<VersionedIdentity>) {
-        val currentBest = findNearest(networkAddress!!.identity.id, 1)
-        if (replyRoute.isNotEmpty() && currentBest.isNotEmpty()) {
-            val minNode = replyRoute.minByOrNull { xorDistance(it.id, networkAddress!!.identity.id) }!!
-            if (xorDistance(minNode.id, networkAddress!!.identity.id) < xorDistance(
-                    currentBest.first().identity.id,
-                    networkAddress!!.identity.id
-                )
-            ) {
-                val ind = replyRoute.indexOf(minNode)
-                val prev = if (ind > 0) findExact(replyRoute[ind - 1].id) else null
-                if (prev != null) {
-                    log().info("Route contains possible nearer node querying neighbour ${prev.identity.id} for more info on ${minNode.id}")
-                    sendDhtRequest(null, prev, minNode.id, null, Clock.systemUTC().instant())
-                } else {
-                    val next = if (ind < replyRoute.size - 1) findExact(replyRoute[ind + 1].id) else null
-                    if (next != null) {
-                        log().info("Route contains possible nearer node querying neighbour ${next.identity.id} for more info on ${minNode.id}")
-                        sendDhtRequest(null, next, minNode.id, null, Clock.systemUTC().instant())
-                    } else {
-                        val nearest = findNearest(minNode.id, 1)
-                        if (nearest.isNotEmpty()) {
-                            log().info("Route contains possible nearer node querying ${nearest.first().identity.id} for more info on ${minNode.id}")
-                            sendDhtRequest(null, nearest.first(), minNode.id, null, Clock.systemUTC().instant())
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private fun processDhtRequestInternal(request: DhtRequest): DhtResponse {
-        val nearest = findNearest(request.key, K) // query then merge to ensure newscast style
-        addToKBuckets(request.sourceAddress)
         for (pushItem in request.push) {
-            addToKBuckets(pushItem)
+            updatePeers(pushItem)
         }
-        val response = DhtResponse(request.requestId, nearest + networkAddress!!, data.getIfPresent(request.key))
+        updatePeers(request.sourceAddress)
+        val next = nextPeers(request.key, 2 * ALPHA)
+        val nearest = findNearest(request.key, 3 * ALPHA)
+        val response =
+            DhtResponse(request.requestId, (nearest + next + networkAddress!!).toList(), data.getIfPresent(request.key))
         if (request.data != null) {
             data.put(request.key, request.data)
         }
@@ -609,11 +600,8 @@ class HopRoutingActor(
     private fun processDhtResponse(response: DhtResponse, greedyRoute: Boolean) {
         //log().info("got DhtResponse")
         val originalRequest = outstandingRequests.remove(response.requestId)
-        if (originalRequest != null && originalRequest.target == lastPing) {
-            updateNextPingTarget(response)
-        }
         for (node in response.nearestPaths) {
-            addToKBuckets(node)
+            updatePeers(node)
         }
         if (originalRequest != null) {
             val route = routeCache.getIfPresent(originalRequest.target.identity.id)
@@ -628,23 +616,6 @@ class HopRoutingActor(
         } else {
             log().info("DHTResponse, but original request timed out")
             if (greedyRoute) greedyRTT.updateLostPacket() else sphinxRTT.updateLostPacket()
-        }
-    }
-
-    private fun updateNextPingTarget(response: DhtResponse) {
-        val nearest = response.nearestPaths
-            .filter {
-                it.identity.id != networkAddress!!.identity.id
-                        && it.roots.zip(networkAddress!!.roots).count { x -> x.first == x.second } >= 2
-            }
-            .sortedBy {
-                xorDistance(networkAddress!!.identity.id, it.identity.id)
-            }.take(ALPHA)
-        if (nearest.isNotEmpty()) {
-            val target = nearest[localRand.nextInt(nearest.size)]
-            if (target != lastPing) {
-                nextPing = target
-            }
         }
     }
 
@@ -684,7 +655,7 @@ class HopRoutingActor(
             it.identity.id in parent.probes
         }
         if (possibleProbes.isEmpty()) {
-            possibleProbes.addAll(findNearest(parent.request.key, 2 * ALPHA))
+            possibleProbes.addAll(findNearest(parent.request.key, (2 + parent.failed) * ALPHA))
             possibleProbes.removeIf {
                 it.identity.id in parent.probes
             }
