@@ -2,8 +2,10 @@ package uk.co.nesbit.network.treeEngine
 
 import uk.co.nesbit.network.api.NetworkConfiguration
 import uk.co.nesbit.network.api.PublicAddress
+import uk.co.nesbit.network.api.URLAddress
 import uk.co.nesbit.network.api.services.KeyService
 import uk.co.nesbit.network.mocknet.PhysicalNetworkActor
+import uk.co.nesbit.network.tcpnet.HttpsNetworkActor
 import uk.co.nesbit.network.tcpnet.TcpNetworkActor
 import uk.co.nesbit.simpleactor.*
 
@@ -32,12 +34,12 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
                 "net"
             )
         }
-        /*        is URLAddress -> {
-                    context.actorOf(
-                        URLNetworkActor.getProps(networkConfig, keyService).withDispatcher("akka.fixed-dispatcher"),
-                        "net"
-                    )
-                }*/
+        is URLAddress -> {
+            context.actorOf(
+                HttpsNetworkActor.getProps(networkConfig, keyService),
+                "net"
+            )
+        }
         else -> {
             context.actorOf(
                 PhysicalNetworkActor.getProps(networkConfig),

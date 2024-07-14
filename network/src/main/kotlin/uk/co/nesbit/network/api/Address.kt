@@ -15,8 +15,8 @@ class NetworkAddress(val id: Int) : Address {
 
     fun toLocalPublicAddress(): PublicAddress = PublicAddress("localhost", id + 20000)
 
-    fun toLocalHTTPAddress(): URLAddress =
-        URLAddress(URI(URLAddress.HTTP_PROTOCOL, null, "localhost", id + 20000, "/link", null, null).toURL())
+    fun toLocalHTTPSAddress(): URLAddress =
+        URLAddress(URI(URLAddress.HTTPS_PROTOCOL, null, "localhost", id + 20000, "", null, null).toURL())
 
     override fun toString(): String = "NetworkAddress[$id]"
 
@@ -62,12 +62,12 @@ class PublicAddress(val host: String, val port: Int) : Address {
 
 class URLAddress(val url: URL) : Address {
     companion object {
-        const val HTTP_PROTOCOL = "http"
+        const val HTTPS_PROTOCOL = "https"
     }
 
     init {
-        require(url.protocol == HTTP_PROTOCOL) {
-            "Only HTTP currently implemented"
+        require(url.protocol == HTTPS_PROTOCOL) {
+            "Only HTTPS currently implemented"
         }
     }
 

@@ -71,6 +71,10 @@ dependencies {
     runtimeOnly "org.apache.logging.log4j:log4j-slf4j2-impl:$log4j2_version"
     // for lock-free logging
     runtimeOnly "com.lmax:disruptor:$disruptor_version"
+    // Bouncy castle
+    implementation "org.bouncycastle:bcprov-jdk18on:$bouncycastle_version"
+    implementation "org.bouncycastle:bcpkix-jdk18on:$bouncycastle_version"
+
     implementation project(':avro')
     implementation project(':crypto')
     implementation project(':network')

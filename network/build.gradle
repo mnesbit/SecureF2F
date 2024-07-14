@@ -8,6 +8,8 @@ dependencies {
     implementation "com.github.ben-manes.caffeine:caffeine:$caffeine_version"
     implementation "io.netty:netty-all:$netty_version"
 
+    testImplementation "com.squareup.okhttp3:okhttp:$okhttp_version"
+
     api project(':avro')
     api project(':crypto')
     api project(':simpleactor')

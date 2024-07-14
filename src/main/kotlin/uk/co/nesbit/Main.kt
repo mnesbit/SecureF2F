@@ -1,8 +1,9 @@
 package uk.co.nesbit
 
 import com.typesafe.config.ConfigFactory
-import uk.co.nesbit.crypto.SecureHash
-import uk.co.nesbit.crypto.toByteArray
+import org.bouncycastle.asn1.x509.KeyPurposeId
+import org.bouncycastle.asn1.x509.KeyUsage
+import uk.co.nesbit.crypto.*
 import uk.co.nesbit.network.api.*
 import uk.co.nesbit.network.mocknet.DnsMockActor
 import uk.co.nesbit.network.mocknet.WatchRequest
@@ -12,11 +13,15 @@ import uk.co.nesbit.simpleactor.ActorSystem
 import uk.co.nesbit.simpleactor.ask
 import uk.co.nesbit.utils.resourceAsString
 import java.lang.Integer.max
+import java.security.KeyStore
+import java.time.Clock
 import java.time.Duration
+import java.time.temporal.ChronoUnit
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import javax.security.auth.x500.X500Principal
 
 
 fun main() {
@@ -24,22 +29,16 @@ fun main() {
     //while(true) {
     val degree = 3
     val N = 1000
-    //val simNetwork = makeRandomNetwork(degree, N)
-    val simNetwork = convertToTcpNetwork(makeRandomNetwork(degree, N))
-    //val simNetwork = convertToTcpNetwork(makeBarabasiAlbertNetwork(degree, N))
-    //val simNetwork = convertToTcpNetwork(makeLinearNetwork(2))
-    //val simNetwork = convertToHTTPNetwork(makeLinearNetwork(2))
+    val simNetwork = makeRandomNetwork(degree, N)
+    //val simNetwork = makeBarabasiAlbertNetwork(degree, N)
+    //val simNetwork = makeLinearNetwork(2)
     //val simNetwork = makeASNetwork()
     //println("Network diameter: ${diameter(simNetwork)}")
-    val simNodes = mutableListOf<TreeNode>()
     val conf = ConfigFactory.load()
     val actorSystem = ActorSystem.create("p2p", conf)
-    actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
-    for (networkAddress in simNetwork.keys) {
-        val links = simNetwork[networkAddress]!!
-        val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
-        simNodes += TreeNode(actorSystem, config)
-    }
+    val simNodes = createMockNetwork(actorSystem, simNetwork)
+    //val simNodes = createTCPNetwork(actorSystem, simNetwork)
+    //val simNodes = createHTTPSNetwork(actorSystem, simNetwork)
     pollDht(simNodes, actorSystem)
     createStream(simNodes, actorSystem)
     actorSystem.stop()
@@ -47,7 +46,7 @@ fun main() {
 }
 
 private fun createStream(
-    simNodes: MutableList<TreeNode>,
+    simNodes: List<TreeNode>,
     actorSystem: ActorSystem
 ) {
     val random = Random()
@@ -153,7 +152,7 @@ private fun createStream(
 }
 
 private fun pollDht(
-    simNodes: MutableList<TreeNode>,
+    simNodes: List<TreeNode>,
     actorSystem: ActorSystem
 ) {
     val random = Random()
@@ -220,26 +219,92 @@ private fun pollDht(
     }
 }
 
-private fun convertToTcpNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {
-    val tcpNetwork = mutableMapOf<Address, Set<Address>>()
+private fun createMockNetwork(actorSystem: ActorSystem, simNetwork: Map<Address, Set<Address>>): List<TreeNode> {
+    val simNodes = mutableListOf<TreeNode>()
+    actorSystem.actorOf(DnsMockActor.getProps(), "Dns")
+    for (networkAddress in simNetwork.keys) {
+        val links = simNetwork[networkAddress]!!
+        val config = NetworkConfiguration(networkAddress, networkAddress, false, links, emptySet())
+        simNodes += TreeNode(actorSystem, config)
+    }
+    return simNodes
+}
+
+private fun createTCPNetwork(actorSystem: ActorSystem, simNetwork: Map<Address, Set<Address>>): List<TreeNode> {
+    val simNodes = mutableListOf<TreeNode>()
     for (networkAddress in simNetwork.keys) {
         val tcpAddress: Address = (networkAddress as NetworkAddress).toLocalPublicAddress()
         val links = simNetwork[networkAddress]!!
         val tcpLinks: Set<Address> = links.map { (it as NetworkAddress).toLocalPublicAddress() }.toSet()
-        tcpNetwork[tcpAddress] = tcpLinks
+        val config = NetworkConfiguration(tcpAddress, tcpAddress, false, tcpLinks, emptySet())
+        simNodes += TreeNode(actorSystem, config)
     }
-    return tcpNetwork
+    return simNodes
 }
 
-private fun convertToHTTPNetwork(simNetwork: Map<Address, Set<Address>>): Map<Address, Set<Address>> {
-    val httpNetwork = mutableMapOf<Address, Set<Address>>()
-    for (networkAddress in simNetwork.keys) {
-        val httpAddress: Address = (networkAddress as NetworkAddress).toLocalHTTPAddress()
-        val links = simNetwork[networkAddress]!!
-        val httpLinks: Set<Address> = links.map { (it as NetworkAddress).toLocalHTTPAddress() }.toSet()
-        httpNetwork[httpAddress] = httpLinks
+private fun createHTTPSNetwork(actorSystem: ActorSystem, simNetwork: Map<Address, Set<Address>>): List<TreeNode> {
+    val secureRand = newSecureRandom()
+    val rootKeys = generateECDSAKeyPair(secureRand)
+    val now = Clock.systemUTC().instant()
+    val issuerName = X500Principal("CN=Test Root,O=ACME,L=London,C=GB")
+    val rootSigner = X509.getContentSigner(rootKeys.public) { k, v ->
+        rootKeys.sign(v).toDigitalSignature()
     }
-    return httpNetwork
+    val trustRootCert = X509.createSelfSignedCACert(
+        issuerName,
+        rootKeys.public,
+        rootSigner,
+        Pair(now, now.plus(3650L, ChronoUnit.DAYS))
+    )
+    val trustStore = KeyStore.getInstance("PKCS12")
+    trustStore.load(null)
+    trustStore.setCertificateEntry("root", trustRootCert)
+    val simNodes = mutableListOf<TreeNode>()
+    for (networkAddress in simNetwork.keys) {
+        val httpsAddress: URLAddress = (networkAddress as NetworkAddress).toLocalHTTPSAddress()
+        val nodeHTTPSKeys = generateECDSAKeyPair(secureRand)
+        val nodeKeyStore = KeyStore.getInstance("PKCS12")
+        nodeKeyStore.load(null)
+        val subject = X500Principal("CN=${httpsAddress.url}, O=node_${networkAddress.id},C=GB")
+        val nodeHTTPSCert = X509.createCertificate(
+            subject,
+            nodeHTTPSKeys.public,
+            issuerName,
+            rootKeys.public,
+            rootSigner,
+            KeyUsage(KeyUsage.digitalSignature),
+            purposes = listOf(KeyPurposeId.id_kp_serverAuth, KeyPurposeId.id_kp_clientAuth),
+            isCA = false,
+            Pair(now.minusSeconds(2L), now.plus(365L, ChronoUnit.DAYS)),
+            crlDistPoint = "http://localhost:8080/crl/intermediate.crl",
+            crlIssuer = trustRootCert.subjectX500Principal,
+            altSubjectNames = listOf("127.0.0.1", "localhost")
+        )
+        val keyPassword = "password"
+        nodeKeyStore.setKeyEntry(
+            "https_key",
+            nodeHTTPSKeys.private,
+            keyPassword.toCharArray(),
+            arrayOf(nodeHTTPSCert, trustRootCert)
+        )
+        val links = simNetwork[networkAddress]!!
+        val httpsLinks: Set<Address> = links.map { (it as NetworkAddress).toLocalHTTPSAddress() }.toSet()
+        val config = NetworkConfiguration(
+            httpsAddress,
+            httpsAddress,
+            false,
+            httpsLinks,
+            emptySet(),
+            trustStore,
+            CertificateStore(
+                nodeKeyStore,
+                keyPassword
+            )
+        )
+        simNodes += TreeNode(actorSystem, config)
+
+    }
+    return simNodes
 }
 
 private fun diameter(graph: Map<Address, Set<Address>>): Pair<Int, Int> {
