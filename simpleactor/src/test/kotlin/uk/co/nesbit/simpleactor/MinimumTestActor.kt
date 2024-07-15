@@ -363,3 +363,106 @@ class ChildActor : AbstractActor() {
         }
     }
 }
+
+object WatchMe
+
+class DeadlockActor1 : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(): Props {
+            return createProps(DeadlockActor1::class.java)
+        }
+    }
+
+    private val owners = mutableListOf<ActorRef>()
+
+    override fun preStart() {
+        super.preStart()
+    }
+
+    override fun onReceive(message: Any) {
+        if (message is WatchMe) {
+            owners += sender
+        }
+        for (owner in owners) {
+            owner.tell("Hello")
+        }
+    }
+}
+
+class DeadlockActor2(private val peer: ActorRef) : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(peer: ActorRef): Props {
+            return createProps(DeadlockActor2::class.java, peer)
+        }
+    }
+
+    private val owners = mutableListOf<ActorRef>()
+
+    override fun preStart() {
+        super.preStart()
+        peer.tell(WatchMe)
+    }
+
+    override fun onReceive(message: Any) {
+        if (message is WatchMe) {
+            owners += sender
+        }
+        for (owner in owners) {
+            owner.tell("Hello")
+        }
+    }
+}
+
+
+class DeadlockActor3(private val peer: ActorRef) : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(peer: ActorRef): Props {
+            return createProps(DeadlockActor2::class.java, peer)
+        }
+    }
+
+    override fun preStart() {
+        super.preStart()
+        peer.tell(WatchMe)
+    }
+
+    override fun onReceive(message: Any) {
+        println(message)
+    }
+}
+
+
+class DeadlockActor4 : AbstractActor() {
+    companion object {
+        @JvmStatic
+        fun getProps(): Props {
+            return createProps(DeadlockActor4::class.java)
+        }
+    }
+
+    private val childActor1: ActorRef = context.actorOf(
+        DeadlockActor1.getProps(),
+        "child1"
+    )
+
+    private val childActor2: ActorRef = context.actorOf(
+        DeadlockActor2.getProps(childActor1),
+        "child2"
+    )
+
+    private val childActor3: ActorRef = context.actorOf(
+        DeadlockActor3.getProps(childActor2),
+        "child3"
+    )
+
+    override fun preStart() {
+        super.preStart()
+    }
+
+    override fun onReceive(message: Any) {
+
+    }
+}

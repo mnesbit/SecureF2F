@@ -4,6 +4,8 @@ import org.jctools.queues.MpscLinkedQueue
 import uk.co.nesbit.simpleactor.ActorRef
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 internal class MailboxImpl(
     private val executor: ExecutorService,
@@ -15,9 +17,7 @@ internal class MailboxImpl(
     private val priorityQueue = MpscLinkedQueue<MessageEntry>()
     private val queue = MpscLinkedQueue<MessageEntry>()
     private val pending = AtomicBoolean(false)
-
-    @Volatile
-    private var mailThread = -1L
+    private val exclusiveLock = ReentrantLock()
 
     override fun tell(msg: Any, sender: ActorRef) {
         queue.offer(MessageEntry(msg, sender))
@@ -67,45 +67,29 @@ internal class MailboxImpl(
         }
     }
 
-    private fun inHandler(): Boolean {
-        return (mailThread == Thread.currentThread().threadId())
-    }
-
     override fun <R> runExclusive(block: () -> R): R {
-        if (inHandler()) { // avoid blocking
-            return block()
-        }
-        while (true) {
-            val alreadyPending = pending.getAndSet(true)
-            if (!alreadyPending) {
-                val result = try {
-                    block()
-                } finally {
-                    pending.set(false)
-                }
-                if (queue.isNotEmpty() || priorityQueue.isNotEmpty()) {
-                    tryScheduleReceive()
-                }
-                return result
-            }
+        return exclusiveLock.withLock {
+            block()
         }
     }
 
     private fun processMessages() {
         val startTime = System.nanoTime()
-        mailThread = Thread.currentThread().threadId()
         try {
             do {
                 val priorityMessage = priorityQueue.poll()
                 if (priorityMessage != null) {
-                    handler.onReceive(priorityMessage.msg, priorityMessage.sender)
+                    exclusiveLock.withLock {
+                        handler.onReceive(priorityMessage.msg, priorityMessage.sender)
+                    }
                 } else {
                     val messageEntry = queue.poll() ?: break
-                    handler.onReceive(messageEntry.msg, messageEntry.sender)
+                    exclusiveLock.withLock {
+                        handler.onReceive(messageEntry.msg, messageEntry.sender)
+                    }
                 }
             } while ((System.nanoTime() - startTime) / 1000L < batchSizeUS)
         } finally {
-            mailThread = -1L
             pending.set(false)
             if (queue.isNotEmpty() || priorityQueue.isNotEmpty()) {
                 tryScheduleReceive()

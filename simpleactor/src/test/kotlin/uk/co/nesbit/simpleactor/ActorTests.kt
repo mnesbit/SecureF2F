@@ -69,6 +69,28 @@ class ActorTests {
     }
 
     @Test
+    fun `Another shutdown livelock test`() {
+        // The original mailbox needed an extra free thread to run exclusive tasks e.g. child snapshots
+        // and thus could livelock if the maximum number of threads was busy resolving ActorRefs, etc
+        val conf = ConfigFactory.parseString(
+            """
+                SimpleActor {
+                    executor {
+                            type = Fixed
+                            threads = 3
+                    }
+                }
+        """
+        )
+        val system = ActorSystem.create("Test", conf)
+        for (i in 0 until 1000) {
+            system.actorOf(DeadlockActor4.getProps(), "root_$i")
+        }
+        system.stop()
+    }
+
+
+    @Test
     fun `pump messages`() {
         val conf = ConfigFactory.parseString(
             """
