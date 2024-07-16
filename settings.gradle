@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'SecureP2P'
+rootProject.name = 'SecureF2F'
 include 'crypto'
 include 'avro'
 include 'simpleactor'

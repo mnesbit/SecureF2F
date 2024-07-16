@@ -27,12 +27,12 @@ object Experiments {
         var sourceAddress: SecureHash? = null
         var destAddress: SecureHash? = null
         val sourceName: String = simNodes[random.nextInt(simNodes.size)].name
-        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
+        val randomSourceNodes = actorSystem.actorSelection("SimpleActor://f2f/$sourceName/session")
         while (randomSourceNodes.resolve().isEmpty()) {
             Thread.sleep(100L)
         }
         val destName: String = simNodes[random.nextInt(simNodes.size)].name
-        val randomDestNodes = actorSystem.actorSelection("SimpleActor://p2p/$destName/session")
+        val randomDestNodes = actorSystem.actorSelection("SimpleActor://f2f/$destName/session")
         while (randomDestNodes.resolve().isEmpty()) {
             Thread.sleep(100L)
         }
@@ -85,7 +85,7 @@ object Experiments {
                 return
             }
             Thread.sleep(1000L)
-            val sessionSourceNode = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
+            val sessionSourceNode = actorSystem.actorSelection("SimpleActor://f2f/$sourceName/session")
             println("Send open query")
             val openFut =
                 sessionSourceNode.resolve().single()
@@ -106,7 +106,7 @@ object Experiments {
         var packetNo = 0
         while (packetNo < messageCount) {
             val sessionSourceNode =
-                actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session").resolve().single()
+                actorSystem.actorSelection("SimpleActor://f2f/$sourceName/session").resolve().single()
             println("Send data query $packetNo")
             val sendFut = sessionSourceNode.ask<SendSessionDataAck>(
                 SendSessionData(sessionId, "hello$packetNo".toByteArray(Charsets.UTF_8))
@@ -126,7 +126,7 @@ object Experiments {
             } catch (ex: TimeoutException) {
             }
         }
-        val sessionNode = actorSystem.actorSelection("SimpleActor://p2p/$sourceName/session")
+        val sessionNode = actorSystem.actorSelection("SimpleActor://f2f/$sourceName/session")
         sessionNode.tell(CloseSessionRequest(null, sessionId, null), ActorRef.noSender())
         closeFut.get()
         sink.close()
@@ -147,7 +147,7 @@ object Experiments {
             ++round
             var failed = false
             val putTarget = simNodes[random.nextInt(simNodes.size)].name
-            val randomPutNode = actorSystem.actorSelection("SimpleActor://p2p/$putTarget/route").resolve().single()
+            val randomPutNode = actorSystem.actorSelection("SimpleActor://f2f/$putTarget/route").resolve().single()
             val data = round.toByteArray()
             val key = SecureHash.secureHash(data)
             val putRequest = ClientDhtRequest(key, data)
@@ -168,7 +168,7 @@ object Experiments {
             }
 
             val getTarget = simNodes[random.nextInt(simNodes.size)].name
-            val randomGetNode = actorSystem.actorSelection("SimpleActor://p2p/$getTarget/route").resolve().single()
+            val randomGetNode = actorSystem.actorSelection("SimpleActor://f2f/$getTarget/route").resolve().single()
             val (readKey, readData) = if (stored.isEmpty()) {
                 Pair(key, data)
             } else {

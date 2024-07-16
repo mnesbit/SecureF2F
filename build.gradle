@@ -14,7 +14,7 @@ subprojects {
 
 allprojects {
     group 'uk.co.nesbit'
-    version securep2p_version
+    version securef2f_version
 
     repositories {
         mavenCentral()
