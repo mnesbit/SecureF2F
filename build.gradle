@@ -76,6 +76,7 @@ dependencies {
     implementation "org.bouncycastle:bcpkix-jdk18on:$bouncycastle_version"
     // Command line processing
     implementation "info.picocli:picocli:$picocli_version"
+    implementation "org.apache.commons:commons-math3:$math_version"
 
 
     implementation project(':avro')

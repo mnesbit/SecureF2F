@@ -9,7 +9,9 @@ import uk.co.nesbit.network.tcpnet.HttpsNetworkActor
 import uk.co.nesbit.network.tcpnet.TcpNetworkActor
 import uk.co.nesbit.simpleactor.*
 
-class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfiguration) : AbstractActor() {
+object ConfigQuery
+
+class RootNodeActor(val keyService: KeyService, val networkConfig: NetworkConfiguration) : AbstractActor() {
     companion object {
         @JvmStatic
         fun getProps(keyService: KeyService, networkConfig: NetworkConfiguration): Props {
@@ -92,6 +94,7 @@ class RootNodeActor(val keyService: KeyService, networkConfig: NetworkConfigurat
     override fun onReceive(message: Any) {
         when (message) {
             is String -> onMessage(message)
+            is ConfigQuery -> sender.tell(networkConfig)
             else -> throw UnhandledMessage("Unhandled message ${message.javaClass.name}")
         }
     }

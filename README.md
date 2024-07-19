@@ -124,7 +124,7 @@ in `build/install/SecureF2F/bin` so long as a suitable Java install is detected 
 Use --help to show the options, which are reproduced below
 
 ```
-Usage:  [-hV] [-d=<minDegree>] [-g=<networkGenerator>] [-n=<networkSize>]
+Usage:  [-chV] [-d=<minDegree>] [-g=<networkGenerator>] [-n=<networkSize>]
         [-t=<transportMode>] [--dht [-p=<dhtPasses>]] [--stream
         [-o=<openAttempts>] [-m=<messages>]]
   -n, --size=<networkSize>   Set network initial size
@@ -149,6 +149,8 @@ Usage:  [-hV] [-d=<minDegree>] [-g=<networkGenerator>] [-n=<networkSize>]
                                Default: MinimumDegree
   -d, --degree=<minDegree>   minimum node degree
                                Default: 3
+  -c, --churn                enable peer churn, which kills and randomly
+                               restores nodes
   -h, --help                 Show this help message and exit.
   -V, --version              Print version information and exit.
 DHT experiments

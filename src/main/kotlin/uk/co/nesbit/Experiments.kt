@@ -26,18 +26,25 @@ object Experiments {
         val timeout = Duration.ofSeconds(120L)
         var sourceAddress: SecureHash? = null
         var destAddress: SecureHash? = null
-        val sourceName: String = simNodes[random.nextInt(simNodes.size)].name
+        val sourceIndex = random.nextInt(simNodes.size)
+        val sourceName: String = simNodes[sourceIndex].name
         val randomSourceNodes = actorSystem.actorSelection("SimpleActor://f2f/$sourceName/session")
         while (randomSourceNodes.resolve().isEmpty()) {
             Thread.sleep(100L)
         }
-        val destName: String = simNodes[random.nextInt(simNodes.size)].name
+        val destIndex = random.nextInt(simNodes.size)
+        val destName: String = simNodes[destIndex].name
         val randomDestNodes = actorSystem.actorSelection("SimpleActor://f2f/$destName/session")
         while (randomDestNodes.resolve().isEmpty()) {
             Thread.sleep(100L)
         }
         val randomSourceNode = randomSourceNodes.resolve().single()
         val randomDestNode = randomDestNodes.resolve().single()
+        val churnActor = actorSystem.actorSelection("SimpleActor://f2f/churn").resolve().firstOrNull()
+        if (churnActor != null) {
+            churnActor.tell(Protect(simNodes[sourceIndex].rootNodeActor))
+            churnActor.tell(Protect(simNodes[destIndex].rootNodeActor))
+        }
         while (true) {
             Thread.sleep(1000L)
             val sourceFut = randomSourceNode.ask<SelfAddressResponse>(SelfAddressRequest())
@@ -146,8 +153,12 @@ object Experiments {
             Thread.sleep(5000L)
             ++round
             var failed = false
-            val putTarget = simNodes[random.nextInt(simNodes.size)].name
-            val randomPutNode = actorSystem.actorSelection("SimpleActor://f2f/$putTarget/route").resolve().single()
+            var randomPutNode: ActorRef? = null
+            while (randomPutNode == null) {
+                val putTarget = simNodes[random.nextInt(simNodes.size)].name
+                randomPutNode =
+                    actorSystem.actorSelection("SimpleActor://f2f/$putTarget/route").resolve().singleOrNull()
+            }
             val data = round.toByteArray()
             val key = SecureHash.secureHash(data)
             val putRequest = ClientDhtRequest(key, data)
@@ -167,8 +178,11 @@ object Experiments {
                 failed = true
             }
 
-            val getTarget = simNodes[random.nextInt(simNodes.size)].name
-            val randomGetNode = actorSystem.actorSelection("SimpleActor://f2f/$getTarget/route").resolve().single()
+            var randomGetNode: ActorRef? = null
+            while (randomGetNode == null) {
+                val getTarget = simNodes[random.nextInt(simNodes.size)].name
+                randomGetNode = actorSystem.actorSelection("SimpleActor://f2f/$getTarget/route").resolve().firstOrNull()
+            }
             val (readKey, readData) = if (stored.isEmpty()) {
                 Pair(key, data)
             } else {

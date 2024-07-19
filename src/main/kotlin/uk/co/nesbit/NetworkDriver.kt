@@ -52,6 +52,12 @@ class NetworkDriver : Callable<Int> {
     )
     var minDegree: Int = 3
 
+    @CommandLine.Option(
+        names = ["-c", "--churn"],
+        description = ["enable peer churn, which kills and randomly restores nodes"]
+    )
+    var applyChurn: Boolean = false
+
     class DHTOptions {
         @CommandLine.Option(
             names = ["--dht"],
@@ -115,6 +121,17 @@ class NetworkDriver : Callable<Int> {
         val conf = ConfigFactory.load()
         val actorSystem = ActorSystem.create("f2f", conf)
         val simNetwork = TransportBuilder.createNetwork(transportMode, actorSystem, networkGraph)
+        if (applyChurn) {
+            // The parameters are still very much experimental, so not making user configurable
+            actorSystem.actorOf(
+                ChurnActor.getProps(
+                    1.0,
+                    30,
+                    0.0,
+                    1.5
+                ), "churn"
+            )
+        }
         if (dhtGroup?.runDHT == true) {
             println("Run DHT experiment. Require ${dhtGroup?.dhtPasses} successive passes")
             Experiments.pollDht(simNetwork, actorSystem, dhtGroup!!.dhtPasses)
