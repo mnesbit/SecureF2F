@@ -4,6 +4,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import uk.co.nesbit.simpleactor.*
 import uk.co.nesbit.simpleactor.impl.messages.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
 internal class ActorLifecycle(
@@ -24,7 +25,7 @@ internal class ActorLifecycle(
         get() = parentLifecycle!!.self
 
     private val watchers = mutableSetOf<ActorRef>()
-    private val childStats = mutableMapOf<String, Int>()
+    private val childStats = ConcurrentHashMap<String, Int>()
     private val children = mutableListOf<ActorLifecycle>()
     var stopped = false
 
@@ -116,13 +117,6 @@ internal class ActorLifecycle(
             return emptyList()
         }
         return mailbox.runExclusive { children.toMutableList() }
-    }
-
-    fun getWatcherSnapshot(): List<ActorRef> {
-        if (stopping || stopped) {
-            return emptyList()
-        }
-        return mailbox.runExclusive { watchers.toMutableList() }
     }
 
     private fun tellPriority(msg: Any, sender: ActorRef) {
@@ -231,7 +225,11 @@ internal class ActorLifecycle(
                 }
             }
         } catch (ex: Throwable) {
-            log.error("Actor $self threw exception ${ex} while processing ${msg.javaClass.name}", ex)
+            if (ex is ActorKilledException) {
+                log.warn(ex.message)
+            } else {
+                log.error("Actor $self threw exception $ex while processing ${msg.javaClass.name}", ex)
+            }
             if (!stopping) { //ignore errors during close
                 handleError(ex, msg)
             }

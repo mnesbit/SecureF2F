@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal class ActorContextImpl(
     override val system: ActorSystemInternal,
     override val parent: ActorRef,
-    val selfLifecycle: ActorLifecycle,
+    private val selfLifecycle: ActorLifecycle,
     override val props: Props,
     override val log: Logger,
     override val timers: TimerScheduler
@@ -71,15 +71,11 @@ internal class ActorContextImpl(
     }
 
     override fun watch(other: ActorRef) {
-        if (!selfLifecycle.getWatcherSnapshot().contains(other)) {
-            other.tell(Watch(other, self), self)
-        }
+        other.tell(Watch(other, self), self)
     }
 
     override fun unwatch(other: ActorRef) {
-        if (selfLifecycle.getWatcherSnapshot().contains(other)) {
-            other.tell(Unwatch(other, self), self)
-        }
+        other.tell(Unwatch(other, self), self)
     }
 
     override fun actorSelection(path: ActorPath): ActorSelection = actorSelection(path.address)
